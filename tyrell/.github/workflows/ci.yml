@@ -19,6 +19,7 @@ jobs:
       - name: Build and test
         run: npm test
       - name: dist/ is up to date with src/
-        run: git diff --exit-code -- dist || (echo "dist/ is stale: run npm run build and commit it" && exit 1)
+        run: |
+          git diff --exit-code -- dist || { echo "dist/ is stale: run npm run build and commit it"; exit 1; }
       - name: Voight-Kampff on Rocinante, a week
         run: node bin/voight-kampff.mjs examples/rocinante.js --days 7

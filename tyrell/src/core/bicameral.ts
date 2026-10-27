@@ -304,7 +304,8 @@ export class Bicameral {
         for (const a of this.w.actions.values()) {
           if (a.target) continue;
           if (!this.offeredAt(a, place, p)) continue;
-          this.addOption(p, out, { id: a.id, kind: 'action', place, rank: r.rank, layer: r.layer, until: r.until }, true);
+          // anything they like there: each thing for as long as it takes, choosing again after
+          this.addOption(p, out, { id: a.id, kind: 'action', place, rank: r.rank, layer: r.layer, until: r.until, fill: false }, true);
           reqIds.add(a.id + '@' + place);
         }
         continue;

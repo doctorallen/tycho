@@ -328,8 +328,10 @@ export interface Doing {
   task?: Id;
   /** The sequence number of the event that ends it. */
   seq: number;
-  /** For fill actions chosen by a routine or job: the hour the entry ends. */
+  /** For actions chosen by a routine or job: when the entry ends. */
   until?: Minutes;
+  /** Travel only: the action at the end shouldn't stretch to fill the entry. */
+  fill?: boolean;
 }
 
 /** A plan in progress (Mentat). */
@@ -605,6 +607,8 @@ export interface Candidate {
   blocked?: string;
   slot?: string;
   until?: Minutes;
+  /** False for options that shouldn't stretch to fill a routine entry ('*' choices). */
+  fill?: boolean;
 }
 
 export interface Decision {

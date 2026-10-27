@@ -55,6 +55,8 @@ test('people commit crimes the world can see: theft at the market is witnessed',
 
 test('gossip travels a hop at a time, weaker each time, no further than the limit', () => {
   const w = rocinante({ start: 9 * HOUR });
+  const told = [];
+  w.on('told', (e) => told.push(e));
   w.reverie.believe('ruth', 'did:sam:theft', true, 'saw');
   w.advance(3 * DAY);
   const heard = w.people().filter((p) => p.id !== 'ruth' && w.reverie.belief(p.id, 'did:sam:theft') !== undefined);
@@ -64,7 +66,7 @@ test('gossip travels a hop at a time, weaker each time, no further than the limi
     assert.ok(b.hops <= w.wormtongue.config.maxHops);
     if (b.src === 'told') assert.ok(b.str < 1);
   }
-  assert.ok(w.westmarch.find({ k: 'told' }).length > 0);
+  assert.ok(told.some((e) => e.key === 'did:sam:theft'));
 });
 
 test('a dishonest teller who dislikes the subject may lie', () => {

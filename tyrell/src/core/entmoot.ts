@@ -261,6 +261,7 @@ export class Entmoot {
       kind: 'travel', action: c.id, place: null, from: p.place, to: dest, start: w.s.now, end,
       rank: c.rank, layer: c.layer, seq, target: c.target, until: c.until, slot: c.slot,
     };
+    if (c.fill === false) p.doing.fill = false;
     if (p.plan) p.doing.task = p.plan.task;
     p.place = null;
     w.log('set-out', p.id, { to: dest, for: c.id });
@@ -285,7 +286,7 @@ export class Entmoot {
     // how long
     const r = w.stream(p);
     let minutes = Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes;
-    if (c.until !== undefined && isFinite(c.until) && (c.layer === 'routine' || c.layer === 'job' || c.layer === 'story') && a.fill !== false) {
+    if (c.until !== undefined && isFinite(c.until) && (c.layer === 'routine' || c.layer === 'job' || c.layer === 'story') && a.fill !== false && c.fill !== false) {
       minutes = Math.max(c.until - w.s.now, Math.min(minutes, 5));
     }
     minutes = Math.max(0.5, minutes);
@@ -317,6 +318,7 @@ export class Entmoot {
       w.emit('arrive', { id: p.id, place: p.place });
       if (d.action.startsWith('@go:')) { this.afterStep(p, d, true); return; }
       const c: Candidate = { id: d.action, kind: 'action', place: p.place, target: d.target, rank: d.rank, layer: d.layer, weight: 1, parts: [], until: d.until, slot: d.slot };
+      if (d.fill === false) c.fill = false;
       // still worth doing? (the place may have closed while they walked)
       const why = w.mind.blockedReason(p, c);
       if (why) { this.fail(p, why, true); return; }

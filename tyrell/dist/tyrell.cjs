@@ -832,7 +832,7 @@ var Bicameral = class {
         for (const a of this.w.actions.values()) {
           if (a.target) continue;
           if (!this.offeredAt(a, place, p)) continue;
-          this.addOption(p, out, { id: a.id, kind: "action", place, rank: r.rank, layer: r.layer, until: r.until }, true);
+          this.addOption(p, out, { id: a.id, kind: "action", place, rank: r.rank, layer: r.layer, until: r.until, fill: false }, true);
           reqIds.add(a.id + "@" + place);
         }
         continue;
@@ -1338,6 +1338,7 @@ var Entmoot = class {
       until: c.until,
       slot: c.slot
     };
+    if (c.fill === false) p.doing.fill = false;
     if (p.plan) p.doing.task = p.plan.task;
     p.place = null;
     w.log("set-out", p.id, { to: dest, for: c.id });
@@ -1368,7 +1369,7 @@ var Entmoot = class {
     }
     const r = w.stream(p);
     let minutes = Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes;
-    if (c.until !== void 0 && isFinite(c.until) && (c.layer === "routine" || c.layer === "job" || c.layer === "story") && a.fill !== false) {
+    if (c.until !== void 0 && isFinite(c.until) && (c.layer === "routine" || c.layer === "job" || c.layer === "story") && a.fill !== false && c.fill !== false) {
       minutes = Math.max(c.until - w.s.now, Math.min(minutes, 5));
     }
     minutes = Math.max(0.5, minutes);
@@ -1401,6 +1402,7 @@ var Entmoot = class {
         return;
       }
       const c = { id: d.action, kind: "action", place: p.place, target: d.target, rank: d.rank, layer: d.layer, weight: 1, parts: [], until: d.until, slot: d.slot };
+      if (d.fill === false) c.fill = false;
       const why = w.mind.blockedReason(p, c);
       if (why) {
         this.fail(p, why, true);

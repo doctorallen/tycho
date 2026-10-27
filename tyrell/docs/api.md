@@ -25,7 +25,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |
 | `DEFAULT_CONFIG` | The default `Config` |
-| `SCHEMA` | The save schema version: `1` |
+| `SCHEMA` | The save schema version: `2` |
 | `MIGRATIONS` | Save migrations: `MIGRATIONS[v](state)` turns a version-`v` state into `v + 1`. See [Saving](saving.md) |
 | `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
 | `curveAt(curve, x)` | Evaluates a response curve at `x` in 0..1 |

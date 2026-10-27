@@ -88,7 +88,6 @@ export class Joi implements Module {
   async speak(who: Id, opts: { to?: Id; topic?: string; timeoutMs?: number } = {}): Promise<Spoken> {
     const w = this.w;
     const line = w.cityspeak?.choose(who, opts) ?? null;
-    if (line) delete (line as any)._i;
     const fallback: Spoken = { text: line?.text ?? '', key: line?.key ?? null, flags: [], fromModel: false };
     if (!this.provider) return fallback;
     const req: JoiRequest = { prompt: this.prompt(who, opts), system: this.voice, who, line, ...(opts.to ? { to: opts.to } : {}) };

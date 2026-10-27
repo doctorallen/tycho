@@ -73,7 +73,16 @@ export interface SocialActDef {
 
 export interface Said { who: Id; key: string; text?: string; to?: Id; topic?: string; reply?: string }
 
-interface State { said: Record<Id, Record<string, number>>; acts: Array<{ t: number; act: Id; from: Id; to: Id; ok: boolean }> }
+interface State {
+  /** By speaker, by line key (or index, for a line without one): when they last said it. */
+  said: Record<Id, Record<string, number>>;
+  /** Lines said before save schema 2, by speaker, by line index (read until said again). */
+  byIndex?: Record<Id, Record<string, number>>;
+  acts: Array<{ t: number; act: Id; from: Id; to: Id; ok: boolean }>;
+}
+
+/** What a line is remembered by: its key, or its index if it has none. */
+const lineKey = (l: LineDef, i: number): string => (l.key !== undefined && l.key !== '' ? l.key : String(i));
 
 export class Cityspeak implements Module {
   readonly name = 'cityspeak';
@@ -94,7 +103,7 @@ export class Cityspeak implements Module {
   attach(w: World): void {
     this.w = w;
     w.lang.term('room', (c) => (c.person?.place ? this.room(c.person.place) : 0.5));
-    w.lang.term('said', (c, a) => (c.person ? this.st.said[c.person.id]?.[a] !== undefined : false));
+    w.lang.term('said', (c, a) => (c.person ? this.hasSaid(c.person.id, a) : false));
     w.lang.term('practice', (c, a) => (c.person?.place ? this.activeAt(c.person.place).some((p) => p.id === a) : false));
     w.lang.term('role', (c, a) => (c.person ? this.roleOf(c.person, a) : false));
     w.defineInput('say', (who: Id, opts: { to?: Id; topic?: string }) => this.applySay(who, opts));
@@ -113,11 +122,27 @@ export class Cityspeak implements Module {
   // Lines
   // -------------------------------------------------------------------------
 
+  /** When someone last said a line (undefined if never). */
+  private lastSaid(who: Id, l: LineDef, i: number): number | undefined {
+    return this.st.said[who]?.[lineKey(l, i)] ?? this.st.byIndex?.[who]?.[String(i)];
+  }
+
+  /** Has someone said a line with this key (or, as before 1.1, at this index)? */
+  private hasSaid(who: Id, key: string): boolean {
+    if (this.st.said[who]?.[key] !== undefined) return true;
+    return this.lines.some((l, i) => (lineKey(l, i) === key || String(i) === key) && this.lastSaid(who, l, i) !== undefined);
+  }
+
   /**
    * What a person would say now, without saying it (nothing changes). The
    * most specific matching line wins; ties go by weight.
    */
   choose(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean } = {}): Said | null {
+    return this.pick(who, opts)?.said ?? null;
+  }
+
+  /** The line choose() would pick, with its index. */
+  private pick(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return null;
@@ -147,7 +172,7 @@ export class Cityspeak implements Module {
         if (!w.lang.all(l.to, tctx)) return;
         spec += l.to.length;
       }
-      const last = this.st.said[who]?.[String(i)];
+      const last = this.lastSaid(who, l, i);
       if (l.once && last !== undefined) return;
       if (l.cooldown && last !== undefined && now - last < l.cooldown) return;
       if (spec > bestSpec) { bestSpec = spec; best = [{ l, i }]; } else if (spec === bestSpec) best.push({ l, i });
@@ -160,8 +185,7 @@ export class Cityspeak implements Module {
     if (opts.to) out.to = opts.to;
     if (opts.topic) out.topic = opts.topic;
     if (pick.l.reply) out.reply = pick.l.reply;
-    (out as any)._i = pick.i;
-    return out;
+    return { said: out, i: pick.i };
   }
 
   /** Says something on purpose (the game asks): chosen, remembered, its effects applied. */
@@ -170,12 +194,12 @@ export class Cityspeak implements Module {
   }
 
   private applySay(who: Id, opts: { to?: Id; topic?: string }): Said | null {
-    const said = this.choose(who, opts);
-    if (!said) return null;
-    const i = (said as any)._i as number;
-    delete (said as any)._i;
-    (this.st.said[who] ||= {})[String(i)] = this.w.s.now;
+    const picked = this.pick(who, opts);
+    if (!picked) return null;
+    const { said, i } = picked;
     const l = this.lines[i];
+    (this.st.said[who] ||= {})[lineKey(l, i)] = this.w.s.now;
+    if (this.st.byIndex?.[who]) delete this.st.byIndex[who][String(i)];
     const p = this.w.s.people[who];
     if (l.then && p) this.w.lang.applyAll(l.then, this.w.ctx(p, { target: opts.to ?? null, topic: opts.topic }));
     this.w.log('said', who, { key: said.key, ...(opts.to ? { to: opts.to } : {}) });
@@ -184,15 +208,17 @@ export class Cityspeak implements Module {
   }
 
   /** The answer someone gives to a line. */
-  answer(to: Said, by: Id): Said | null {
+  answer(to: Said, by: Id): Said | null { return this.reply(to, by)?.said ?? null; }
+
+  private reply(to: Said, by: Id): { said: Said; i: number } | null {
     if (!to.reply) return null;
-    if (to.reply.startsWith('topic:')) return this.choose(by, { to: to.who, topic: to.reply.slice(6) });
+    if (to.reply.startsWith('topic:')) return this.pick(by, { to: to.who, topic: to.reply.slice(6) });
     const i = this.lines.findIndex((l) => l.key === to.reply);
     if (i < 0) return null;
     const l = this.lines[i];
     const out: Said = { who: by, key: l.key, to: to.who };
     if (l.text !== undefined) out.text = Array.isArray(l.text) ? l.text[0] : l.text;
-    return out;
+    return { said: out, i };
   }
 
   private whoMatches(p: PersonState, who: string): boolean {
@@ -211,18 +237,15 @@ export class Cityspeak implements Module {
     const out: Array<Said & { after: number }> = [];
     const now = this.w.s.now;
     const skip = (who: Id) => (l: LineDef, i: number) => {
-      const k = who + '|' + i;
-      const last = this.barkSaid.get(k);
+      const last = this.barkSaid.get(who + '|' + lineKey(l, i));
       return last !== undefined && now - last < (l.cooldown ?? 60);
     };
     let speaker = a, listener = b;
-    let line = this.choose(speaker, { to: listener, topic, skip: skip(speaker) });
+    let line = this.pick(speaker, { to: listener, topic, skip: skip(speaker) });
     for (let n = 0; line && n < this.barkLength; n++) {
-      const i = (line as any)._i as number | undefined;
-      if (i !== undefined) this.barkSaid.set(speaker + '|' + i, now);
-      delete (line as any)._i;
-      out.push({ ...line, after: n * this.barkGap });
-      const reply: Said | null = line.reply ? this.answer(line, listener) : null;
+      this.barkSaid.set(speaker + '|' + lineKey(this.lines[line.i], line.i), now);
+      out.push({ ...line.said, after: n * this.barkGap });
+      const reply = this.reply(line.said, listener);
       [speaker, listener] = [listener, speaker];
       line = reply;
     }

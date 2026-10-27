@@ -193,7 +193,6 @@ console.log(world.describe('mo'));
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
 | `chance:` in line conditions or inspected conditions | Looking (`choose`, barks, `whyNot`, Joi) advances a person's stream: watched and unwatched worlds differ | Use line `weight`s; keep `chance:` to actions' `if` |
 | A `'*'` listener for `witnessed`, `report` or `broke` | The payload's own `kind` replaces the event name | Listen to those events by name |
-| `said:<key>` in conditions | Never true: the term is keyed by the line's index | `said:<index>` (declaration order, from 0), or track it yourself with `var.` effects in the line's `then` |
 | Consideration inputs `'habit'`, `'crowd'`, `'price'` | Read 0 (not terms; `price` needs a good) | A function input: `(ctx) => ctx.world.ring.crowd(ctx.place)` |
 | A cooldown on a deck's trigger storylet | Ignored | Put cooldowns on the cards; give cards `mtb: Infinity` |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |

@@ -136,6 +136,34 @@ test('saying something on purpose: remembered, with cooldowns and replies', () =
   assert.ok(reply && reply.who === 'ruth');
 });
 
+test('said:<key> remembers lines by their key; older saves keep what was said', () => {
+  const w = rocinante({ start: 7 * HOUR });
+  w.advanceTo(8 * HOUR); // Mara is at the cafe
+  const ctx = () => w.ctx(w.get('mara'));
+  assert.equal(w.lang.test('said:mara_bread', ctx()), false);
+  assert.equal(w.cityspeak.say('mara', { topic: 'greet' }).key, 'mara_bread');
+  assert.equal(w.lang.test('said:mara_bread', ctx()), true);
+  const i = w.cityspeak.lines.findIndex((l) => l.key === 'mara_bread');
+  assert.equal(w.lang.test('said:' + i, ctx()), true, 'by index too, as before');
+  // a save from before 1.1: what was said is kept by line index
+  const old = w.save();
+  old.v = 1;
+  old.s.mod.cityspeak.said = { mara: { [String(i)]: w.now } };
+  const x = rocinante({ start: 7 * HOUR });
+  x.load(old);
+  assert.equal(x.lang.test('said:mara_bread', x.ctx(x.get('mara'))), true);
+  assert.notEqual(x.cityspeak.say('mara', { topic: 'greet' })?.key, 'mara_bread', 'its cooldown carried over');
+  // and a save with history: its snapshots are migrated too
+  const hist = w.save(true);
+  hist.v = 1;
+  const y = rocinante({ start: 7 * HOUR });
+  y.load(hist);
+  y.rewind(30);
+  assert.equal(y.lang.test('said:mara_bread', y.ctx(y.get('mara'))), false);
+  y.advance(30);
+  assert.equal(y.lang.test('said:mara_bread', y.ctx(y.get('mara'))), true);
+});
+
 test('practices make role actions more appealing to those who fill the role', () => {
   const w = rocinante({ start: 18 * HOUR });
   w.advance(1);

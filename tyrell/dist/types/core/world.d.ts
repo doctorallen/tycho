@@ -18,7 +18,7 @@ import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
 import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState, PlaceDef, Shell, Stimulus, TaskDef, Value, WorldState } from './types';
 import { DAY, HOUR, Stream } from './util';
-export declare const SCHEMA = 1;
+export declare const SCHEMA = 2;
 export declare const DEFAULT_CONFIG: Config;
 /** A saved world: what world.save() returns and world.load() takes. */
 export interface SaveData {

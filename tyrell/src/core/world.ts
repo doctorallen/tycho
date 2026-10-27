@@ -30,7 +30,7 @@ import type {
 } from './types';
 import { DAY, HOUR, Stream, clamp, dayOf, hash, hourOf, stableStringify } from './util';
 
-export const SCHEMA = 1;
+export const SCHEMA = 2;
 
 export const DEFAULT_CONFIG: Config = {
   minutesPerSecond: 1,
@@ -394,16 +394,9 @@ export class World {
 
   private runLoad(data: SaveData | string): void {
     const d: SaveData = typeof data === 'string' ? JSON.parse(data) : data;
-    let s = d.s;
-    let v = d.v ?? s.v ?? 1;
-    while (v < SCHEMA) {
-      const step = MIGRATIONS[v];
-      if (!step) throw new Error(`Tyrell: no migration from save version ${v}`);
-      s = step(s);
-      v++;
-    }
+    const v = d.v ?? d.s.v ?? 1;
     if (v > SCHEMA) throw new Error(`Tyrell: save version ${v} is newer than this engine (${SCHEMA})`);
-    s.v = SCHEMA;
+    const s = migrate(d.s, v);
     this.s = s;
     for (const m of this.hooks) {
       if (m.init && this.s.mod[m.name] === undefined) this.s.mod[m.name] = m.init();
@@ -411,7 +404,11 @@ export class World {
     }
     for (const def of this.ring.defs.values()) this.ring.state(def.id);
     this.esper.reset();
-    if (d.history) this.esper.import(d.history);
+    if (d.history) {
+      // the history's snapshots are states of the save's version too
+      const h = d.history as { snaps?: Array<{ s: string }> };
+      this.esper.import(v < SCHEMA && h.snaps ? { ...h, snaps: h.snaps.map((sn) => ({ ...sn, s: JSON.stringify(migrate(JSON.parse(sn.s), v)) })) } : h);
+    }
     this.palantir.clear();
     this.clock.reset();
     this.clock.refreshBodies();
@@ -676,6 +673,25 @@ export class World {
 const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
-export const MIGRATIONS: Record<number, (s: any) => any> = {};
+export const MIGRATIONS: Record<number, (s: any) => any> = {
+  // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
+  // old records are kept apart (it takes the line definitions to read them).
+  1: (s) => {
+    const cs = s.mod?.cityspeak;
+    if (cs?.said && Object.keys(cs.said).length) { cs.byIndex = cs.said; cs.said = {}; }
+    return s;
+  },
+};
+
+/** Brings a saved state of version v up to the current schema. */
+function migrate(s: any, v: number): WorldState {
+  for (; v < SCHEMA; v++) {
+    const step = MIGRATIONS[v];
+    if (!step) throw new Error(`Tyrell: no migration from save version ${v}`);
+    s = step(s);
+  }
+  s.v = SCHEMA;
+  return s;
+}
 
 export { DAY, HOUR };

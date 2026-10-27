@@ -157,7 +157,7 @@ Each module registers its terms when it's switched on. With a module off, its te
 | Term | Value |
 |---|---|
 | `room` | The mood of the room where the person is (0.5 when they're nowhere) |
-| `said:<index>` | The person has said the line at this index (lines are numbered in the order declared, from 0). In this version it's keyed by index, not by the line's `key` |
+| `said:<key>` | The person has said a line with this key (with `cityspeak.say`). `said:<index>` also works, for the line at that index (in the order declared, from 0) |
 | `practice:<id>` | That practice is going on where the person is |
 | `role:<name>` | The person fills that role in a practice where they are |
 

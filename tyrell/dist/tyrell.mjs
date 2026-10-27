@@ -2172,7 +2172,7 @@ var Strangers = class {
 };
 
 // src/core/world.ts
-var SCHEMA = 1;
+var SCHEMA = 2;
 var DEFAULT_CONFIG = {
   minutesPerSecond: 1,
   week: 7,
@@ -2615,16 +2615,9 @@ var World = class {
   }
   runLoad(data) {
     const d = typeof data === "string" ? JSON.parse(data) : data;
-    let s = d.s;
-    let v = d.v ?? s.v ?? 1;
-    while (v < SCHEMA) {
-      const step = MIGRATIONS[v];
-      if (!step) throw new Error(`Tyrell: no migration from save version ${v}`);
-      s = step(s);
-      v++;
-    }
+    const v = d.v ?? d.s.v ?? 1;
     if (v > SCHEMA) throw new Error(`Tyrell: save version ${v} is newer than this engine (${SCHEMA})`);
-    s.v = SCHEMA;
+    const s = migrate(d.s, v);
     this.s = s;
     for (const m of this.hooks) {
       if (m.init && this.s.mod[m.name] === void 0) this.s.mod[m.name] = m.init();
@@ -2632,7 +2625,10 @@ var World = class {
     }
     for (const def of this.ring.defs.values()) this.ring.state(def.id);
     this.esper.reset();
-    if (d.history) this.esper.import(d.history);
+    if (d.history) {
+      const h = d.history;
+      this.esper.import(v < SCHEMA && h.snaps ? { ...h, snaps: h.snaps.map((sn) => ({ ...sn, s: JSON.stringify(migrate(JSON.parse(sn.s), v)) })) } : h);
+    }
     this.palantir.clear();
     this.clock.reset();
     this.clock.refreshBodies();
@@ -2930,7 +2926,27 @@ var World = class {
   }
 };
 var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth"]);
-var MIGRATIONS = {};
+var MIGRATIONS = {
+  // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
+  // old records are kept apart (it takes the line definitions to read them).
+  1: (s) => {
+    const cs = s.mod?.cityspeak;
+    if (cs?.said && Object.keys(cs.said).length) {
+      cs.byIndex = cs.said;
+      cs.said = {};
+    }
+    return s;
+  }
+};
+function migrate(s, v) {
+  for (; v < SCHEMA; v++) {
+    const step = MIGRATIONS[v];
+    if (!step) throw new Error(`Tyrell: no migration from save version ${v}`);
+    s = step(s);
+  }
+  s.v = SCHEMA;
+  return s;
+}
 
 // src/modules/reverie.ts
 var DEFAULT_REVERIE = {
@@ -4024,6 +4040,7 @@ function subjectOf(key2) {
 }
 
 // src/modules/cityspeak.ts
+var lineKey = (l, i) => l.key !== void 0 && l.key !== "" ? l.key : String(i);
 var Cityspeak = class {
   constructor() {
     this.name = "cityspeak";
@@ -4046,7 +4063,7 @@ var Cityspeak = class {
   attach(w) {
     this.w = w;
     w.lang.term("room", (c) => c.person?.place ? this.room(c.person.place) : 0.5);
-    w.lang.term("said", (c, a) => c.person ? this.st.said[c.person.id]?.[a] !== void 0 : false);
+    w.lang.term("said", (c, a) => c.person ? this.hasSaid(c.person.id, a) : false);
     w.lang.term("practice", (c, a) => c.person?.place ? this.activeAt(c.person.place).some((p) => p.id === a) : false);
     w.lang.term("role", (c, a) => c.person ? this.roleOf(c.person, a) : false);
     w.defineInput("say", (who, opts) => this.applySay(who, opts));
@@ -4073,11 +4090,24 @@ var Cityspeak = class {
   // -------------------------------------------------------------------------
   // Lines
   // -------------------------------------------------------------------------
+  /** When someone last said a line (undefined if never). */
+  lastSaid(who, l, i) {
+    return this.st.said[who]?.[lineKey(l, i)] ?? this.st.byIndex?.[who]?.[String(i)];
+  }
+  /** Has someone said a line with this key (or, as before 1.1, at this index)? */
+  hasSaid(who, key2) {
+    if (this.st.said[who]?.[key2] !== void 0) return true;
+    return this.lines.some((l, i) => (lineKey(l, i) === key2 || String(i) === key2) && this.lastSaid(who, l, i) !== void 0);
+  }
   /**
    * What a person would say now, without saying it (nothing changes). The
    * most specific matching line wins; ties go by weight.
    */
   choose(who, opts = {}) {
+    return this.pick(who, opts)?.said ?? null;
+  }
+  /** The line choose() would pick, with its index. */
+  pick(who, opts) {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return null;
@@ -4110,7 +4140,7 @@ var Cityspeak = class {
         if (!w.lang.all(l.to, tctx)) return;
         spec += l.to.length;
       }
-      const last = this.st.said[who]?.[String(i)];
+      const last = this.lastSaid(who, l, i);
       if (l.once && last !== void 0) return;
       if (l.cooldown && last !== void 0 && now2 - last < l.cooldown) return;
       if (spec > bestSpec) {
@@ -4126,8 +4156,7 @@ var Cityspeak = class {
     if (opts.to) out.to = opts.to;
     if (opts.topic) out.topic = opts.topic;
     if (pick.l.reply) out.reply = pick.l.reply;
-    out._i = pick.i;
-    return out;
+    return { said: out, i: pick.i };
   }
   /** Says something on purpose (the game asks): chosen, remembered, its effects applied. */
   say(who, opts = {}) {
@@ -4135,12 +4164,12 @@ var Cityspeak = class {
   }
   applySay(who, opts) {
     var _a;
-    const said = this.choose(who, opts);
-    if (!said) return null;
-    const i = said._i;
-    delete said._i;
-    ((_a = this.st.said)[who] || (_a[who] = {}))[String(i)] = this.w.s.now;
+    const picked = this.pick(who, opts);
+    if (!picked) return null;
+    const { said, i } = picked;
     const l = this.lines[i];
+    ((_a = this.st.said)[who] || (_a[who] = {}))[lineKey(l, i)] = this.w.s.now;
+    if (this.st.byIndex?.[who]) delete this.st.byIndex[who][String(i)];
     const p = this.w.s.people[who];
     if (l.then && p) this.w.lang.applyAll(l.then, this.w.ctx(p, { target: opts.to ?? null, topic: opts.topic }));
     this.w.log("said", who, { key: said.key, ...opts.to ? { to: opts.to } : {} });
@@ -4149,14 +4178,17 @@ var Cityspeak = class {
   }
   /** The answer someone gives to a line. */
   answer(to, by) {
+    return this.reply(to, by)?.said ?? null;
+  }
+  reply(to, by) {
     if (!to.reply) return null;
-    if (to.reply.startsWith("topic:")) return this.choose(by, { to: to.who, topic: to.reply.slice(6) });
+    if (to.reply.startsWith("topic:")) return this.pick(by, { to: to.who, topic: to.reply.slice(6) });
     const i = this.lines.findIndex((l2) => l2.key === to.reply);
     if (i < 0) return null;
     const l = this.lines[i];
     const out = { who: by, key: l.key, to: to.who };
     if (l.text !== void 0) out.text = Array.isArray(l.text) ? l.text[0] : l.text;
-    return out;
+    return { said: out, i };
   }
   whoMatches(p, who) {
     if (who === p.id) return true;
@@ -4173,18 +4205,15 @@ var Cityspeak = class {
     const out = [];
     const now2 = this.w.s.now;
     const skip = (who) => (l, i) => {
-      const k = who + "|" + i;
-      const last = this.barkSaid.get(k);
+      const last = this.barkSaid.get(who + "|" + lineKey(l, i));
       return last !== void 0 && now2 - last < (l.cooldown ?? 60);
     };
     let speaker = a, listener = b;
-    let line = this.choose(speaker, { to: listener, topic, skip: skip(speaker) });
+    let line = this.pick(speaker, { to: listener, topic, skip: skip(speaker) });
     for (let n = 0; line && n < this.barkLength; n++) {
-      const i = line._i;
-      if (i !== void 0) this.barkSaid.set(speaker + "|" + i, now2);
-      delete line._i;
-      out.push({ ...line, after: n * this.barkGap });
-      const reply = line.reply ? this.answer(line, listener) : null;
+      this.barkSaid.set(speaker + "|" + lineKey(this.lines[line.i], line.i), now2);
+      out.push({ ...line.said, after: n * this.barkGap });
+      const reply = this.reply(line.said, listener);
       [speaker, listener] = [listener, speaker];
       line = reply;
     }
@@ -5296,7 +5325,6 @@ var Joi = class {
   async speak(who, opts = {}) {
     const w = this.w;
     const line = w.cityspeak?.choose(who, opts) ?? null;
-    if (line) delete line._i;
     const fallback = { text: line?.text ?? "", key: line?.key ?? null, flags: [], fromModel: false };
     if (!this.provider) return fallback;
     const req = { prompt: this.prompt(who, opts), system: this.voice, who, line, ...opts.to ? { to: opts.to } : {} };

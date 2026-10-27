@@ -70,7 +70,10 @@ export interface Said {
     reply?: string;
 }
 interface State {
+    /** By speaker, by line key (or index, for a line without one): when they last said it. */
     said: Record<Id, Record<string, number>>;
+    /** Lines said before save schema 2, by speaker, by line index (read until said again). */
+    byIndex?: Record<Id, Record<string, number>>;
     acts: Array<{
         t: number;
         act: Id;
@@ -98,6 +101,10 @@ export declare class Cityspeak implements Module {
     addLines(defs: LineDef[]): this;
     practice(def: PracticeDef): this;
     act(def: SocialActDef): this;
+    /** When someone last said a line (undefined if never). */
+    private lastSaid;
+    /** Has someone said a line with this key (or, as before 1.1, at this index)? */
+    private hasSaid;
     /**
      * What a person would say now, without saying it (nothing changes). The
      * most specific matching line wins; ties go by weight.
@@ -107,6 +114,8 @@ export declare class Cityspeak implements Module {
         topic?: string;
         skip?: (l: LineDef, i: number) => boolean;
     }): Said | null;
+    /** The line choose() would pick, with its index. */
+    private pick;
     /** Says something on purpose (the game asks): chosen, remembered, its effects applied. */
     say(who: Id, opts?: {
         to?: Id;
@@ -115,6 +124,7 @@ export declare class Cityspeak implements Module {
     private applySay;
     /** The answer someone gives to a line. */
     answer(to: Said, by: Id): Said | null;
+    private reply;
     private whoMatches;
     /**
      * A short exchange between two people near the player: lines that don't

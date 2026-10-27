@@ -106,7 +106,7 @@ Without history, a loaded world starts a fresh history at its first advance: it 
 
 ## Schema versions and migrations
 
-`Tyrell.SCHEMA` is the version of the state's shape (1 in this version). Every save carries it. When a future Tyrell changes the shape, it ships a migration in `Tyrell.MIGRATIONS`: `MIGRATIONS[v]` takes a version-`v` state and returns a version-`v + 1` state. `load` applies them in turn. It throws if a step is missing (`no migration from save version v`) or if the save is newer than the engine (`save version v is newer than this engine`): catch that and tell the player, or start a new world.
+`Tyrell.SCHEMA` is the version of the state's shape (2 in this version). Every save carries it. When a future Tyrell changes the shape, it ships a migration in `Tyrell.MIGRATIONS`: `MIGRATIONS[v]` takes a version-`v` state and returns a version-`v + 1` state. `load` applies them in turn, to the state and to the snapshots of a save's history. Tyrell 1.1 moved to schema 2 (Cityspeak remembers lines said by their key, where 1.0 kept them by index): saves from 1.0 load and keep what was said. It throws if a step is missing (`no migration from save version v`) or if the save is newer than the engine (`save version v is newer than this engine`): catch that and tell the player, or start a new world.
 
 ```js
 try {

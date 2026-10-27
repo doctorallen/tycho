@@ -51,7 +51,7 @@ world.cityspeak.addLines([
 
 **Topics.** Asked with a topic, a line matches if it has that topic or no topic (topical lines win, being more specific). Asked without a topic, only lines without a topic match.
 
-`once` and `cooldown` count lines said with `say`, per speaker.
+`once` and `cooldown` count lines said with `say`, per speaker, by the line's `key` (lines that share a key share them too).
 
 ## Saying, choosing and answering
 
@@ -62,7 +62,7 @@ const said = world.cityspeak.say('ruth', { topic: 'greet', to: 'player' });     
 const back = world.cityspeak.answer(said, 'player');                             // the reply, if the line has one
 ```
 
-- `choose(who, { to?, topic? })` returns a `Said` or `null` and changes nothing. In this version the returned object also carries an internal `_i` field (the line's index); ignore it.
+- `choose(who, { to?, topic? })` returns a `Said` or `null` and changes nothing.
 - `say(who, { to?, topic? })` is an input: it chooses, remembers it was said (for `once` and `cooldown`), applies the line's `then` effects (with the speaker as `person` and the listener as `target`), logs `said` and emits `say`. It returns the `Said`, or `null`. It applies at once even inside a listener.
 - `answer(said, by)` returns the listener's reply. A `reply` of `'topic:<x>'` chooses the listener's best line on topic `x` (to the first speaker); a reply key returns that line directly, with the first of its texts, without checking its conditions.
 
@@ -158,7 +158,8 @@ In `world.s.mod.cityspeak`:
 
 | Key | Holds |
 |---|---|
-| `said` | By speaker, by line index: when they last said it |
+| `said` | By speaker, by line key (a line without a key by its index): when they last said it |
+| `byIndex` | From saves made before Tyrell 1.1: lines said, by line index. Read until the line is said again |
 | `acts` | The last 100 social acts: `{ t, act, from, to, ok }` |
 
 Lines, practices and acts are definitions. Barks' cooldowns live outside the state.
@@ -186,7 +187,7 @@ Lines, practices and acts are definitions. Barks' cooldowns live outside the sta
 
 ## Terms
 
-`room`, `said:<index>`, `practice:<id>`, `role:<name>`. `said` is keyed by the line's index (the order lines were declared, from 0), not its key. See [Conditions](../conditions.md#cityspeak).
+`room`, `said:<key>`, `practice:<id>`, `role:<name>`. See [Conditions](../conditions.md#cityspeak).
 
 ## Events
 

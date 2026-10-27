@@ -1,0 +1,221 @@
+// Esper (time walk), determinism and saving.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Tyrell, rocinante, tiny, HOUR, DAY } from './helpers.mjs';
+
+test('the same seed and the same calls give the same world', () => {
+  const a = rocinante({ seed: 'same' }), b = rocinante({ seed: 'same' });
+  a.advance(DAY); b.advance(DAY);
+  assert.equal(a.hash(), b.hash());
+  const c = rocinante({ seed: 'other' });
+  c.advance(DAY);
+  assert.notEqual(a.hash(), c.hash());
+});
+
+test('ticking by frames gives the same world as one big jump', () => {
+  const a = rocinante(), b = rocinante();
+  a.config.minutesPerSecond = 10;
+  for (let i = 0; i < 36 * 6; i++) a.tick(1 / 6); // 6 hours at 10 game minutes a second
+  b.advance(6 * HOUR);
+  a.advanceTo(b.now); // catch up anything a frame budget left over
+  assert.equal(Math.round(a.now), Math.round(b.now));
+  assert.equal(a.hash(), b.hash());
+});
+
+test('speed: faster, paused', () => {
+  const w = rocinante();
+  const t0 = w.now;
+  w.speed = 4;
+  w.tick(1);
+  assert.equal(w.now - t0, 4);
+  w.speed = 0;
+  w.tick(1);
+  assert.equal(w.now - t0, 4);
+});
+
+test('rewind: back to an earlier moment exactly, and forward again to the same present', () => {
+  const w = rocinante();
+  w.advance(5 * HOUR);
+  const mid = w.now, midHash = w.hash();
+  w.advance(7 * HOUR);
+  const endHash = w.hash(), end = w.now;
+  w.seek(mid);
+  assert.equal(w.now, mid);
+  assert.equal(w.hash(), midHash, 'the past is exactly as it was');
+  w.seek(end);
+  assert.equal(w.hash(), endHash, 'and so is the present');
+});
+
+test('rewind between snapshots lands on the exact minute', () => {
+  const w = rocinante();
+  w.advance(3 * HOUR);
+  const ref = rocinante();
+  ref.advance(2 * HOUR + 7);
+  w.seek(ref.now);
+  assert.equal(w.hash(), ref.hash());
+});
+
+test('inputs from the game replay after a rewind', () => {
+  const w = rocinante();
+  w.advance(2 * HOUR);
+  w.fact('raining', true);
+  w.did('player', 'fixed', { for: 'ruth', what: 'radio' });
+  w.sense({ kind: 'strip', actor: 'player', place: 'market', seenBy: ['dev'] });
+  w.advance(3 * HOUR);
+  const h = w.hash();
+  w.rewind(4 * HOUR);
+  assert.equal(w.fact('raining'), undefined, 'before the rain');
+  w.advance(4 * HOUR);
+  assert.equal(w.fact('raining'), true, 'the rain came again');
+  assert.equal(w.hash(), h);
+});
+
+test('a new input in the past starts a new timeline (branch)', () => {
+  const w = rocinante();
+  w.advance(4 * HOUR);
+  const branches = [];
+  w.on('branch', (e) => branches.push(e));
+  w.fact('raining', true);
+  w.advance(2 * HOUR);
+  w.rewind(HOUR);
+  w.fact('festival', true);
+  assert.equal(branches.length, 1);
+  w.advance(3 * HOUR);
+  assert.equal(w.fact('raining'), true, 'the rain was before the branch point, so it stays');
+  assert.equal(w.fact('festival'), true);
+  const [, latest] = w.esper.span();
+  assert.equal(latest, w.now);
+});
+
+test('reverse playback: a negative speed plays history backward', () => {
+  const w = rocinante();
+  w.advance(4 * HOUR);
+  const t = w.now;
+  w.speed = -60; // an hour back per second
+  w.tick(1);
+  assert.equal(w.now, t - 60);
+  w.tick(0.5);
+  assert.equal(w.now, t - 90);
+  w.speed = 1;
+  w.tick(1);
+  assert.equal(w.now, t - 89);
+});
+
+test('reverse playback stops at the start of history', () => {
+  const w = rocinante();
+  const start = w.now;
+  w.advance(HOUR);
+  const events = [];
+  w.on('esper:start', (e) => events.push(e));
+  w.speed = -600;
+  w.tick(1);
+  assert.equal(w.now, start);
+  w.tick(1);
+  assert.equal(w.speed, 0);
+  assert.equal(events.length, 1);
+});
+
+test('marks: name a moment and come back to it', () => {
+  const w = rocinante();
+  w.advance(HOUR);
+  w.esper.mark('before');
+  const h = w.hash();
+  w.advance(3 * HOUR);
+  assert.ok(w.esper.seekMark('before'));
+  assert.equal(w.hash(), h);
+});
+
+test('history is bounded: old snapshots go, the rest thin out', () => {
+  const w = rocinante({ esper: { keep: 6 * HOUR, every: 15, sparseAfter: 2 * HOUR, sparseEvery: 60 } });
+  w.advance(DAY);
+  const [from] = w.esper.span();
+  assert.ok(w.now - from <= 6 * HOUR + 15, `kept ${w.now - from} minutes`);
+  const { snapshots } = w.esper.size();
+  assert.ok(snapshots <= 6 + 8 + 2, `${snapshots} snapshots`);
+});
+
+test('with time walk off, nothing is recorded', () => {
+  const w = rocinante({ esper: { on: false } });
+  w.advance(2 * HOUR);
+  assert.equal(w.esper.size().snapshots, 0);
+  const t = w.now;
+  w.seek(t - HOUR);
+  assert.equal(w.now, t, "can't go back");
+});
+
+test('bodies are refreshed after a rewind', () => {
+  const w = rocinante();
+  w.focus(['main']);
+  w.advance(9 * HOUR); // the middle of the day: people about in main
+  const events = [];
+  w.on('seek', (e) => events.push(['seek', e.to]));
+  w.on('embody', (b) => events.push(['embody', b.id]));
+  w.on('disembody', (b) => events.push(['disembody', b.id]));
+  w.rewind(4 * HOUR);
+  assert.ok(events.some(([k]) => k === 'seek'));
+  assert.deepEqual(w.bodies().map((b) => b.id).sort(), w.people().filter((p) => w.clock.isNear(p)).map((p) => p.id).sort());
+});
+
+test('calls made inside a listener replay at the same point', () => {
+  // a game that reports a failure the moment a body starts walking to the bar
+  const run = () => {
+    const w = rocinante();
+    w.focus(['main', 'blocks', 'river']);
+    let n = 0;
+    w.on('step', (b) => { if (b.action === 'travel' && b.travel.to === 'bar' && n < 3) { n++; w.report(b.id, 'failed', 'the door stuck'); } });
+    w.advance(20 * HOUR);
+    return w;
+  };
+  const w = run();
+  const h = w.hash();
+  w.rewind(16 * HOUR);
+  w.advance(16 * HOUR);
+  assert.equal(w.hash(), h);
+  assert.equal(run().hash(), h);
+});
+
+test('save and load: the same world, and it runs on the same', () => {
+  const a = rocinante();
+  a.advance(DAY + 3 * HOUR);
+  const saved = JSON.stringify(a.save());
+  const b = rocinante();
+  b.load(saved);
+  assert.equal(b.hash(), a.hash());
+  a.advance(DAY); b.advance(DAY);
+  assert.equal(b.hash(), a.hash());
+});
+
+test('a save can keep its history, so a loaded world can still rewind', () => {
+  const a = rocinante();
+  a.advance(6 * HOUR);
+  const mid = a.now - 2 * HOUR;
+  const saved = JSON.stringify(a.save(true));
+  const b = rocinante();
+  b.load(saved);
+  b.seek(mid);
+  a.seek(mid);
+  assert.equal(b.hash(), a.hash());
+});
+
+test('saves migrate forward and refuse the future', () => {
+  const w = tiny();
+  const data = w.save();
+  data.v = Tyrell.SCHEMA + 1;
+  assert.throws(() => tiny().load(data), /newer/);
+  Tyrell.MIGRATIONS[0] = (s) => ({ ...s, v: 1 });
+  const old = w.save();
+  old.v = 0;
+  tiny().load(old);
+  delete Tyrell.MIGRATIONS[0];
+});
+
+test('keep: the game\'s own state rewinds with the world', () => {
+  const w = rocinante();
+  w.advance(HOUR);
+  w.keep('tills', { stripped: ['ueda'] });
+  w.advance(2 * HOUR);
+  w.keep('tills', { stripped: ['ueda', 'mo'] });
+  w.advance(HOUR);
+  w.rewind(2 * HOUR);
+  assert.deepEqual(w.kept('tills'), { stripped: ['ueda'] });
+});

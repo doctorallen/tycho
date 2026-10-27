@@ -52,6 +52,8 @@ world.rewind(30);                // back thirty minutes
 
 Use `tick` when Tyrell owns the clock and `advanceTo` when the game does. See [Integration: who owns the clock](integration.md#who-owns-the-clock).
 
+Called from an event listener (a timer that ends the day, say), any of these waits until the call that's running returns, then runs: the engine never moves time or swaps its state in the middle of an event. See [rule 11](#rules-for-a-rewind-safe-game).
+
 ## Speed and the frame budget
 
 `world.speed` scales `tick`: 1 is normal, 4 four times as fast, 0 paused, and a negative speed plays history backward. `config.minutesPerSecond` (default 1) says how many game minutes a real second is at speed 1.
@@ -209,7 +211,7 @@ Esper replays the inputs it recorded. Anything that changed the world without an
 8. **Definitions and config are constant.** They aren't in the history. Changing an action, a need's rise or a decision setting mid-run makes the replay differ.
 9. **Keep looking-only calls free of `chance:`.** `world.whyNot`, `cityspeak.choose` and barks evaluate conditions; a `chance:` condition draws from the person's stream and advances it. Barks happen only near the player, so a `chance:` in a line's conditions makes watched and unwatched worlds differ. Use line weights instead.
 10. **Mind Gaff's unseen places.** A storylet with `unseen` picks a place outside the focused regions, and focus isn't recorded. If the game's focus differs during a replay, the replay can pick a different place.
-11. **Move time only from the game's own code.** Never call `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `seekMark` or `load` from inside an event listener: the engine is in the middle of running events, and replacing or moving the state under it leaves the clock out of step with the queue. Set a flag in the listener and act on it after the call that moved time returns.
+11. **Moving time from a listener waits.** `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `esper.seekMark` and `load` called while the engine is busy (from an event listener, a storylet's `fire`, an effect or a custom input handler) don't run there, where they'd swap the state out from under the events being run: they wait until the call that's running returns (the `tick`, `advance` or input that led to the listener), then run in the order they were made. They return nothing meanwhile; `seekMark` still returns whether the mark is remembered.
 
 Voight-Kampff's `esper` check (on by default) rewinds six hours and runs forward again, failing if the world differs: run it in CI.
 

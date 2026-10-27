@@ -2216,6 +2216,10 @@ var World = class {
     this.deferred = [];
     /** Listeners being called (game code): inputs they make wait their turn. */
     this.listening = 0;
+    /** Clock calls running (tick, advanceTo, seek, load). */
+    this.moving = 0;
+    /** Clock calls made while the engine was busy, waiting their turn. */
+    this.later = [];
     this._speed = 1;
     this.config = { ...DEFAULT_CONFIG, ...opts.config || {} };
     this.shell = opts.shell || {};
@@ -2278,11 +2282,35 @@ var World = class {
   set speed(v) {
     this._speed = v;
   }
+  // Calls that move time or replace the state (tick, advance, advanceTo,
+  // seek, rewind, load) can't run in the middle of the engine's work: the
+  // queue being run would be swapped out from under it. Made from a listener
+  // (or a storylet, an effect, an input handler), they wait until the call
+  // that's running returns, then run in order.
   /**
    * Moves the world on by a frame: `seconds` of real time at the current
    * speed and config.minutesPerSecond. A negative speed plays history backward.
    */
   tick(seconds) {
+    this.whenFree(() => this.runTick(seconds));
+  }
+  /** Jumps forward this many minutes at once (sleeping, a cut scene). No frame budget. */
+  advance(minutes) {
+    this.whenFree(() => this.runTo(this.s.now + minutes));
+  }
+  /** Runs the world up to time t (minutes). Use this when the game owns the clock. */
+  advanceTo(t) {
+    this.whenFree(() => this.runTo(t));
+  }
+  /** Goes to any time Esper still remembers, back or forward. */
+  seek(t) {
+    this.whenFree(() => this.runSeek(t));
+  }
+  /** Goes back this many minutes. */
+  rewind(minutes) {
+    this.whenFree(() => this.runSeek(this.s.now - minutes));
+  }
+  runTick(seconds) {
     const minutes = seconds * this.config.minutesPerSecond * this._speed;
     if (minutes > 0) this.clock.advanceTo(this.s.now + minutes, this.config.budgetMs);
     else if (minutes < 0) {
@@ -2294,31 +2322,51 @@ var World = class {
     }
     this.clock.refreshBodies();
   }
-  /** Jumps forward this many minutes at once (sleeping, a cut scene). No frame budget. */
-  advance(minutes) {
-    this.advanceTo(this.s.now + minutes);
-  }
-  /** Runs the world up to time t (minutes). Use this when the game owns the clock. */
-  advanceTo(t) {
+  runTo(t) {
     if (t < this.s.now) {
-      this.seek(t);
+      this.runSeek(t);
       return;
     }
     this.clock.advanceTo(t, Infinity);
     this.clock.refreshBodies();
   }
-  /** Goes to any time Esper still remembers, back or forward. */
-  seek(t) {
+  runSeek(t) {
     if (t >= this.s.now) {
-      this.advanceTo(t);
+      this.runTo(t);
       return;
     }
     this.esper.seek(t);
     this.clock.refreshBodies();
   }
-  /** Goes back this many minutes. */
-  rewind(minutes) {
-    this.seek(this.s.now - minutes);
+  /** Is the engine in the middle of something: moving time, an event, an input, a listener, a replay? */
+  busy() {
+    return this.moving > 0 || this.listening > 0 || this.depth > 0 || this.clock.handling !== null || this.replaying;
+  }
+  /** Runs a call that moves time or replaces the state now, or after the engine's current work if it's busy. */
+  whenFree(fn) {
+    if (this.busy()) {
+      this.later.push(fn);
+      return;
+    }
+    this.moving++;
+    try {
+      fn();
+    } finally {
+      this.moving--;
+    }
+    this.runLater();
+  }
+  /** Runs the clock calls that waited, in order, once the engine is free. */
+  runLater() {
+    while (this.later.length && !this.busy()) {
+      const fn = this.later.shift();
+      this.moving++;
+      try {
+        fn();
+      } finally {
+        this.moving--;
+      }
+    }
   }
   /** Calls the game back at time t: listen with on('timer', ...) or on('timer:' + name, ...). */
   at(t, name, data = {}) {
@@ -2424,6 +2472,7 @@ var World = class {
   /** The places that are loaded and visible: people there get bodies. */
   focus(regions) {
     this.clock.focus(regions);
+    this.runLater();
   }
   /** Everyone the game should show now. */
   bodies() {
@@ -2557,8 +2606,14 @@ var World = class {
     if (withHistory) out.history = this.esper.export();
     return out;
   }
-  /** Loads a saved world (migrating older saves). Declare places and actions before or after. */
+  /**
+   * Loads a saved world (migrating older saves). Declare places and actions
+   * before or after. From a listener, it waits until the running call returns.
+   */
   load(data) {
+    this.whenFree(() => this.runLoad(data));
+  }
+  runLoad(data) {
     const d = typeof data === "string" ? JSON.parse(data) : data;
     let s = d.s;
     let v = d.v ?? s.v ?? 1;
@@ -2639,6 +2694,7 @@ var World = class {
     this.esper.record(name, args);
     const out = this.applyInput(fn, args);
     this.flushDeferred(void 0);
+    this.runLater();
     return out;
   }
   applyInput(fn, args) {

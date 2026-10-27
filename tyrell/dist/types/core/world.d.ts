@@ -56,6 +56,10 @@ export declare class World {
     private deferred;
     /** Listeners being called (game code): inputs they make wait their turn. */
     private listening;
+    /** Clock calls running (tick, advanceTo, seek, load). */
+    private moving;
+    /** Clock calls made while the engine was busy, waiting their turn. */
+    private later;
     private _speed;
     constructor(opts: Options, modules: Module[]);
     /** Minutes since the world began. */
@@ -82,6 +86,15 @@ export declare class World {
     seek(t: number): void;
     /** Goes back this many minutes. */
     rewind(minutes: number): void;
+    private runTick;
+    private runTo;
+    private runSeek;
+    /** Is the engine in the middle of something: moving time, an event, an input, a listener, a replay? */
+    private busy;
+    /** Runs a call that moves time or replaces the state now, or after the engine's current work if it's busy. */
+    private whenFree;
+    /** Runs the clock calls that waited, in order, once the engine is free. */
+    private runLater;
     /** Calls the game back at time t: listen with on('timer', ...) or on('timer:' + name, ...). */
     at(t: number, name: string, data?: Record<string, Value>): void;
     need(def: NeedDef): this;
@@ -174,8 +187,12 @@ export declare class World {
     emit(kind: string, data?: any): void;
     /** The whole world as plain JSON. With history, Esper's memory goes too. */
     save(withHistory?: boolean): SaveData;
-    /** Loads a saved world (migrating older saves). Declare places and actions before or after. */
+    /**
+     * Loads a saved world (migrating older saves). Declare places and actions
+     * before or after. From a listener, it waits until the running call returns.
+     */
     load(data: SaveData | string): void;
+    private runLoad;
     /** A hash of the whole state: two worlds with the same hash are the same. */
     hash(): string;
     /** A random stream for one person's next decision (advances their counter). */

@@ -387,7 +387,7 @@ What makes it work:
 
 - **Determinism.** The same state and the same inputs give the same day. Unless the player does something different, everyone does exactly what they did last loop, which is what lets a player plan around them.
 - **Loading drops the future.** After `load`, there's no recorded future to replay, so the player's actions from the last loop don't happen again.
-- **Load from the frame loop, not from a listener.** `load` (like `seek`) replaces the world's state; called from inside an event listener (a `timer:` handler, say), it happens in the middle of the engine's work and leaves the clock out of step with the queue. Check the time after `tick` returns, or set a flag in the listener and act on it there.
+- **Load from the frame loop or a listener.** From an event listener (a `timer:` handler, say), `load` (like `seek`) doesn't happen in the middle of the engine's work: it waits until the call that's running (the `tick`) returns, and the rest of that frame's events run first. So `world.at(dusk, 'dusk')` with `world.on('timer:dusk', () => world.load(dawn))` works too.
 - With Esper instead of a save: `world.esper.mark('dawn')` at dawn, then `world.esper.seekMark('dawn')` and one new input (`world.keep('loop', loop)`) at the end of the day, again from the frame loop. Without that input, the player's recorded actions would replay as time ran forward. Esper's `keep` option must be longer than the loop.
 
 ## A time-rewind ability for the player

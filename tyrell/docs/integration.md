@@ -95,7 +95,7 @@ world.body('ruth');   // anyone's body, near or not (null if they're away or gon
 | `arrive` | `{ id, place }` | Anyone arrives anywhere, near or far |
 | `failed` | `{ id, why }` | Anyone's action or walk failed (a closed door, a taken stool, a report) |
 
-Listeners run in the middle of the engine's work. Inputs they make (a report, a fact) wait until the engine finishes the event it's handling. Never move time (`tick`, `advanceTo`, `seek`) or `load` from inside a listener: set a flag and do it after the frame's call returns.
+Listeners run in the middle of the engine's work. Inputs they make (a report, a fact) wait until the engine finishes the event it's handling. Calls that move time or replace the state (`tick`, `advanceTo`, `seek`, `load`...) made from a listener wait until the call that's running returns, then run.
 
 Someone who finishes and has nothing to do waits (`action: 'wait'`) without a `step` event. Refresh a sprite's body from `world.body(id)` when `world.now` passes its `end`, or simply read `world.body(id)` every frame for the people on screen.
 

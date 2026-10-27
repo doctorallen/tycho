@@ -175,6 +175,31 @@ test('calls made inside a listener replay at the same point', () => {
   assert.equal(run().hash(), h);
 });
 
+test('loading or seeking from a listener waits until the running call returns', () => {
+  // a time loop: at dusk, back to dawn
+  const w = rocinante();
+  const dawn = w.save();
+  w.at(w.now + 3 * HOUR, 'dusk');
+  let loops = 0;
+  w.on('timer:dusk', () => { loops++; w.load(dawn); });
+  w.advance(4 * HOUR);
+  assert.equal(loops, 1);
+  const ref = rocinante();
+  assert.equal(w.now, ref.now, 'back at dawn');
+  assert.equal(w.hash(), ref.hash());
+  w.advance(2 * HOUR); ref.advance(2 * HOUR);
+  assert.equal(w.hash(), ref.hash(), 'and the clock runs on as from a fresh dawn');
+  // a rewind from a listener
+  const a = rocinante(), b = rocinante();
+  for (const x of [a, b]) { x.advance(2 * HOUR); x.at(x.now + HOUR, 'bell'); }
+  const back = a.now;
+  a.on('timer:bell', () => a.seek(back));
+  a.advance(2 * HOUR); b.advance(2 * HOUR);
+  b.seek(back);
+  assert.equal(a.now, back);
+  assert.equal(a.hash(), b.hash());
+});
+
 test('save and load: the same world, and it runs on the same', () => {
   const a = rocinante();
   a.advance(DAY + 3 * HOUR);

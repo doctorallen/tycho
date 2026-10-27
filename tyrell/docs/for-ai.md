@@ -150,7 +150,7 @@ console.log(world.describe('mo'));
 
 **`shell.check(fact, ctx) => Value | undefined`**: answers `fact:<key>` when the fact isn't set. Live, not rewound: prefer pushing `world.fact(key, value)`.
 
-**Listeners** (`world.on(kind, fn)`, returns an unsubscribe function): run synchronously inside the engine's work. Inputs made inside are deferred to the end of the current event or input (and recorded there); `world.input` returns `undefined` for them. `world.person`, `strangers.promote`, `cityspeak.say` and `cradle.birth` apply at once. Never call `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `esper.seekMark` or `load` from a listener. Don't throw. Event list: [api.md](api.md#events).
+**Listeners** (`world.on(kind, fn)`, returns an unsubscribe function): run synchronously inside the engine's work. Inputs made inside are deferred to the end of the current event or input (and recorded there); `world.input` returns `undefined` for them. `world.person`, `strangers.promote`, `cityspeak.say` and `cradle.birth` apply at once. `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `esper.seekMark` and `load` called from a listener wait until the call that's running returns, then run in order. Don't throw. Event list: [api.md](api.md#events).
 
 **Bodies**: `{ id, name, place, slot?, action, next?, pose, target?, progress, start, end, travel?: { from, to, start, end, f }, emotion?, mood?, with?, data? }`. `place` is `null` while walking. `action` is `'travel'` while walking and `'wait'` while idle. `progress` and `travel.f` are as of when the body was made: recompute from `world.now`.
 
@@ -187,7 +187,6 @@ console.log(world.describe('mo'));
 | Writing `world.s` or calling engine methods from game code | Works until a rewind or replay, then the world diverges | Use an input; for anything missing, `world.defineInput` |
 | Shell travel times that don't match walking speed | Sprites arrive before or after Tyrell's timetable; near and far disagree | Return the route length divided by walking speed, or place walkers by `travel.f` |
 | Reporting `'failed'` when the obstacle stays | The person tries again each time the back-off (`config.backoff`, 15 minutes) runs out, and fails again | Change something too (a `closed:<id>` fact, a fact the action's `if` reads) |
-| Calling `load`, `seek` or `tick` from a listener | The clock moves on with the old queue: time and events go out of step | Set a flag; act on it after the frame's call returns |
 | Setup inputs (`ceres.pay`, `income`, `rent`, `setPartner`, `secret`) on every start | Repeated on top of a loaded save | Guard with `world.kept('setup')` and `world.keep('setup', true)` |
 | Changing a person's routine in code | Saved people keep their saved definition | A custom input that patches `world.get(id).def`, run once per content version ([saving.md](saving.md#changing-content-under-existing-saves)) |
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |

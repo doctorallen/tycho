@@ -119,6 +119,8 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `advanceTo(t)` | void | Runs to time `t` with no budget; a past `t` seeks back |
 | `seek(t)` | void | Goes to any time Esper remembers, back or forward |
 | `rewind(minutes)` | void | `seek(now - minutes)` |
+
+Called from a listener (or a storylet, an effect, an input handler), these and `load` wait until the call that's running returns, then run in order.
 | `at(t, name, data = {})` | void | **Input.** A timer: emits `timer` and `timer:<name>` at `t` |
 
 ### Declaring
@@ -246,7 +248,7 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `born` | `{ id, parents }` | Cradle |
 | `stage` | `{ id, from, to }` | Cradle: a new life stage |
 
-Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Don't throw from a listener: an exception propagates out of the call that moved time.
+Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
 
 ## Inputs by name
 

@@ -24,6 +24,7 @@ test('ticking by frames gives the same world as one big jump', () => {
 
 test('speed: faster, paused', () => {
   const w = rocinante();
+  w.config.budgetMs = Infinity; // the frame budget reads the wall clock: a slow first frame would stop short
   const t0 = w.now;
   w.speed = 4;
   w.tick(1);

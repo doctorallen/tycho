@@ -96,7 +96,11 @@ export class Mentat implements Module {
       if (frame.i >= frame.steps.length) { plan.stack.pop(); continue; }
       const step = frame.steps[frame.i++];
       if (typeof step === 'string') {
-        if (step.startsWith('go:')) return this.cand(p, '@go:' + step.slice(3), step.slice(3));
+        if (step.startsWith('go:')) {
+          const dest = this.destination(p, step.slice(3) as PlaceSpec);
+          if (!dest) return this.fail(p, `can't get to ${step.slice(3)}`);
+          return this.cand(p, '@go:' + dest, dest);
+        }
         if (step.startsWith('wait:')) return this.cand(p, '@wait:' + step.slice(5), p.place);
         if (step.startsWith('get:')) {
           const item = step.slice(4);
@@ -120,6 +124,7 @@ export class Mentat implements Module {
       }
       const c = this.actionStep(p, step);
       if (!c) return this.fail(p, `can't ${step.action} now`);
+      if (step.minutes !== undefined) c.minutes = step.minutes;
       return c;
     }
     return this.fail(p, 'the plan went round in circles');
@@ -128,6 +133,13 @@ export class Mentat implements Module {
   private cand(p: PersonState, id: string, place: Id | null): Candidate {
     const plan = p.plan as PlanState;
     return { id, kind: 'action', place, rank: plan.rank, layer: 'plan', weight: 1, parts: [['plan', 1]] };
+  }
+
+  /** Where a go: step walks to: the nearest declared place its spec names that they can get to. */
+  private destination(p: PersonState, spec: PlaceSpec): Id | null {
+    const w = this.w;
+    for (const id of w.ring.resolve(spec, p)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
+    return null;
   }
 
   /** An action step: the nearest place where it can be done now. */

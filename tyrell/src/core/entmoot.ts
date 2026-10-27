@@ -257,6 +257,8 @@ export class Entmoot {
     const w = this.w;
     if (!dest) { this.act(p, c); return; }
     const minutes = w.ring.travel(p.place, dest, p);
+    // a walk that would never end (an unknown or unreachable place) fails instead
+    if (!isFinite(minutes)) { this.fail(p, `can't get to ${dest}`, true, { action: c.id, place: dest }); return; }
     w.ring.release(p.place, p.slot, p.id);
     delete p.slot;
     const end = w.s.now + Math.max(0.5, minutes);
@@ -266,6 +268,7 @@ export class Entmoot {
       rank: c.rank, layer: c.layer, seq, target: c.target, until: c.until, slot: c.slot,
     };
     if (c.fill === false) p.doing.fill = false;
+    if (c.minutes !== undefined) p.doing.minutes = c.minutes;
     if (p.plan) p.doing.task = p.plan.task;
     p.place = null;
     w.log('set-out', p.id, { to: dest, for: c.id });
@@ -293,7 +296,7 @@ export class Entmoot {
     } else if (p.slot && p.place) { w.ring.release(p.place, p.slot, p.id); delete p.slot; }
     // how long
     const r = w.stream(p);
-    let minutes = Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes;
+    let minutes = c.minutes ?? (Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes);
     if (c.until !== undefined && isFinite(c.until) && (c.layer === 'routine' || c.layer === 'job' || c.layer === 'story') && a.fill !== false && c.fill !== false) {
       minutes = Math.max(c.until - w.s.now, Math.min(minutes, 5));
     }
@@ -327,6 +330,7 @@ export class Entmoot {
       if (d.action.startsWith('@go:')) { this.afterStep(p, d, true); return; }
       const c: Candidate = { id: d.action, kind: 'action', place: p.place, target: d.target, rank: d.rank, layer: d.layer, weight: 1, parts: [], until: d.until, slot: d.slot };
       if (d.fill === false) c.fill = false;
+      if (d.minutes !== undefined) c.minutes = d.minutes;
       // still worth doing? (the place may have closed while they walked)
       const why = w.mind.blockedReason(p, c);
       if (why) { this.fail(p, why, true, { action: d.action, place: p.place }); return; }

@@ -56,17 +56,14 @@ A task is chosen like an action: freely (if it has `relieves` or `base`), by a d
 |---|---|
 | `'repair_service'` | An action: done at the nearest place it can be done now |
 | `'dinner'` | Another task: expanded by its own methods |
-| `'go:park'` | Walk to a place. Takes a place id only: `'go:home'` looks for a place with the id `home` (see below) |
+| `'go:park'` | Walk somewhere: any [place spec](../places.md#place-specs) (`'go:home'`, `'go:work'`, `'go:tag:food'`, `'go:person:ruth'`, a place id) |
 | `'wait:15'` | Wait 15 minutes where they are |
 | `'get:radio'` | Get hold of an item by whatever means (a search, below). Skipped if they have one |
-| `{ action, at?, target? }` | An action at a place spec, or aimed at someone |
+| `{ action, at?, target?, minutes? }` | An action at a place spec, aimed at someone, or taking `minutes` instead of its own length |
 
 An action step goes to the nearest place (by the action's `at`, or the step's) where it isn't ruled out now. If every place is ruled out, the step fails.
 
-Limitations in this version:
-
-- `go:` takes a literal place id. `'go:home'` with no place called `home` gives a walk that never ends (an infinite travel time isn't caught). Use an action step for "go home and do X", or a real id.
-- The step object's `minutes` field is declared but not read: the action takes its own time.
+A `go:` step walks to the nearest declared place its spec names that can be reached. If there's none (an unknown id, nobody's home, no path), the step fails and the plan replans. The walk's body has `next: '@go:<place>'`.
 
 ## get: searches
 

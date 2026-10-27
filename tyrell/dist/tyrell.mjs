@@ -1300,6 +1300,10 @@ var Entmoot = class {
       return;
     }
     const minutes = w.ring.travel(p.place, dest, p);
+    if (!isFinite(minutes)) {
+      this.fail(p, `can't get to ${dest}`, true, { action: c.id, place: dest });
+      return;
+    }
     w.ring.release(p.place, p.slot, p.id);
     delete p.slot;
     const end = w.s.now + Math.max(0.5, minutes);
@@ -1320,6 +1324,7 @@ var Entmoot = class {
       slot: c.slot
     };
     if (c.fill === false) p.doing.fill = false;
+    if (c.minutes !== void 0) p.doing.minutes = c.minutes;
     if (p.plan) p.doing.task = p.plan.task;
     p.place = null;
     w.log("set-out", p.id, { to: dest, for: c.id });
@@ -1350,7 +1355,7 @@ var Entmoot = class {
       delete p.slot;
     }
     const r = w.stream(p);
-    let minutes = Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes;
+    let minutes = c.minutes ?? (Array.isArray(a.minutes) ? r.range(a.minutes[0], a.minutes[1]) : a.minutes);
     if (c.until !== void 0 && isFinite(c.until) && (c.layer === "routine" || c.layer === "job" || c.layer === "story") && a.fill !== false && c.fill !== false) {
       minutes = Math.max(c.until - w.s.now, Math.min(minutes, 5));
     }
@@ -1385,6 +1390,7 @@ var Entmoot = class {
       }
       const c = { id: d.action, kind: "action", place: p.place, target: d.target, rank: d.rank, layer: d.layer, weight: 1, parts: [], until: d.until, slot: d.slot };
       if (d.fill === false) c.fill = false;
+      if (d.minutes !== void 0) c.minutes = d.minutes;
       const why = w.mind.blockedReason(p, c);
       if (why) {
         this.fail(p, why, true, { action: d.action, place: p.place });
@@ -4312,7 +4318,11 @@ var Mentat = class {
       }
       const step = frame.steps[frame.i++];
       if (typeof step === "string") {
-        if (step.startsWith("go:")) return this.cand(p, "@go:" + step.slice(3), step.slice(3));
+        if (step.startsWith("go:")) {
+          const dest = this.destination(p, step.slice(3));
+          if (!dest) return this.fail(p, `can't get to ${step.slice(3)}`);
+          return this.cand(p, "@go:" + dest, dest);
+        }
         if (step.startsWith("wait:")) return this.cand(p, "@wait:" + step.slice(5), p.place);
         if (step.startsWith("get:")) {
           const item = step.slice(4);
@@ -4336,6 +4346,7 @@ var Mentat = class {
       }
       const c = this.actionStep(p, step);
       if (!c) return this.fail(p, `can't ${step.action} now`);
+      if (step.minutes !== void 0) c.minutes = step.minutes;
       return c;
     }
     return this.fail(p, "the plan went round in circles");
@@ -4343,6 +4354,12 @@ var Mentat = class {
   cand(p, id, place) {
     const plan = p.plan;
     return { id, kind: "action", place, rank: plan.rank, layer: "plan", weight: 1, parts: [["plan", 1]] };
+  }
+  /** Where a go: step walks to: the nearest declared place its spec names that they can get to. */
+  destination(p, spec) {
+    const w = this.w;
+    for (const id of w.ring.resolve(spec, p)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
+    return null;
   }
   /** An action step: the nearest place where it can be done now. */
   actionStep(p, step) {

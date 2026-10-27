@@ -219,6 +219,30 @@ test('an urgent need sets a plan aside; it picks up again after', () => {
   assert.ok(until(w, () => p.plan?.task === 'garden', 3 * HOUR), 'the plan resumed');
 });
 
+test('go: steps take a place spec; a place nobody can get to fails the step', () => {
+  const w = tiny({ start: 10 * HOUR });
+  w.task({ id: 'head_home', base: 0.01, methods: [{ do: ['go:home', 'wait:5'] }] });
+  w.task({ id: 'wander', base: 0.01, methods: [{ name: 'to nowhere', do: ['go:atlantis'] }, { name: 'outdoors', do: ['go:tag:outdoors'] }] });
+  const p = w.person('ana', { home: 'home_a', place: 'park' });
+  w.direct('ana', { do: 'head_home' });
+  assert.equal(p.doing?.kind, 'travel');
+  assert.equal(p.doing.to, 'home_a', "'go:home' is her home");
+  assert.ok(until(w, () => w.westmarch.find({ k: 'done-plan', who: 'ana' }).length === 1, HOUR, 1));
+  w.direct('ana', { do: 'wander' });
+  assert.ok(until(w, () => w.westmarch.find({ k: 'done-plan', who: 'ana' }).length === 2, HOUR, 1), 'the second way got there');
+  assert.ok(w.westmarch.find({ k: 'replanned', who: 'ana' }).some((e) => /atlantis/.test(e.d.why)));
+  assert.ok(w.westmarch.find({ k: 'arrived', who: 'ana' }).some((e) => e.d.place === 'park'));
+});
+
+test('a step can say how long its action takes', () => {
+  const w = tiny({ start: 10 * HOUR });
+  w.task({ id: 'quick_bite', base: 0.01, methods: [{ do: [{ action: 'eat', at: 'cafe', minutes: 7 }] }] });
+  const p = w.person('ana', { home: 'home_a' });
+  w.direct('ana', { do: 'quick_bite' });
+  assert.ok(until(w, () => p.doing?.kind === 'act' && p.doing.action === 'eat', HOUR, 1));
+  assert.equal(p.doing.end - p.doing.start, 7, 'seven minutes, not the half hour eating takes');
+});
+
 test('a plan that cannot be done gives up, with frustration and a cooldown', () => {
   const w = tiny({ start: 10 * HOUR });
   w.task({ id: 'impossible', base: 0.5, methods: [{ if: ['fact:never'], do: ['loaf'] }] });

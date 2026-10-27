@@ -145,7 +145,7 @@ A walk always takes at least half a minute.
 
 ## Place specs
 
-Wherever an action, a routine entry, a directive or a task step names a place, it uses a place spec:
+Wherever an action, a routine entry, a directive or a task step (an action step's `at`, or a `go:` step) names a place, it uses a place spec:
 
 | Spec | Means |
 |---|---|

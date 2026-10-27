@@ -28,6 +28,8 @@ export declare class Mentat implements Module {
     /** The next step of the plan as an option to start, or null when it's over. */
     private next;
     private cand;
+    /** Where a go: step walks to: the nearest declared place its spec names that they can get to. */
+    private destination;
     /** An action step: the nearest place where it can be done now. */
     private actionStep;
     private complete;

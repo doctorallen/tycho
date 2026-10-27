@@ -219,9 +219,10 @@ export interface ActionDef {
 /** A step in a task's method. */
 export type Step =
   | Id // an action or task id
-  | `go:${string}` // walk to a place
+  | `go:${string}` // walk to a place: a place spec ('go:home', 'go:tag:food', 'go:park')
   | `wait:${number}` // wait a number of minutes where you are
   | `get:${string}` // get hold of an item, by whatever means (planned)
+  /** An action at a place spec, aimed at someone, or taking these minutes instead of its own. */
   | { action: Id; at?: PlaceSpec; minutes?: number; target?: Id };
 
 export interface MethodDef {
@@ -334,6 +335,8 @@ export interface Doing {
   until?: Minutes;
   /** Travel only: the action at the end shouldn't stretch to fill the entry. */
   fill?: boolean;
+  /** Travel only: how long the action at the end takes (a plan step's own minutes). */
+  minutes?: Minutes;
 }
 
 /** A plan in progress (Mentat). */
@@ -615,6 +618,8 @@ export interface Candidate {
   until?: Minutes;
   /** False for options that shouldn't stretch to fill a routine entry ('*' choices). */
   fill?: boolean;
+  /** How long it takes, in place of the action's own minutes (a plan step's). */
+  minutes?: Minutes;
 }
 
 export interface Decision {

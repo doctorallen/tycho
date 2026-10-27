@@ -308,6 +308,7 @@ interface Doing {
   seq: number;                // the event that ends it
   until?: number;             // when the routine entry, shift or directive that chose it ends
   fill?: boolean;             // travel only: the action at the end keeps its own length
+  minutes?: number;           // travel only: how long the action at the end takes (a plan step's minutes)
 }
 ```
 
@@ -390,6 +391,7 @@ interface Candidate {
   blocked?: string;                 // why it was ruled out
   slot?: string; until?: number;
   fill?: boolean;                   // false: keeps its own length ('*' choices)
+  minutes?: number;                 // a plan step's own length, in place of the action's
 }
 interface Decision { t: number; who: string; picked: Candidate | null; candidates: Candidate[]; reason: string }
 ```

@@ -4809,6 +4809,7 @@ var Tyrell = (() => {
           id = drawn;
         }
         this.fire(id, null);
+        if (id !== def.id) this.st.last[def.id] = w.s.now;
       }
     }
     /** Draws a card from a deck: shuffled, no repeat of the last one. */

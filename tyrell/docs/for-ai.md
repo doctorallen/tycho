@@ -194,7 +194,6 @@ console.log(world.describe('mo'));
 | `chance:` in line conditions or inspected conditions | Looking (`choose`, barks, `whyNot`, Joi) advances a person's stream: watched and unwatched worlds differ | Use line `weight`s; keep `chance:` to actions' `if` |
 | A `'*'` listener for `witnessed`, `report` or `broke` | The payload's own `kind` replaces the event name | Listen to those events by name |
 | Consideration inputs `'habit'`, `'crowd'`, `'price'` | Read 0 (not terms; `price` needs a good) | A function input: `(ctx) => ctx.world.ring.crowd(ctx.place)` |
-| A cooldown on a deck's trigger storylet | Ignored | Put cooldowns on the cards; give cards `mtb: Infinity` |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |
 | Relying on `step` for every change | Idling (nothing to do) emits no `step` | Refresh from `world.body(id)` when `world.now >= body.end` |
 | A task whose methods' conditions can all fail | `no-plan`, the person idles 20 minutes and picks it again | Give the task `if` conditions, or a last method with none |

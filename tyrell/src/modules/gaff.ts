@@ -167,6 +167,8 @@ export class Gaff implements Module {
         id = drawn;
       }
       this.fire(id, null);
+      // a deck's trigger fired too: its own cooldown counts from now
+      if (id !== def.id) this.st.last[def.id] = w.s.now;
     }
   }
 

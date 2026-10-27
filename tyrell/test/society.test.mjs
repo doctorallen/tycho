@@ -260,6 +260,17 @@ test('decks: shuffled, no card twice in a row', () => {
   assert.deepEqual([...new Set(draws)].sort(), ['none', 'tank', 'witch']);
 });
 
+test('a cooldown on a deck\'s trigger counts from the last card it fired', () => {
+  const w = tiny();
+  const fired = [];
+  w.gaff.storylet({ id: 'season', mtb: 60, cooldown: DAY, deck: 'events', fire: () => {} });
+  w.gaff.deck('events', ['a', 'b']);
+  for (const id of ['a', 'b']) w.gaff.storylet({ id, mtb: Infinity, fire: () => fired.push(w.now) });
+  w.advance(3 * DAY);
+  assert.ok(fired.length >= 2 && fired.length <= 4, `${fired.length} cards in three days`);
+  for (let i = 1; i < fired.length; i++) assert.ok(fired[i] - fired[i - 1] >= DAY);
+});
+
 test('intensity: build up, peak, fade, relax; storylets can wait for a phase', () => {
   const w = tiny();
   assert.equal(w.gaff.phase(), 'build');

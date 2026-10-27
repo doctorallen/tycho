@@ -82,7 +82,7 @@ world.gaff.storylet({ id: 'street_party', mtb: Infinity, cooldown: 3 * 1440, fir
 
 When a storylet with `deck` comes up, a card is drawn and the card's storylet fires instead (if the card is eligible; if not, nothing fires, and the card is used up). The trigger's own `fire` isn't called. Give cards `mtb: Infinity` so they only come from the deck.
 
-In this version, a cooldown on the trigger storylet has no effect (the firing is recorded against the card that was drawn). Put cooldowns on the cards.
+Cooldowns work on both. A cooldown on the trigger spaces out the deck as a whole (it counts from the last time the trigger fired a card); a cooldown on a card keeps that card from coming back too soon.
 
 ## Unseen places
 

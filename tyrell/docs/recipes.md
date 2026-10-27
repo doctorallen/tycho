@@ -290,7 +290,7 @@ const gaff = world.gaff;
 // the trigger: when it comes up, a card is drawn from the deck and fired instead
 gaff.storylet({ id: 'festival_season', mtb: 2 * DAY, phase: ['build', 'relax'], deck: 'festivals', fire: () => {} });
 gaff.deck('festivals', ['street_party', 'lantern_night', 'market_day']);
-// the cards: mtb Infinity so they only come from the deck; cooldowns go on the cards
+// the cards: mtb Infinity so they only come from the deck; each with its own cooldown
 gaff.storylet({ id: 'street_party', label: 'A street party', mtb: Infinity, cooldown: 3 * DAY, bump: 0.5, fire: (w) => {
   w.fact('festival', true);
   w.at(w.now + 6 * HOUR, 'festival-over');
@@ -314,7 +314,7 @@ world.advance(10 * DAY);
 What makes it work:
 
 - Every hour, `festival_season` fires with probability `1 - exp(-60 / mtb)` while it's in phase. It has a deck, so a card is drawn and the card's storylet fires instead (if the card is eligible: lantern night waits for the evening; a drawn card that isn't eligible is used up).
-- Cooldowns go on the cards: in this version, a cooldown on a deck's trigger has no effect.
+- Each card has a cooldown of its own. A `cooldown` on `festival_season` would space out festivals of any kind.
 - `fire` runs inside the simulation, so it sets facts and timers directly through the API; a rewind replays it exactly. The timers' listeners are game code: their `world.fact` calls are recorded after the timer event, and replay at the same point.
 - Actions gated on the facts (`if: ['fact:festival']`) become possible while they last.
 

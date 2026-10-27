@@ -129,6 +129,14 @@ export class Ring {
     return cap - this.holders(id, slot).length;
   }
 
+  /** May this person take the slot (its `who` conditions)? */
+  allowed(id: Id, slot: string | undefined, p: PersonState | undefined): boolean {
+    if (!slot || !p) return true;
+    const sd = this.get(id)?.slots?.[slot];
+    if (!sd || typeof sd !== 'object' || !sd.who) return true;
+    return this.w.lang.all(sd.who, { world: this.w, person: p, place: id });
+  }
+
   /** Takes a slot. False if it's full or the person may not use it. */
   claim(id: Id, slot: string | undefined, who: Id): boolean {
     if (!slot) return true;
@@ -138,11 +146,7 @@ export class Ring {
     const list = st.claims[slot] || (st.claims[slot] = []);
     if (list.includes(who)) return true;
     if (list.length >= cap) return false;
-    const sd = this.get(id)?.slots?.[slot];
-    if (sd && typeof sd === 'object' && sd.who) {
-      const p = this.w.s.people[who];
-      if (p && !this.w.lang.all(sd.who, { world: this.w, person: p, place: id })) return false;
-    }
+    if (!this.allowed(id, slot, this.w.s.people[who])) return false;
     list.push(who);
     return true;
   }

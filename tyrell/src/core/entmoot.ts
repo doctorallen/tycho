@@ -284,7 +284,11 @@ export class Entmoot {
     // the slot
     if (a.slot && place) {
       if (p.slot && p.place && p.slot !== a.slot) w.ring.release(p.place, p.slot, p.id);
-      if (!w.ring.claim(place, a.slot, p.id)) { this.fail(p, `no free ${a.slot} at ${place}`, true, { action: a.id, place }); return; }
+      if (!w.ring.claim(place, a.slot, p.id)) {
+        const why = w.ring.allowed(place, a.slot, p) ? `no free ${a.slot} at ${place}` : `the ${a.slot} at ${place} isn't for them`;
+        this.fail(p, why, true, { action: a.id, place });
+        return;
+      }
       p.slot = a.slot;
     } else if (p.slot && p.place) { w.ring.release(p.place, p.slot, p.id); delete p.slot; }
     // how long

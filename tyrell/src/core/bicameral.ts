@@ -437,6 +437,7 @@ export class Bicameral {
     // staff can get in to work when the place is shut to everyone else
     const staffWork = !isTask && !!a.job && p.def.job?.id === a.job && !!p.def.job && w.ring.within(c.place, p.def.job.place);
     if (c.place && !staffWork && !w.ring.open(c.place, arrive)) return `${c.place} is closed then`;
+    if (c.place && !isTask && a.slot && !w.ring.allowed(c.place, a.slot, p)) return `the ${a.slot} isn't for them`;
     if (c.place && !isTask && a.slot && w.ring.free(c.place, a.slot) <= 0 && !w.ring.holders(c.place, a.slot).includes(p.id)) return `no free ${a.slot}`;
     const fail = w.lang.failing(def.if, ctx);
     if (fail) return `needs ${String(fail)}`;

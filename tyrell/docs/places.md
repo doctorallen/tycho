@@ -95,11 +95,11 @@ world.action({ id: 'sleep', at: 'home', slot: 'bed', minutes: 480, relieves: { e
 
 A slot has a capacity (`count`) and optionally `who`: conditions the person must meet to take it. An action with `slot` claims one when it starts and releases it when it ends, is interrupted or fails. Claims are state, so a full bar is full off screen too.
 
-- When deciding, an option is ruled out if the slot is full (unless they already hold it).
-- When the action starts, the claim is made. If it fails (someone got there first), the action fails and the person thinks again.
+- When deciding, an option is ruled out if the person doesn't meet the slot's `who` ("the sofa isn't for them"), or if the slot is full (unless they already hold it).
+- When the action starts, the claim is made. If it fails (someone got there first), the action fails, it's ruled out at that place for `config.backoff` minutes, and the person thinks again.
 - A place with no such slot, or a capacity of 0, doesn't limit the action at all.
 
-`SlotDef.who` is only checked when the slot is claimed, not when deciding. Someone who isn't allowed can choose the action, walk there, fail, and choose it again at once, without end (this version doesn't back off after a failure). Until that's fixed, put the same conditions on the action's `who` or `if` as on the slot.
+`who` is read for the person, at the place (`ctx.place`), both when deciding and when claiming.
 
 Who holds a slot, in the order they claimed it: `world.ring.holders('cafe', 'seat')`. That order shifts when someone leaves, so if the game seats people on particular stools, assign the stool when the body starts the action and keep it (see [Integration: bodies](integration.md#mapping-place-and-slot-to-coordinates)).
 
@@ -180,6 +180,7 @@ When a spec resolves to several places, they're sorted nearest first (ties by id
 | `capacity(id, slot)` | number | The slot's capacity, 0 if none |
 | `holders(id, slot)` | id[] | Who holds the slot, in claim order |
 | `free(id, slot)` | number | Free places in the slot (`Infinity` if it doesn't limit) |
+| `allowed(id, slot, person)` | boolean | The person (a PersonState) meets the slot's `who` |
 | `present(id)` | id[] | Everyone at the place or inside it, not walking |
 | `crowd(id)` | number | Share of the place's slot capacity in use, 0..1 |
 | `travel(a, b, person?)` | minutes | Travel time (shell or links) |

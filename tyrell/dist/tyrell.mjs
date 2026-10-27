@@ -413,6 +413,13 @@ var Ring = class {
     if (cap <= 0) return Infinity;
     return cap - this.holders(id, slot).length;
   }
+  /** May this person take the slot (its `who` conditions)? */
+  allowed(id, slot, p) {
+    if (!slot || !p) return true;
+    const sd = this.get(id)?.slots?.[slot];
+    if (!sd || typeof sd !== "object" || !sd.who) return true;
+    return this.w.lang.all(sd.who, { world: this.w, person: p, place: id });
+  }
   /** Takes a slot. False if it's full or the person may not use it. */
   claim(id, slot, who) {
     if (!slot) return true;
@@ -422,11 +429,7 @@ var Ring = class {
     const list = st.claims[slot] || (st.claims[slot] = []);
     if (list.includes(who)) return true;
     if (list.length >= cap) return false;
-    const sd = this.get(id)?.slots?.[slot];
-    if (sd && typeof sd === "object" && sd.who) {
-      const p = this.w.s.people[who];
-      if (p && !this.w.lang.all(sd.who, { world: this.w, person: p, place: id })) return false;
-    }
+    if (!this.allowed(id, slot, this.w.s.people[who])) return false;
     list.push(who);
     return true;
   }
@@ -902,6 +905,7 @@ var Bicameral = class {
     if (!isTask && a.hours && !inHours(hourOf(arrive), a.hours)) return "not at this hour";
     const staffWork = !isTask && !!a.job && p.def.job?.id === a.job && !!p.def.job && w.ring.within(c.place, p.def.job.place);
     if (c.place && !staffWork && !w.ring.open(c.place, arrive)) return `${c.place} is closed then`;
+    if (c.place && !isTask && a.slot && !w.ring.allowed(c.place, a.slot, p)) return `the ${a.slot} isn't for them`;
     if (c.place && !isTask && a.slot && w.ring.free(c.place, a.slot) <= 0 && !w.ring.holders(c.place, a.slot).includes(p.id)) return `no free ${a.slot}`;
     const fail = w.lang.failing(def.if, ctx);
     if (fail) return `needs ${String(fail)}`;
@@ -1336,7 +1340,8 @@ var Entmoot = class {
     if (a.slot && place) {
       if (p.slot && p.place && p.slot !== a.slot) w.ring.release(p.place, p.slot, p.id);
       if (!w.ring.claim(place, a.slot, p.id)) {
-        this.fail(p, `no free ${a.slot} at ${place}`, true, { action: a.id, place });
+        const why = w.ring.allowed(place, a.slot, p) ? `no free ${a.slot} at ${place}` : `the ${a.slot} at ${place} isn't for them`;
+        this.fail(p, why, true, { action: a.id, place });
         return;
       }
       p.slot = a.slot;

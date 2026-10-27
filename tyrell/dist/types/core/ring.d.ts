@@ -31,6 +31,8 @@ export declare class Ring {
     holders(id: Id, slot: string): Id[];
     /** Free places in a slot (Infinity when the place doesn't limit it). */
     free(id: Id, slot: string | undefined): number;
+    /** May this person take the slot (its `who` conditions)? */
+    allowed(id: Id, slot: string | undefined, p: PersonState | undefined): boolean;
     /** Takes a slot. False if it's full or the person may not use it. */
     claim(id: Id, slot: string | undefined, who: Id): boolean;
     /** Lets go of a slot. */

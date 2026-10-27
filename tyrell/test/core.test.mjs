@@ -177,6 +177,20 @@ test('a body that fails sends the person back to think', () => {
   assert.ok(p.doing);
 });
 
+test('a slot\'s who is checked when deciding: people who may not take it don\'t choose it', () => {
+  const w = tiny();
+  w.place({ id: 'club', region: 'main', slots: { sofa: { count: 4, who: ['is:member'] } } });
+  w.link('home_a', 'club', 5);
+  w.action({ id: 'lounge', at: 'club', slot: 'sofa', minutes: 60, base: 0.5 });
+  const ana = w.person('ana', { home: 'home_a', needs: { hunger: 0, energy: 0 } });
+  const bo = w.person('bo', { home: 'home_a', tags: ['member'], needs: { hunger: 0, energy: 0 } });
+  assert.match(w.mind.explain(ana, 'lounge')[0].blocked ?? '', /isn't for them/);
+  assert.equal(w.mind.explain(bo, 'lounge')[0].blocked, undefined);
+  w.advance(30);
+  assert.equal(w.westmarch.find({ k: 'failed', who: 'ana' }).length, 0, 'she never walked there to be turned away');
+  assert.ok(w.westmarch.find({ k: 'started', who: 'bo' }).some((e) => e.d.action === 'lounge'));
+});
+
 test('a failure backs off: what failed is ruled out at that place for a while', () => {
   const w = tiny();
   const p = w.person('ana', { home: 'home_a', needs: { hunger: 0.95 } });

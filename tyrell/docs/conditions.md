@@ -66,7 +66,7 @@ Conditions are compiled once and cached, so using them is cheap.
 | `TaskDef.if`, `TaskDef.who` | The person, the candidate place, the task |
 | `MethodDef.if` | The person, the task (no place) |
 | `RoutineVariant.when` (strings only) | The person |
-| `SlotDef.who` | The person claiming, the place |
+| `SlotDef.who` | The person deciding or claiming, the place |
 | `LineDef.who`, `when`, `to` (Cityspeak) | The speaker; `target` is the listener; `topic`; `place` is the speaker's place |
 | `LineDef.then` (effects) | The speaker; `target` is the listener; `topic` |
 | `PracticeDef` role `who` | The person, their place |

@@ -211,8 +211,8 @@ export class Esper {
   }
   import(h: any): void {
     if (!h) return;
-    this.snaps = h.snaps || [];
-    this.inputs = h.inputs || [];
+    this.snaps = (h.snaps || []).slice();
+    this.inputs = (h.inputs || []).slice();
     this.base = h.base || 0;
     this.cursor = h.cursor ?? this.base + this.inputs.length;
     this.nextMark = h.nextMark ?? Infinity;

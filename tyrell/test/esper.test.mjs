@@ -211,6 +211,18 @@ test('save and load: the same world, and it runs on the same', () => {
   assert.equal(b.hash(), a.hash());
 });
 
+test('the same save loaded twice gives the same world twice (a time loop)', () => {
+  const w = rocinante();
+  const dawn = w.save(true);
+  w.load(dawn);
+  w.advance(3 * HOUR);
+  const h = w.hash();
+  w.load(dawn);
+  assert.equal(w.now, rocinante().now, 'the save was left as it was');
+  w.advance(3 * HOUR);
+  assert.equal(w.hash(), h);
+});
+
 test('a save can keep its history, so a loaded world can still rewind', () => {
   const a = rocinante();
   a.advance(6 * HOUR);

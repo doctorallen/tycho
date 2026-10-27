@@ -58,7 +58,7 @@ Declare before loading, or after: both work, and both give the same world.
 - `world.person(id, def)` returns the saved person when one exists, ignoring `def`. So it's safe to add everyone on every start, before or after loading.
 - A module whose state is missing from an older save gets fresh state on load.
 
-What `load` does: migrates the state to the current schema, replaces the world's state, gives modules their fresh state where it's missing and calls their `loaded` hooks, makes sure every declared place has state, resets Esper (and restores its history if the save has one), clears Palantír's decisions, disembodies every body, and embodies whoever is near now. Listeners stay registered.
+What `load` does: copies the saved state (the save object is never changed, so the same save can be loaded again and again), migrates it to the current schema, replaces the world's state, gives modules their fresh state where it's missing and calls their `loaded` hooks, makes sure every declared place has state, resets Esper (and restores its history if the save has one), clears Palantír's decisions, disembodies every body, and embodies whoever is near now. Listeners stay registered.
 
 `load` doesn't move the clock: the loaded world is at the saved time. If the game owns the clock, load its own save first and then call `world.advanceTo(gameMinutes())` as usual.
 

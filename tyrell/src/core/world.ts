@@ -28,7 +28,7 @@ import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState,
   PlaceDef, Shell, Stimulus, TaskDef, Value, WorldState,
 } from './types';
-import { DAY, HOUR, Stream, clamp, dayOf, hash, hourOf, stableStringify } from './util';
+import { DAY, HOUR, Stream, clamp, clone, dayOf, hash, hourOf, stableStringify } from './util';
 
 export const SCHEMA = 2;
 
@@ -396,7 +396,8 @@ export class World {
     const d: SaveData = typeof data === 'string' ? JSON.parse(data) : data;
     const v = d.v ?? d.s.v ?? 1;
     if (v > SCHEMA) throw new Error(`Tyrell: save version ${v} is newer than this engine (${SCHEMA})`);
-    const s = migrate(d.s, v);
+    // a copy: the world mustn't change the caller's save (a dawn loaded every loop)
+    const s = migrate(typeof data === 'string' ? d.s : clone(d.s), v);
     this.s = s;
     for (const m of this.hooks) {
       if (m.init && this.s.mod[m.name] === undefined) this.s.mod[m.name] = m.init();

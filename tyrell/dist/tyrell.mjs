@@ -1879,8 +1879,8 @@ var Esper = class {
   }
   import(h) {
     if (!h) return;
-    this.snaps = h.snaps || [];
-    this.inputs = h.inputs || [];
+    this.snaps = (h.snaps || []).slice();
+    this.inputs = (h.inputs || []).slice();
     this.base = h.base || 0;
     this.cursor = h.cursor ?? this.base + this.inputs.length;
     this.nextMark = h.nextMark ?? Infinity;
@@ -2617,7 +2617,7 @@ var World = class {
     const d = typeof data === "string" ? JSON.parse(data) : data;
     const v = d.v ?? d.s.v ?? 1;
     if (v > SCHEMA) throw new Error(`Tyrell: save version ${v} is newer than this engine (${SCHEMA})`);
-    const s = migrate(d.s, v);
+    const s = migrate(typeof data === "string" ? d.s : clone(d.s), v);
     this.s = s;
     for (const m of this.hooks) {
       if (m.init && this.s.mod[m.name] === void 0) this.s.mod[m.name] = m.init();

@@ -625,17 +625,39 @@ var Bicameral = class {
     const ns = p.needs[need];
     const def = this.w.needs.get(need);
     if (!ns || !def) return 0;
-    let v = ns.v + def.rise * (t - ns.t) / HOUR;
     const d = p.doing;
-    if (d && d.kind === "act") {
-      const a = this.w.actions.get(d.action);
-      const r = a?.relieves?.[need];
+    const a = d && d.kind === "act" ? this.w.actions.get(d.action) : void 0;
+    const rate = a?.rates?.[need];
+    let v;
+    if (rate !== void 0 && d && t > d.start) {
+      const from = Math.max(ns.t, d.start);
+      v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * rate * (t - from) / HOUR;
+    } else v = ns.v + def.rise * (t - ns.t) / HOUR;
+    if (a && d) {
+      const r = a.relieves?.[need];
       if (r !== void 0 && t > d.start) {
         const f = clamp((t - d.start) / Math.max(1, d.end - d.start));
         v -= mid(r) * this.quality(d.place) * f;
       }
     }
     return clamp(v);
+  }
+  /**
+   * Folds a finished (or stopped) action's effect on needs' rise into their
+   * stored levels, for needs it changed the rate of. Called before relief.
+   */
+  settle(p, d) {
+    if (d.kind !== "act") return;
+    const a = this.w.actions.get(d.action);
+    if (!a?.rates) return;
+    const now2 = this.w.s.now;
+    for (const need in a.rates) {
+      const ns = p.needs[need], def = this.w.needs.get(need);
+      if (!ns || !def) continue;
+      const from = Math.max(ns.t, d.start);
+      const v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * a.rates[need] * Math.max(0, now2 - from) / HOUR;
+      p.needs[need] = { v: clamp(v), t: now2 };
+    }
   }
   /** Sets a need's level now. */
   setLevel(p, need, v) {
@@ -659,15 +681,17 @@ var Bicameral = class {
    */
   urgentAt(p) {
     let best = Infinity;
-    const relieving = p.doing?.kind === "act" ? this.w.actions.get(p.doing.action)?.relieves : void 0;
+    const a = p.doing?.kind === "act" ? this.w.actions.get(p.doing.action) : void 0;
+    const relieving = a?.relieves;
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== void 0) continue;
       const u = def.urgent ?? this.w.config.urgent;
-      if (u > 1 || def.rise <= 0) continue;
+      const rise = def.rise * (a?.rates?.[id] ?? 1);
+      if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
       for (const line of [u, Math.max(u, 0.97), 1]) {
         if (v >= line - 1e-9) continue;
-        const t = this.w.s.now + (line - v) / def.rise * HOUR;
+        const t = this.w.s.now + (line - v) / rise * HOUR;
         if (t < best) best = t;
         break;
       }
@@ -1419,6 +1443,7 @@ var Entmoot = class {
   complete(p, d, frac, interrupted) {
     const w = this.w;
     const a = w.actions.get(d.action);
+    w.mind.settle(p, d);
     const { got, expected } = w.mind.relieve(p, d, frac);
     if (a && !interrupted) {
       const ctx = w.ctx(p, { place: d.place, target: d.target ?? null, action: a.id });

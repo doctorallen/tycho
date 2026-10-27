@@ -151,6 +151,8 @@ export interface ActionDef {
   relieves?: Record<Id, number | [number, number]>;
   /** A flat appeal added to the relief, for actions people do for their own sake. */
   base?: number;
+  /** While doing it, needs rise at these rates instead (sleeping: { hunger: 0.4 }). */
+  rates?: Record<Id, number>;
   /** Where it happens. Default null: wherever the person is. */
   at?: PlaceSpec | PlaceSpec[];
   /** The slot it needs at that place. */

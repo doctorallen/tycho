@@ -20,6 +20,11 @@ export declare class Bicameral {
     constructor(w: World);
     /** A need's level at time t (default now), counting any relief in progress. */
     level(p: PersonState, need: Id, t?: number): number;
+    /**
+     * Folds a finished (or stopped) action's effect on needs' rise into their
+     * stored levels, for needs it changed the rate of. Called before relief.
+     */
+    settle(p: PersonState, d: Doing): void;
     /** Sets a need's level now. */
     setLevel(p: PersonState, need: Id, v: number): void;
     /** Makes sure a person has every declared need. */

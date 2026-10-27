@@ -334,6 +334,7 @@ export class Entmoot {
   private complete(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
     const w = this.w;
     const a = w.actions.get(d.action);
+    w.mind.settle(p, d);
     const { got, expected } = w.mind.relieve(p, d, frac);
     if (a && !interrupted) {
       const ctx = w.ctx(p, { place: d.place, target: d.target ?? null, action: a.id });

@@ -46,7 +46,7 @@
   // ---- actions --------------------------------------------------------------
   const night = { name: 'night', input: 'hour', range: [0, 24], curve: [[0, 1], [6 / 24, 1], [8 / 24, 0.12], [20 / 24, 0.3], [22.5 / 24, 1], [1, 1]] };
   const daylight = { name: 'daylight', input: 'hour', range: [0, 24], curve: [[0, 0.05], [7 / 24, 0.05], [9 / 24, 1], [19 / 24, 1], [21 / 24, 0.1], [1, 0.05]] };
-  w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
+  w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
   w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
   w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'] });
@@ -77,7 +77,7 @@
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({
-    id: 'dinner_at_home', label: 'dinner at home', relieves: { hunger: 0.55 }, base: 0.02, tags: ['food'],
+    id: 'dinner_at_home', label: 'dinner at home', relieves: { hunger: 0.55 }, base: 0.02, tags: ['food'], cooldown: 3 * HOUR,
     methods: [
       { name: 'from the cupboard', if: ['has:food'], do: ['eat_home'] },
       { name: 'shop first', do: ['get:food', 'eat_home'] },
@@ -87,7 +87,7 @@
     id: 'fix_radio', label: 'getting the radio working', relieves: { fun: 0.3 }, base: 0.05, if: ['has:broken_radio'], cooldown: 12 * HOUR,
     methods: [
       { name: 'take it to Tomas', if: ['thinks:open:workshop'], do: ['repair_service'] },
-      { name: 'buy another', if: ['money>=80'], do: ['get:radio'] },
+      { name: 'buy another', if: ['money>=150'], do: ['get:radio'] },
       { name: 'do without', do: ['shrug'] },
     ],
   });

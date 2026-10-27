@@ -79,17 +79,41 @@ export class Bicameral {
     const ns = p.needs[need];
     const def = this.w.needs.get(need);
     if (!ns || !def) return 0;
-    let v = ns.v + (def.rise * (t - ns.t)) / HOUR;
     const d = p.doing;
-    if (d && d.kind === 'act') {
-      const a = this.w.actions.get(d.action);
-      const r = a?.relieves?.[need];
+    const a = d && d.kind === 'act' ? this.w.actions.get(d.action) : undefined;
+    const rate = a?.rates?.[need];
+    let v: number;
+    if (rate !== undefined && d && t > d.start) {
+      // the usual rise up to the start, then the action's rate
+      const from = Math.max(ns.t, d.start);
+      v = ns.v + (def.rise * Math.max(0, d.start - ns.t)) / HOUR + (def.rise * rate * (t - from)) / HOUR;
+    } else v = ns.v + (def.rise * (t - ns.t)) / HOUR;
+    if (a && d) {
+      const r = a.relieves?.[need];
       if (r !== undefined && t > d.start) {
         const f = clamp((t - d.start) / Math.max(1, d.end - d.start));
         v -= mid(r) * this.quality(d.place) * f;
       }
     }
     return clamp(v);
+  }
+
+  /**
+   * Folds a finished (or stopped) action's effect on needs' rise into their
+   * stored levels, for needs it changed the rate of. Called before relief.
+   */
+  settle(p: PersonState, d: Doing): void {
+    if (d.kind !== 'act') return;
+    const a = this.w.actions.get(d.action);
+    if (!a?.rates) return;
+    const now = this.w.s.now;
+    for (const need in a.rates) {
+      const ns = p.needs[need], def = this.w.needs.get(need);
+      if (!ns || !def) continue;
+      const from = Math.max(ns.t, d.start);
+      const v = ns.v + (def.rise * Math.max(0, d.start - ns.t)) / HOUR + (def.rise * a.rates[need] * Math.max(0, now - from)) / HOUR;
+      p.needs[need] = { v: clamp(v), t: now };
+    }
   }
 
   /** Sets a need's level now. */
@@ -116,15 +140,17 @@ export class Bicameral {
    */
   urgentAt(p: PersonState): number {
     let best = Infinity;
-    const relieving = p.doing?.kind === 'act' ? this.w.actions.get(p.doing.action)?.relieves : undefined;
+    const a = p.doing?.kind === 'act' ? this.w.actions.get(p.doing.action) : undefined;
+    const relieving = a?.relieves;
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== undefined) continue;
       const u = def.urgent ?? this.w.config.urgent;
-      if (u > 1 || def.rise <= 0) continue;
+      const rise = def.rise * (a?.rates?.[id] ?? 1);
+      if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
       for (const line of [u, Math.max(u, 0.97), 1]) {
         if (v >= line - 1e-9) continue;
-        const t = this.w.s.now + ((line - v) / def.rise) * HOUR;
+        const t = this.w.s.now + ((line - v) / rise) * HOUR;
         if (t < best) best = t;
         break;
       }

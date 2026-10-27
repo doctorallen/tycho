@@ -223,8 +223,7 @@ world.reverie.beliefs('lena');   // what Lena believes now, who told her, how st
 What happens:
 
 - When two people meet, each may pass on one belief, the juiciest they hold that the other doesn't (a crime first), weakened by how much the listener trusts the teller, one hop further. After three hops it stops.
-- Sam is dishonest and dislikes Ruth, so when he passes on `did:ruth:theft` he may lie: because the value is a thing (`'bread'`), he names someone else he dislikes, and his listeners hear `did:dev:theft`.
-- If the value were `true` (a sighting without a `what`), this version's liar would pass on `false` instead, which protects the person he dislikes. Give crimes a `what`.
+- Sam is dishonest and dislikes Ruth, so when he passes on `did:ruth:theft` he may lie: he shifts the blame onto someone else he dislikes, and his listeners hear `did:dev:theft` (still `'bread'`). If he disliked nobody else, he'd pass on the truth.
 - Each listener's belief records who told them (`from`) and how many hops it came, so a game can trace a rumor back. The truth is a fact the game sets (`world.fact('did:ruth:theft', 'bread')`), and `reverie.accurate(id, key)` compares.
 
 ## A plan with fallbacks and a get: chain

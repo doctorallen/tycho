@@ -69,19 +69,50 @@ test('gossip travels a hop at a time, weaker each time, no further than the limi
   assert.ok(told.some((e) => e.key === 'did:sam:theft'));
 });
 
-test('a dishonest teller who dislikes the subject may lie', () => {
+test('a dishonest teller who dislikes the subject may lie: the blame goes to someone else', () => {
   const w = rocinante();
   w.wormtongue.config.lieChance = 1;
   w.wormtongue.config.gossipChance = 1;
   const sam = w.get('sam'), kofi = w.get('kofi');
   w.fellowship.adjust('sam', 'ruth', -0.9);
-  w.reverie.believe('sam', 'liked:ruth', true, 'saw');
-  w.reverie.believe('sam', 'did:ruth:theft', false, 'saw');
-  // make them meet
-  w.wormtongue.met(sam, kofi);
-  const told = w.westmarch.find({ k: 'told', who: 'sam' });
-  assert.ok(told.length === 1);
+  w.fellowship.adjust('sam', 'dev', -0.5);
+  w.reverie.believe('sam', 'did:ruth:theft', true, 'saw');
+  w.wormtongue.met(sam, kofi); // make them meet
+  const told = w.westmarch.find({ k: 'told' }).filter((e) => e.who === 'sam');
+  assert.equal(told.length, 1);
   assert.equal(told[0].d.lie, true);
+  assert.equal(told[0].d.key, 'did:dev:theft');
+  assert.equal(w.reverie.belief('kofi', 'did:dev:theft'), true, 'Dev gets the blame');
+  assert.equal(w.reverie.belief('kofi', 'did:ruth:theft'), undefined, 'Ruth is neither blamed nor cleared');
+});
+
+test('a liar with nobody else to blame passes on the truth, and it isn\'t called a lie', () => {
+  const w = rocinante();
+  w.wormtongue.config.lieChance = 1;
+  w.wormtongue.config.gossipChance = 1;
+  w.fellowship.adjust('sam', 'ruth', -0.9);
+  w.reverie.believe('sam', 'did:ruth:theft', true, 'saw');
+  const told = [];
+  w.on('told', (e) => told.push(e));
+  w.wormtongue.met(w.get('sam'), w.get('kofi'));
+  const fromSam = told.filter((e) => e.from === 'sam');
+  assert.equal(fromSam.length, 1);
+  assert.equal(fromSam[0].key, 'did:ruth:theft');
+  assert.equal(fromSam[0].lie, false);
+  assert.equal(w.reverie.belief('kofi', 'did:ruth:theft'), true, 'never "Ruth didn\'t do it"');
+});
+
+test('a report that comes through gossip carries what was done', () => {
+  const w = rocinante({ start: 10 * HOUR });
+  w.wormtongue.config.gossipChance = 1;
+  const reports = [];
+  w.on('report', (r) => reports.push(r));
+  w.reverie.believe('kofi', 'did:sam:theft', 'bread', 'saw');
+  w.wormtongue.met(w.get('kofi'), w.get('vance')); // Vance is the Watch
+  const r = reports.find((x) => x.actor === 'sam');
+  assert.ok(r, 'the Watch took it as a report');
+  assert.equal(r.what, 'bread');
+  assert.equal(w.wormtongue.reports('sam')[0].what, 'bread');
 });
 
 test('a witness can be paid off (if they will) or scared off', () => {

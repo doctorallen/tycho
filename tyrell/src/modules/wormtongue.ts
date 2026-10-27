@@ -7,8 +7,8 @@
 //   heat       made of reports: who saw you and told someone
 //   gossip     beliefs passing between people who spend time together, a
 //              hop at a time, weakening as they go (Talk of the Town)
-//   lies       someone who dislikes the subject and isn't honest may pass on
-//              something false, or name someone else
+//   lies       someone who dislikes the subject and isn't honest may shift
+//              the blame onto someone else they dislike
 //   silencing  a witness can be paid or scared off
 //   secrets    with a list of who knows them
 //   favors     owed between people, called in later
@@ -247,18 +247,14 @@ export class Wormtongue implements Module {
       if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
     }
     if (!best) return;
-    let key = best.key, v = best.v, lie = false;
+    let key = best.key, lie = false;
+    const v = best.v;
     const subject = subjectOf(key);
     const honesty = a.def.traits?.honesty ?? 0.5;
-    if (subject && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
-      lie = true;
-      if (typeof v === 'boolean') v = !v;
-      else if (key.startsWith('did:')) {
-        // name someone else they dislike
-        const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
-        const other = foes.length ? foes[0].id : null;
-        if (other) key = key.replace(`did:${subject}:`, `did:${other}:`);
-      }
+    // a liar shifts the blame for something done onto someone else they dislike (with nobody to blame, the truth goes on)
+    if (subject && v !== false && v !== null && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
+      const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
+      if (foes.length) { key = key.replace(`did:${subject}:`, `did:${foes[0].id}:`); lie = true; }
     }
     const trust = w.fellowship ? clamp(0.6 + w.fellowship.regard(b.id, a.id) * 0.4, 0.2, 1) : 0.7;
     rv.applyBelieve(b.id, key, v, 'told', a.id, best.str * trust * 0.9, best.hops + 1);
@@ -269,14 +265,15 @@ export class Wormtongue implements Module {
     }
     w.log('told', a.id, { to: b.id, key, v, ...(lie ? { lie: true } : {}) });
     w.emit('told', { from: a.id, to: b.id, key, v, lie });
-    // a member of the authority who hears of a crime takes it as a report
-    if (key.startsWith('did:') && w.fellowship) {
+    // a member of the authority who hears of a crime takes it as a report (not of one that didn't happen)
+    if (key.startsWith('did:') && v !== false && v !== null && w.fellowship) {
       const [, actor, kind] = key.split(':');
       const crime = this.crimes.get(kind);
       if (crime && actor !== 'someone') {
         const to = crime.reportTo;
         const authority = to ? [to] : [...w.fellowship.groups.values()].filter((g) => g.kind === 'authority').map((g) => g.id);
-        if (authority.some((g) => w.fellowship!.groupsOf(b.id).includes(g))) this.report(a.id, actor, kind);
+        const what = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
+        if (authority.some((g) => w.fellowship!.groupsOf(b.id).includes(g))) this.report(a.id, actor, kind, what);
       }
     }
   }

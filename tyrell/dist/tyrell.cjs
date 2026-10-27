@@ -3990,16 +3990,15 @@ var Wormtongue = class {
       if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
     }
     if (!best) return;
-    let key2 = best.key, v = best.v, lie = false;
+    let key2 = best.key, lie = false;
+    const v = best.v;
     const subject = subjectOf(key2);
     const honesty = a.def.traits?.honesty ?? 0.5;
-    if (subject && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
-      lie = true;
-      if (typeof v === "boolean") v = !v;
-      else if (key2.startsWith("did:")) {
-        const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
-        const other = foes.length ? foes[0].id : null;
-        if (other) key2 = key2.replace(`did:${subject}:`, `did:${other}:`);
+    if (subject && v !== false && v !== null && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
+      const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
+      if (foes.length) {
+        key2 = key2.replace(`did:${subject}:`, `did:${foes[0].id}:`);
+        lie = true;
       }
     }
     const trust = w.fellowship ? clamp(0.6 + w.fellowship.regard(b.id, a.id) * 0.4, 0.2, 1) : 0.7;
@@ -4014,13 +4013,14 @@ var Wormtongue = class {
     }
     w.log("told", a.id, { to: b.id, key: key2, v, ...lie ? { lie: true } : {} });
     w.emit("told", { from: a.id, to: b.id, key: key2, v, lie });
-    if (key2.startsWith("did:") && w.fellowship) {
+    if (key2.startsWith("did:") && v !== false && v !== null && w.fellowship) {
       const [, actor, kind] = key2.split(":");
       const crime = this.crimes.get(kind);
       if (crime && actor !== "someone") {
         const to = crime.reportTo;
         const authority = to ? [to] : [...w.fellowship.groups.values()].filter((g) => g.kind === "authority").map((g) => g.id);
-        if (authority.some((g) => w.fellowship.groupsOf(b.id).includes(g))) this.report(a.id, actor, kind);
+        const what = typeof v === "string" ? v : typeof v === "number" ? String(v) : void 0;
+        if (authority.some((g) => w.fellowship.groupsOf(b.id).includes(g))) this.report(a.id, actor, kind, what);
       }
     }
   }

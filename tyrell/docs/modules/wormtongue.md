@@ -67,7 +67,7 @@ When a report comes due, it's made only if the witness is still around and still
 
 Heat is the weight of reports against someone. It fades by `heatDecay` (to 85%) every day, and is dropped under 0.05. The game reads it with `heat(actor)` or the `heat` term, and can add to it with `addHeat`.
 
-A member of the authority who hears about a crime through gossip takes it as a report too, with the teller as the witness.
+A member of the authority who hears about a crime through gossip takes it as a report too, with the teller as the witness and the belief's value as `what` (not when the belief is that it didn't happen).
 
 ## Silencing
 
@@ -100,12 +100,9 @@ The listener believes it, as told, from the teller, with strength `str × trust 
 
 ## Lies
 
-A teller who is dishonest (honesty under 0.3) and dislikes the person a `did:` belief is about (regard under -0.3) lies with probability `lieChance` (0.5):
+A teller who is dishonest (honesty under 0.3) and dislikes the person a `did:` belief is about (regard under -0.3) lies with probability `lieChance` (0.5): they shift the blame, naming someone else they dislike (regard under -0.2, not the listener) as the one who did it. `did:ruth:theft` goes on as `did:dev:theft`, with the same value. A lie never clears anyone: with nobody else to blame, or for a belief that someone *didn't* do something (`false`), they pass on what they believe.
 
-- if the belief's value is `true` or `false`, they pass on the opposite;
-- otherwise, they name someone else they dislike (regard under -0.2) as the one who did it.
-
-The `told` event carries `lie: true`. Two things to know in this version: the boolean flip means a liar who holds `did:ruth:theft = true` (the usual value from a sighting without `what`) tells people Ruth *didn't* do it, which protects her; and a liar with nobody else to name passes the truth on but the event still says `lie: true`. Give crimes a `what` (the stolen thing) so liars name someone else.
+The `told` event and log entry carry `lie: true` only when the blame was shifted.
 
 ## Secrets
 
@@ -166,7 +163,7 @@ Pending reports are module timers in the world's queue.
 | Event | Payload |
 |---|---|
 | `witnessed` | `{ id, actor, kind, recognized }`: `id` is the witness; `actor` is `'someone'` when not recognized |
-| `report` | `{ t, witness, actor, kind, what?, to?, heat }`: `heat` is the actor's heat after it. A report made because an authority member heard gossip has no `what` |
+| `report` | `{ t, witness, actor, kind, what?, to?, heat }`: `heat` is the actor's heat after it |
 | `silenced` | `{ witness, actor, how, ok }` |
 | `told` | `{ from, to, key, v, lie }` |
 | `exposed` | `{ about, key }`: a secret reached four people |

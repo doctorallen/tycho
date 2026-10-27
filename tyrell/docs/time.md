@@ -180,8 +180,6 @@ Pass these in `Tyrell.create({ esper: { ... } })`:
 | `sparseAfter` | 240 | Snapshots older than this many minutes are thinned... |
 | `sparseEvery` | 60 | ...to one per this many minutes (at whole multiples of it) |
 
-The type comments in `types.ts` say `keep` defaults to 2880 and `sparseAfter` to 360; the code's defaults are the ones above.
-
 Make `sparseEvery` a multiple of `every`, or the thinned region keeps fewer snapshots than you expect (only those at times divisible by `sparseEvery` survive). With the defaults that's about `240 / 15 + (1440 - 240) / 60 + 1 = 37` snapshots.
 
 Each snapshot is the whole state as a string, so memory is roughly snapshots × state size. The state grows with people, with the log (`config.logSize` entries, 1000 by default, kept in every snapshot) and with what the modules remember. For Rocinante (ten people), a snapshot is about 70 KB after a day and about 150 KB after a week, so the defaults hold about 2.5 to 5.5 MB. Lowering `logSize` to 200 roughly halves it. Check yours with:

@@ -219,7 +219,7 @@ export type RoutineEntry = [hour: number, place: PlaceSpec, activity: Id, extra?
 export interface RoutineVariant {
     /** Days of the week (0..6, day number mod week length) it applies on. */
     days?: number[];
-    /** Conditions checked at the start of the day ('fact:raining', 'var.money<20'). Strings only. */
+    /** Conditions checked whenever the routine is read ('fact:raining', 'var.money<20'). Strings only. */
     when?: string[];
     plan: RoutineEntry[];
 }
@@ -464,11 +464,9 @@ export interface Config {
     idle: number;
     /** Minutes an action is ruled out at a place after it failed there. Default 15. */
     backoff: number;
-    /** Minutes between thoughts while traveling or busy for checking urgent needs. Default 30. */
-    recheck: number;
     /** Milliseconds of thinking per frame. Default 4. */
     budgetMs: number;
-    /** Westmarch log size. Default 3000. */
+    /** Westmarch log size. Default 1000. */
     logSize: number;
     /** Palantír keeps this many decisions per person. Default 12. */
     decisions: number;
@@ -497,10 +495,11 @@ export interface EsperConfig {
     on: boolean;
     /** A snapshot every this many minutes. Default 15. */
     every: number;
-    /** Keep this many minutes of history. Default 2880 (two days). */
+    /** Keep this many minutes of history. Default 1440 (one day). */
     keep: number;
-    /** Older than this many minutes, keep only one snapshot per `sparseEvery`. Default 360. */
+    /** Older than this many minutes, keep only one snapshot per `sparseEvery`. Default 240. */
     sparseAfter: number;
+    /** Minutes between the snapshots kept past `sparseAfter`. Default 60. */
     sparseEvery: number;
 }
 /** A person as the game should show them right now. */

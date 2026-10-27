@@ -363,9 +363,8 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `placesPerAction` | 4 | How many candidate places (nearest first) to weigh per action |
 | `idle` | 20 | Minutes someone with nothing to do waits before thinking again |
 | `backoff` | 15 | Minutes an action is ruled out at a place after it failed there (a closed door, a taken slot, a body's report) |
-| `recheck` | 30 | Declared but not read by this version of the engine |
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame |
-| `logSize` | 1000 | Westmarch log entries kept (the type comment says 3000; the code's default is 1000) |
+| `logSize` | 1000 | Westmarch log entries kept |
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `habitFast` | 0.25 | Learning rate of the fast habit weight |
 | `habitSlow` | 0.05 | How fast the slow weight follows the fast one |

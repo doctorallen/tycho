@@ -63,7 +63,6 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `week` | 7 | | `placesPerAction` | 4 |
 | `urgent` | 0.85 | | `idle` | 20 |
 | `urgentRank` | 1.5 | | `backoff` | 15 |
-| | | | `recheck` | 30 (not read) |
 | `desperateRank` | 2.5 | | `budgetMs` | 4 |
 | `cut` | 0.25 | | `logSize` | 1000 |
 | `top` | 3 | | `decisions` | 12 |

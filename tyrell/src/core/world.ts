@@ -47,7 +47,6 @@ export const DEFAULT_CONFIG: Config = {
   placesPerAction: 4,
   idle: 20,
   backoff: 15,
-  recheck: 30,
   budgetMs: 4,
   logSize: 1000,
   decisions: 12,

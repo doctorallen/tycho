@@ -150,7 +150,7 @@ console.log(world.describe('mo'));
 
 **`shell.check(fact, ctx) => Value | undefined`**: answers `fact:<key>` when the fact isn't set. Live, not rewound: prefer pushing `world.fact(key, value)`.
 
-**Listeners** (`world.on(kind, fn)`, returns an unsubscribe function): run synchronously inside the engine's work. Inputs made inside are deferred to the end of the current event or input (and recorded there); `world.input` returns `undefined` for them. `world.person`, `strangers.promote`, `cityspeak.say` and `cradle.birth` apply at once. `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `esper.seekMark` and `load` called from a listener wait until the call that's running returns, then run in order. Don't throw. Event list: [api.md](api.md#events).
+**Listeners** (`world.on(kind, fn)`, returns an unsubscribe function): run synchronously inside the engine's work. Inputs made inside are deferred to the end of the current event or input (and recorded there); `world.input` returns `undefined` for them. `world.person`, `strangers.promote`, `cityspeak.say` and `cradle.birth` apply at once. `tick`, `advance`, `advanceTo`, `seek`, `rewind`, `esper.seekMark` and `load` called from a listener wait until the call that's running returns, then run in order. Don't throw. A `'*'` listener gets `{ kind, ...payload, event }`: read the name from `event` (`kind` is the payload's own for `witnessed`, `report` and `broke`). Event list: [api.md](api.md#events).
 
 **Bodies**: `{ id, name, place, slot?, action, next?, pose, target?, progress, start, end, travel?: { from, to, start, end, f }, emotion?, mood?, with?, data? }`. `place` is `null` while walking. `action` is `'travel'` while walking and `'wait'` while idle. `progress` and `travel.f` are as of when the body was made: recompute from `world.now`.
 
@@ -192,7 +192,6 @@ console.log(world.describe('mo'));
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
 | `chance:` in line conditions or inspected conditions | Looking (`choose`, barks, `whyNot`, Joi) advances a person's stream: watched and unwatched worlds differ | Use line `weight`s; keep `chance:` to actions' `if` |
-| A `'*'` listener for `witnessed`, `report` or `broke` | The payload's own `kind` replaces the event name | Listen to those events by name |
 | Consideration inputs `'habit'`, `'crowd'`, `'price'` | Read 0 (not terms; `price` needs a good) | A function input: `(ctx) => ctx.world.ring.crowd(ctx.place)` |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |
 | Relying on `step` for every change | Idling (nothing to do) emits no `step` | Refresh from `world.body(id)` when `world.now >= body.end` |

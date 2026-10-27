@@ -352,7 +352,11 @@ export class World {
   // Events for the game
   // -------------------------------------------------------------------------
 
-  /** Listens for an event: 'embody', 'disembody', 'step', 'say', 'report'... or '*' for all. */
+  /**
+   * Listens for an event: 'embody', 'disembody', 'step', 'say', 'report'...
+   * or '*' for all, which get `{ kind, ...payload, event }`: `event` is
+   * always the event's name (`kind` is too, unless the payload has its own).
+   */
   on(kind: string, fn: Listener): () => void {
     const list = this.listeners.get(kind) || [];
     list.push(fn);
@@ -371,7 +375,7 @@ export class World {
     this.listening++;
     try {
       for (const fn of a || []) fn(data);
-      for (const fn of b || []) fn({ kind, ...data });
+      for (const fn of b || []) fn({ kind, ...data, event: kind });
     } finally { this.listening--; }
   }
 

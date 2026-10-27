@@ -436,6 +436,17 @@ test('Palantir: why, why not, and a readable account', () => {
   assert.match(text, /mood:/);
 });
 
+test('a listener for every event gets the real event name', () => {
+  const w = rocinante({ start: 10 * HOUR });
+  const seen = [];
+  w.on('*', (e) => seen.push(e));
+  w.sense({ kind: 'theft', actor: 'player', place: 'market', seenBy: ['dev'] });
+  const witnessed = seen.find((e) => e.event === 'witnessed');
+  assert.ok(witnessed, 'witnessed arrives as witnessed');
+  assert.equal(witnessed.kind, 'theft', 'with its payload as before');
+  assert.ok(seen.some((e) => e.event === 'log' && e.kind === 'log'));
+});
+
 test('Westmarch: the log and a chronicle of someone\'s day', () => {
   const w = rocinante();
   w.advance(DAY);

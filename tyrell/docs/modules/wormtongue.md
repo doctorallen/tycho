@@ -170,7 +170,7 @@ Pending reports are module timers in the world's queue.
 
 Log entries: `witnessed`, `report`, `silenced`, `told`, `exposed`, `owes`.
 
-A `'*'` listener gets `{ kind, ...payload }`, so for `witnessed` and `report`, whose payloads have their own `kind`, the payload's kind (`'theft'`) replaces the event name. Listen to these by name.
+A `'*'` listener gets `{ kind, ...payload, event }`. Read the event's name from `event`: for `witnessed` and `report`, whose payloads have their own `kind`, `kind` is the crime (`'theft'`).
 
 ## Config
 

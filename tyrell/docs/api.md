@@ -184,11 +184,15 @@ All definitions; declare them on every start. Each returns the world, so they ch
 
 | Method | Returns | |
 |---|---|---|
-| `on(kind, fn)` | function | Listens; returns a function that stops listening. `'*'` hears everything as `{ kind, ...payload }` |
+| `on(kind, fn)` | function | Listens; returns a function that stops listening. `'*'` hears everything as `{ kind, ...payload, event }` |
 | `off(kind, fn)` | void | Stops listening |
 | `emit(kind, data)` | void | Emits an event (silent while replaying). For modules |
 
-With `'*'`, a payload's own `kind` field (in `witnessed`, `report` and `broke`) replaces the event name.
+With `'*'`, `event` is always the event's name. `kind` is the event's name too, except for payloads with a `kind` of their own (`witnessed`, `report` and `broke`), where it's the payload's, as it always was:
+
+```js
+world.on('*', (e) => { if (e.event === 'report') showToast(`${e.actor} reported for ${e.kind}`); });
+```
 
 ### Saving
 

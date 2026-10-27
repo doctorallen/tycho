@@ -180,7 +180,11 @@ export declare class World {
     whyNot(id: Id, action: Id): string;
     /** A readable account of a person: needs, mood, doing, plan, beliefs. */
     describe(id: Id): string;
-    /** Listens for an event: 'embody', 'disembody', 'step', 'say', 'report'... or '*' for all. */
+    /**
+     * Listens for an event: 'embody', 'disembody', 'step', 'say', 'report'...
+     * or '*' for all, which get `{ kind, ...payload, event }`: `event` is
+     * always the event's name (`kind` is too, unless the payload has its own).
+     */
     on(kind: string, fn: Listener): () => void;
     off(kind: string, fn: Listener): void;
     /** Tells the game something happened (silent while Esper replays). */

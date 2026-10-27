@@ -67,6 +67,9 @@ export function curveAt(curve: Curve | undefined, x: number): number {
 
 const mid = (r: number | [number, number]): number => (Array.isArray(r) ? (r[0] + r[1]) / 2 : r);
 
+/** The cooldown key that rules an action out at a place for a while after it failed there. */
+export const backoffKey = (action: Id, place: Id | null | undefined): string => `@fail:${action}@${place ?? ''}`;
+
 export class Bicameral {
   constructor(private w: World) {}
 
@@ -425,6 +428,8 @@ export class Bicameral {
     const who = w.lang.failing(def.who, ctx);
     if (who) return `not for them (${String(who)})`;
     if (p.cool[c.id] && p.cool[c.id] > w.s.now) return `cooling down, ${Math.ceil(p.cool[c.id] - w.s.now)} min`;
+    const backoff = p.cool[backoffKey(c.id, c.place ?? p.place)];
+    if (backoff !== undefined && backoff > w.s.now) return `failed recently, ${Math.ceil(backoff - w.s.now)} min`;
     const travel = c.place ? w.ring.travel(p.place, c.place, p) : 0;
     if (!isFinite(travel)) return `can't get to ${c.place}`;
     const arrive = w.s.now + travel;

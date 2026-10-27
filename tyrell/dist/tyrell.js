@@ -613,6 +613,7 @@ var Tyrell = (() => {
     }
   }
   var mid = (r) => Array.isArray(r) ? (r[0] + r[1]) / 2 : r;
+  var backoffKey = (action, place) => `@fail:${action}@${place ?? ""}`;
   var Bicameral = class {
     constructor(w) {
       this.w = w;
@@ -944,6 +945,8 @@ var Tyrell = (() => {
       const who = w.lang.failing(def.who, ctx);
       if (who) return `not for them (${String(who)})`;
       if (p.cool[c.id] && p.cool[c.id] > w.s.now) return `cooling down, ${Math.ceil(p.cool[c.id] - w.s.now)} min`;
+      const backoff = p.cool[backoffKey(c.id, c.place ?? p.place)];
+      if (backoff !== void 0 && backoff > w.s.now) return `failed recently, ${Math.ceil(backoff - w.s.now)} min`;
       const travel = c.place ? w.ring.travel(p.place, c.place, p) : 0;
       if (!isFinite(travel)) return `can't get to ${c.place}`;
       const arrive = w.s.now + travel;
@@ -1095,6 +1098,7 @@ var Tyrell = (() => {
 
   // src/core/entmoot.ts
   var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
+  var MAX_FAILS = 10;
   var Entmoot = class {
     constructor(w) {
       this.w = w;
@@ -1383,7 +1387,7 @@ var Tyrell = (() => {
       if (a.slot && place) {
         if (p.slot && p.place && p.slot !== a.slot) w.ring.release(p.place, p.slot, p.id);
         if (!w.ring.claim(place, a.slot, p.id)) {
-          this.fail(p, `no free ${a.slot} at ${place}`, true);
+          this.fail(p, `no free ${a.slot} at ${place}`, true, { action: a.id, place });
           return;
         }
         p.slot = a.slot;
@@ -1429,7 +1433,7 @@ var Tyrell = (() => {
         if (d.fill === false) c.fill = false;
         const why = w.mind.blockedReason(p, c);
         if (why) {
-          this.fail(p, why, true);
+          this.fail(p, why, true, { action: d.action, place: p.place });
           return;
         }
         this.act(p, c);
@@ -1496,19 +1500,37 @@ var Tyrell = (() => {
       }
       w.log("interrupted", p.id, { action: d.action, why });
     }
-    /** Something went wrong: the slot was taken, the door was shut. Think again. */
-    fail(p, why, alreadyStopped = false) {
+    /**
+     * Something went wrong: the slot was taken, the door was shut. The action
+     * is ruled out at that place for config.backoff minutes, and they think
+     * again. `what` names what failed when it never became their doing.
+     */
+    fail(p, why, alreadyStopped = false, what) {
       const w = this.w;
       const d = p.doing;
+      const now2 = w.s.now;
+      const n = p.fails && p.fails[0] === now2 ? p.fails[1] + 1 : 1;
+      p.fails = [now2, n];
+      if (n > MAX_FAILS && d?.kind === "wait" && !alreadyStopped) return;
+      const failed = what ?? (d && d.kind !== "wait" ? { action: d.action, place: d.kind === "travel" ? d.to ?? null : d.place } : null);
       if (d && !alreadyStopped) {
         p.doing = null;
-        const frac = clamp((w.s.now - d.start) / Math.max(1e-6, d.end - d.start));
+        const frac = clamp((now2 - d.start) / Math.max(1e-6, d.end - d.start));
         if (d.kind === "act") this.complete(p, d, frac, true);
         else if (d.kind === "travel") p.place = frac >= 0.5 ? d.to ?? null : d.from ?? null;
       } else if (alreadyStopped) p.doing = null;
       w.log("failed", p.id, { why });
       w.emit("failed", { id: p.id, why });
       for (const m of w.hooks) m.failed?.(p, why);
+      if (failed) {
+        for (const k in p.cool) if (k.startsWith("@fail:") && p.cool[k] <= now2) delete p.cool[k];
+        p.cool[backoffKey(failed.action, failed.place)] = now2 + w.config.backoff;
+      }
+      if (n >= MAX_FAILS) {
+        if (p.plan && w.mentat) w.mentat.suspend(p);
+        this.idle(p);
+        return;
+      }
       if (p.plan && w.mentat) {
         const next = w.mentat.stepFailed(p, why);
         if (next) {
@@ -1516,7 +1538,6 @@ var Tyrell = (() => {
           return;
         }
       }
-      p.cool["@fail:" + (d?.action ?? "")] = w.s.now + 15;
       this.think(p);
     }
     /** The game says they're done early. */
@@ -2206,6 +2227,7 @@ var Tyrell = (() => {
     travelScale: 30,
     placesPerAction: 4,
     idle: 20,
+    backoff: 15,
     recheck: 30,
     budgetMs: 4,
     logSize: 1e3,

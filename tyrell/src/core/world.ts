@@ -46,6 +46,7 @@ export const DEFAULT_CONFIG: Config = {
   travelScale: 30,
   placesPerAction: 4,
   idle: 20,
+  backoff: 15,
   recheck: 30,
   budgetMs: 4,
   logSize: 1000,

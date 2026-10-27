@@ -53,8 +53,15 @@ export declare class Entmoot {
     private afterStep;
     /** Stops what they're doing, keeping what they got from it so far. */
     interrupt(p: PersonState, why: string, suspendPlan: boolean): void;
-    /** Something went wrong: the slot was taken, the door was shut. Think again. */
-    fail(p: PersonState, why: string, alreadyStopped?: boolean): void;
+    /**
+     * Something went wrong: the slot was taken, the door was shut. The action
+     * is ruled out at that place for config.backoff minutes, and they think
+     * again. `what` names what failed when it never became their doing.
+     */
+    fail(p: PersonState, why: string, alreadyStopped?: boolean, what?: {
+        action: Id;
+        place: Id | null;
+    }): void;
     /** The game says they're done early. */
     finishNow(p: PersonState): void;
     /** Re-checks for urgent needs and stack changes while busy. */

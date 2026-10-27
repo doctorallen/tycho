@@ -45,7 +45,7 @@ Public input methods (safe from game code): `world.person`, `fact(key, value)`, 
 8. **One-time setup inputs** (starting money in purses, incomes, rent, partners, secrets) guarded with `if (!world.kept('setup')) { ...; world.keep('setup', true); }`.
 9. **Load** a save if there is one: `world.load(saved)`.
 10. **Wire bodies**: `world.focus([level])` on start and on every level change (or `shell.near`); listeners for `embody`, `step`, `disembody`; position walkers from `travel.start`/`travel.end` and `world.now`; refresh a body from `world.body(id)` when `world.now >= body.end`.
-11. **Wire reports from the game**: `world.sense({ kind, actor: 'player', what, place, seenBy })` with `seenBy` from the game's geometry; `world.did('player', verb, { for: id, what })`; `world.report(id, 'failed', why)` when a body truly can't proceed (after changing something so it won't be chosen again at once).
+11. **Wire reports from the game**: `world.sense({ kind, actor: 'player', what, place, seenBy })` with `seenBy` from the game's geometry; `world.did('player', verb, { for: id, what })`; `world.report(id, 'failed', why)` when a body truly can't proceed (the action is then ruled out at that place for `config.backoff` minutes; if the obstacle lasts, change something, such as a `closed:<id>` fact, so it isn't tried again later).
 12. **Wire talk**: `world.cityspeak.choose` / `say`, the `bark` event; Joi only if asked for.
 13. **Save** with `world.save()` inside the game's save; restore with `world.load`. Keep game state that must rewind with `world.keep`.
 14. **Test**: run `Tyrell.VoightKampff.run({ build: (seed) => buildWorld(seed), days: 7 })` and require `passed` (in CI too).
@@ -154,7 +154,7 @@ console.log(world.describe('mo'));
 
 **Bodies**: `{ id, name, place, slot?, action, next?, pose, target?, progress, start, end, travel?: { from, to, start, end, f }, emotion?, mood?, with?, data? }`. `place` is `null` while walking. `action` is `'travel'` while walking and `'wait'` while idle. `progress` and `travel.f` are as of when the body was made: recompute from `world.now`.
 
-**`world.report(id, 'failed' | 'done', reason?)`**: `'failed'` stops the walk (ending at `to` past halfway, else `from`) or action (partial relief), emits `failed`, replans a plan, and makes them think. `'done'` ends it now with full effect. Both inputs.
+**`world.report(id, 'failed' | 'done', reason?)`**: `'failed'` stops the walk (ending at `to` past halfway, else `from`) or action (partial relief), emits `failed`, rules the action out at that place for `config.backoff` (15) minutes, replans a plan, and makes them think. More than ten failures for one person at one moment make them wait `config.idle` minutes instead, so a listener that fails every `step` can't loop. `'done'` ends it now with full effect. Both inputs.
 
 **Custom input**: `world.defineInput(name, (...args) => result)`, defined on every start before loading or seeking. Call with `world.input(name, argsArray)`. Arguments plain JSON. The handler may change state directly.
 
@@ -186,7 +186,7 @@ console.log(world.describe('mo'));
 | Expecting an input from a listener to apply at once | The state hasn't changed yet; `world.input` returned `undefined` | Inputs in listeners are deferred to the end of the event; react to the next event instead |
 | Writing `world.s` or calling engine methods from game code | Works until a rewind or replay, then the world diverges | Use an input; for anything missing, `world.defineInput` |
 | Shell travel times that don't match walking speed | Sprites arrive before or after Tyrell's timetable; near and far disagree | Return the route length divided by walking speed, or place walkers by `travel.f` |
-| Reporting `'failed'` when the obstacle stays | The person chooses the same thing again at once and fails forever (no back-off in this version): an endless loop inside one call | Change something first (a `closed:<id>` fact, a fact the action's `if` reads), or don't report |
+| Reporting `'failed'` when the obstacle stays | The person tries again each time the back-off (`config.backoff`, 15 minutes) runs out, and fails again | Change something too (a `closed:<id>` fact, a fact the action's `if` reads) |
 | `SlotDef.who` restrictions | Not checked when deciding: people who aren't allowed choose it, walk there and fail, forever | Put the same conditions on the action's `who` or `if` |
 | `'go:home'` (or any spec) in a task's steps | `go:` takes a literal place id; an unknown id walks forever | Use a real place id, or an action step |
 | Calling `load`, `seek` or `tick` from a listener | The clock moves on with the old queue: time and events go out of step | Set a flag; act on it after the frame's call returns |

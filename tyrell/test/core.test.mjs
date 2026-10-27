@@ -177,6 +177,33 @@ test('a body that fails sends the person back to think', () => {
   assert.ok(p.doing);
 });
 
+test('a failure backs off: what failed is ruled out at that place for a while', () => {
+  const w = tiny();
+  const p = w.person('ana', { home: 'home_a', needs: { hunger: 0.95 } });
+  w.focus(['main', 'homes']);
+  let reports = 0;
+  // a body that can never get through the door of anywhere that serves food
+  w.on('step', (b) => { if (b.id === 'ana' && b.next === 'eat' && reports < 200) { reports++; w.report('ana', 'failed', 'the door stuck'); } });
+  w.advance(1);
+  assert.ok(reports <= 2, `failed ${reports} times in a row`); // the cafe and the diner, once each
+  assert.match(w.whyNot('ana', 'eat'), /failed recently/);
+  w.advance(w.config.backoff + 1);
+  assert.doesNotMatch(w.whyNot('ana', 'eat'), /failed recently/, 'and after a while it can be tried again');
+  void p;
+});
+
+test('failing in a loop stops: someone who fails again and again at one moment rests', () => {
+  const w = tiny();
+  const p = w.person('ana', { home: 'home_a', needs: { hunger: 0.95 } });
+  w.focus(['main', 'homes']);
+  let reports = 0;
+  // a body that fails at everything
+  w.on('step', (b) => { if (b.id === 'ana' && reports < 500) { reports++; w.report('ana', 'failed', 'nothing works'); } });
+  w.advance(1);
+  assert.ok(reports < 20, `failed ${reports} times at one moment`);
+  assert.equal(p.doing?.kind, 'wait');
+});
+
 test('travel uses the shell when there is one', () => {
   const w = Tyrell.create({ seed: 's', shell: { travel: (a, b) => (a === b ? 0 : 42) } });
   w.need({ id: 'hunger', rise: 0.1 });

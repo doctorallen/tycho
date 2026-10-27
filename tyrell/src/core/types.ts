@@ -377,6 +377,8 @@ export interface PersonState {
   /** Following someone (moving as one). */
   follow?: Id;
   born?: Minutes;
+  /** Failures at one moment: [time, how many] (a guard against failing in a loop). */
+  fails?: [Minutes, number];
 }
 
 /** An order from the story layer: overrides job and routine. */
@@ -505,6 +507,8 @@ export interface Config {
   placesPerAction: number;
   /** Minutes before someone idle thinks again. Default 20. */
   idle: number;
+  /** Minutes an action is ruled out at a place after it failed there. Default 15. */
+  backoff: number;
   /** Minutes between thoughts while traveling or busy for checking urgent needs. Default 30. */
   recheck: number;
   /** Milliseconds of thinking per frame. Default 4. */

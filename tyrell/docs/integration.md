@@ -177,12 +177,12 @@ world.report('ruth', 'done');                           // she's finished early
 
 | Report | Effect |
 |---|---|
-| `'failed'` | The current walk or action stops. A walk ends at the place they're nearest (`to` past halfway, else `from`); an action keeps the relief it gave so far. The `failed` event and log entry, a plan replans, and they think again |
+| `'failed'` | The current walk or action stops. A walk ends at the place they're nearest (`to` past halfway, else `from`); an action keeps the relief it gave so far. The `failed` event and log entry; the action is ruled out at that place for `config.backoff` minutes (15); a plan replans, and they think again |
 | `'done'` | The current walk or action ends now, as if it ran its course: a walk arrives, an action gives its full relief and effects |
 
 Both are inputs: a report made inside a `step` listener is deferred to the end of that event and recorded there.
 
-Make sure a failure can't repeat forever. This version doesn't back off after a failure, so if the person chooses the same thing again and the body fails it again at once, the loop never ends. Fail only when the obstacle is real, and change something (a fact, a closed place) so the next choice differs:
+A failure backs off: the action that failed is ruled out at that place for `config.backoff` minutes (15 by default), so the person chooses something else (the inspector says `failed recently`), and may try it again after that. Someone who fails over and over at one moment (a listener that reports a failure for every `step`) stops choosing after ten failures and waits `config.idle` minutes instead. So a failure can't loop, but an obstacle that stays makes them fail again each time the back-off runs out. Fail only when the obstacle is real, and when it lasts, change something (a fact, a closed place) so nobody chooses it:
 
 ```js
 world.fact('closed:vault', true);          // now nobody chooses it
@@ -369,7 +369,7 @@ Games like *Merryfolk* show the whole village on one map, with everyone visible 
 - [ ] `world.focus([...])` on start, after loading into a new world, and on every level change (or `shell.near`).
 - [ ] `embody`, `step`, `disembody` handled; bodies refreshed when their `end` passes.
 - [ ] Walks drawn from `travel.f`, or shell travel times that match walking speed.
-- [ ] `world.report(id, 'failed')` only for real obstacles, with something changed so it can't loop.
+- [ ] `world.report(id, 'failed')` only for real obstacles, with something changed when the obstacle lasts.
 - [ ] `world.sense` and `world.did` with `seenBy` from the game's own geometry.
 - [ ] No writes to `world.s` or engine-side methods from game code; custom inputs for anything else.
 - [ ] Facts pushed with `world.fact`, not answered live by `shell.check`.

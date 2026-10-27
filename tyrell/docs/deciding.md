@@ -257,7 +257,7 @@ Relief beyond what the person needs counts for nothing (eating when barely hungr
 | Cityspeak | `<practice>: <role>`: the practice's `boost` (1.5) for role actions of people filling the role |
 | your modules | Whatever `consider` returns |
 
-**Ruled out** before weighing, with the reason shown in the inspector: no such action; needs a job they don't have; `who` fails; cooling down; can't get there (infinite travel); `hours` don't include the arrival time; the place is closed at arrival (except staff, above); no free slot (unless they already hold it); `if` fails; the target isn't around; or a module blocks it (Ceres: can't afford it, sold out, needs an item).
+**Ruled out** before weighing, with the reason shown in the inspector: no such action; needs a job they don't have; `who` fails; cooling down; failed at that place in the last `config.backoff` minutes (`failed recently`); can't get there (infinite travel); `hours` don't include the arrival time; the place is closed at arrival (except staff, above); no free slot (unless they already hold it); `if` fails; the target isn't around; or a module blocks it (Ceres: can't afford it, sold out, needs an item).
 
 Slot `who` conditions ([places](places.md#slots)) are only checked when the slot is claimed, not here. Someone who isn't allowed the slot can choose the action, walk there and fail on arrival.
 
@@ -364,6 +364,7 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `travelScale` | 30 | Travel factor: `1 / (1 + minutes / travelScale)` |
 | `placesPerAction` | 4 | How many candidate places (nearest first) to weigh per action |
 | `idle` | 20 | Minutes someone with nothing to do waits before thinking again |
+| `backoff` | 15 | Minutes an action is ruled out at a place after it failed there (a closed door, a taken slot, a body's report) |
 | `recheck` | 30 | Declared but not read by this version of the engine |
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame |
 | `logSize` | 1000 | Westmarch log entries kept (the type comment says 3000; the code's default is 1000) |

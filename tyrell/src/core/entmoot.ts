@@ -9,9 +9,13 @@
 // for the bar arrives at the same minute whether or not anyone watched.
 import type { Body, Candidate, Doing, Id, PersonState, QueueItem, Value } from './types';
 import type { World } from './world';
+import { backoffKey } from './bicameral';
 import { DAY, HOUR, clamp, heapPeek, heapPop, heapPush, hourOf } from './util';
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/** Failures for one person at one moment before they rest instead of choosing again. */
+const MAX_FAILS = 10;
 
 export class Entmoot {
   /** Regions the game has loaded (not saved: the game says it again after a load). */
@@ -280,7 +284,7 @@ export class Entmoot {
     // the slot
     if (a.slot && place) {
       if (p.slot && p.place && p.slot !== a.slot) w.ring.release(p.place, p.slot, p.id);
-      if (!w.ring.claim(place, a.slot, p.id)) { this.fail(p, `no free ${a.slot} at ${place}`, true); return; }
+      if (!w.ring.claim(place, a.slot, p.id)) { this.fail(p, `no free ${a.slot} at ${place}`, true, { action: a.id, place }); return; }
       p.slot = a.slot;
     } else if (p.slot && p.place) { w.ring.release(p.place, p.slot, p.id); delete p.slot; }
     // how long
@@ -321,7 +325,7 @@ export class Entmoot {
       if (d.fill === false) c.fill = false;
       // still worth doing? (the place may have closed while they walked)
       const why = w.mind.blockedReason(p, c);
-      if (why) { this.fail(p, why, true); return; }
+      if (why) { this.fail(p, why, true, { action: d.action, place: p.place }); return; }
       this.act(p, c);
       return;
     }
@@ -385,25 +389,44 @@ export class Entmoot {
     w.log('interrupted', p.id, { action: d.action, why });
   }
 
-  /** Something went wrong: the slot was taken, the door was shut. Think again. */
-  fail(p: PersonState, why: string, alreadyStopped = false): void {
+  /**
+   * Something went wrong: the slot was taken, the door was shut. The action
+   * is ruled out at that place for config.backoff minutes, and they think
+   * again. `what` names what failed when it never became their doing.
+   */
+  fail(p: PersonState, why: string, alreadyStopped = false, what?: { action: Id; place: Id | null }): void {
     const w = this.w;
     const d = p.doing;
+    const now = w.s.now;
+    // a guard against failing in a loop: count the failures at this moment
+    const n = p.fails && p.fails[0] === now ? p.fails[1] + 1 : 1;
+    p.fails = [now, n];
+    if (n > MAX_FAILS && d?.kind === 'wait' && !alreadyStopped) return; // resting already: leave them be
+    const failed = what ?? (d && d.kind !== 'wait' ? { action: d.action, place: d.kind === 'travel' ? d.to ?? null : d.place } : null);
     if (d && !alreadyStopped) {
       p.doing = null;
-      const frac = clamp((w.s.now - d.start) / Math.max(1e-6, d.end - d.start));
+      const frac = clamp((now - d.start) / Math.max(1e-6, d.end - d.start));
       if (d.kind === 'act') this.complete(p, d, frac, true);
       else if (d.kind === 'travel') p.place = frac >= 0.5 ? d.to ?? null : d.from ?? null;
     } else if (alreadyStopped) p.doing = null;
     w.log('failed', p.id, { why });
     w.emit('failed', { id: p.id, why });
     for (const m of w.hooks) (m as any).failed?.(p, why);
+    // back off: don't choose the same thing at the same place again at once
+    if (failed) {
+      for (const k in p.cool) if (k.startsWith('@fail:') && p.cool[k] <= now) delete p.cool[k];
+      p.cool[backoffKey(failed.action, failed.place)] = now + w.config.backoff;
+    }
+    if (n >= MAX_FAILS) {
+      // too many at once: set any plan aside and rest a while instead of choosing again
+      if (p.plan && w.mentat) w.mentat.suspend(p);
+      this.idle(p);
+      return;
+    }
     if (p.plan && w.mentat) {
       const next = w.mentat.stepFailed(p, why);
       if (next) { this.begin(p, next); return; }
     }
-    // don't spin: try again in a moment
-    p.cool['@fail:' + (d?.action ?? '')] = w.s.now + 15;
     this.think(p);
   }
 

@@ -62,7 +62,7 @@ Above the needs sit the layers that make a life orderly: a **routine** (be at th
 Every time someone decides what to do, Bicameral (the core's decision maker) runs four steps:
 
 1. **What's required.** The stack is read top down: a directive from the story (rank 3), the job if they're on shift (rank 2), the routine entry for this hour (rank 1). Each requirement becomes an option at its rank.
-2. **What's on offer.** Every action and task the person could do freely, at every place that offers it (the nearest few places per action), is listed. Options are ruled out with a reason: not for them, cooling down, unreachable, closed when they'd arrive, no free slot, a condition fails, a module blocks it (can't afford it, sold out).
+2. **What's on offer.** Every action and task the person could do freely, at every place that offers it (the nearest few places per action), is listed. Options are ruled out with a reason: not for them, cooling down, failed there recently, unreachable, closed when they'd arrive, no free slot, a condition fails, a module blocks it (can't afford it, sold out).
 3. **What it's worth.** Each option gets a weight: the relief it gives each need, scaled by how urgent the need is, plus a flat `base`; then multiplied by considerations (response curves over inputs like the hour or a trait), habit, travel time, and factors from the modules (mood, regard, price, the situation at the place). An urgent need lifts an option that really meets it above the routine; a desperate one lifts it above work.
 4. **The pick.** Only options at the top rank count. Those under a share of the best weight are cut, the best few are kept, and one is drawn at random, weighted, from the person's own seeded stream.
 
@@ -82,7 +82,7 @@ What someone is doing is a `Doing` with a kind:
 
 People think again when an action or walk ends, when they've been idle a while, and at the moments something changes for them: a routine entry starts, a shift starts or ends, a directive runs out, or a need is about to become urgent. Those moments are queued too, so an urgent need wakes someone at the right minute without anything polling.
 
-When a walk ends, the person arrives and checks the action is still possible (the place may have closed on the way). If it isn't, the action **fails**, and they think again. The game can make things fail too (a body that couldn't get through a door) with `world.report(id, 'failed')`.
+When a walk ends, the person arrives and checks the action is still possible (the place may have closed on the way). If it isn't, the action **fails**: it's ruled out at that place for a while (`config.backoff`, 15 minutes), and they think again. The game can make things fail too (a body that couldn't get through a door) with `world.report(id, 'failed')`.
 
 ## Near and far: one mind, two ways to carry it out
 

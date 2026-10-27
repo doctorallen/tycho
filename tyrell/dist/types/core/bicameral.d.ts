@@ -15,6 +15,8 @@ export interface Requirement {
 }
 /** Evaluates a response curve at x in [0, 1]. */
 export declare function curveAt(curve: Curve | undefined, x: number): number;
+/** The cooldown key that rules an action out at a place for a while after it failed there. */
+export declare const backoffKey: (action: Id, place: Id | null | undefined) => string;
 export declare class Bicameral {
     private w;
     constructor(w: World);

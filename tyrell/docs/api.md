@@ -62,7 +62,8 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `minutesPerSecond` | 1 | | `travelScale` | 30 |
 | `week` | 7 | | `placesPerAction` | 4 |
 | `urgent` | 0.85 | | `idle` | 20 |
-| `urgentRank` | 1.5 | | `recheck` | 30 (not read) |
+| `urgentRank` | 1.5 | | `backoff` | 15 |
+| | | | `recheck` | 30 (not read) |
 | `desperateRank` | 2.5 | | `budgetMs` | 4 |
 | `cut` | 0.25 | | `logSize` | 1000 |
 | `top` | 3 | | `decisions` | 12 |
@@ -347,7 +348,8 @@ A person in the state (`world.get(id)`):
 | `slot` | The slot they hold |
 | `doing` | A Doing, or `null` |
 | `habits` | By action: `[fast, slow]` |
-| `cool` | By action: when its cooldown ends |
+| `cool` | By action: when its cooldown ends; and by `'@fail:<action>@<place>'`, when the back-off after a failure there ends |
+| `fails` | `[time, count]`: failures at the latest moment they failed (the loop guard) |
 | `last`, `lastEnd` | The last action and when it ended |
 | `n` | Draws taken from their stream |
 | `plan`, `suspended` | Mentat's plan and plans set aside |

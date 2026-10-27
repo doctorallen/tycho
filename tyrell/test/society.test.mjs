@@ -195,6 +195,19 @@ test('said:<key> remembers lines by their key; older saves keep what was said', 
   assert.equal(y.lang.test('said:mara_bread', y.ctx(y.get('mara'))), true);
 });
 
+test('an action with says says a line on that topic when it starts', () => {
+  const w = tiny({ start: 10 * HOUR });
+  w.cityspeak.line({ key: 'order_up', topic: 'ordering', text: 'Noodles, please.' });
+  w.action({ id: 'order', at: 'cafe', minutes: 5, says: 'ordering', rank: -1 });
+  const p = w.person('ana', { home: 'home_a', place: 'cafe' });
+  const said = [];
+  w.on('say', (s) => said.push(s));
+  w.direct('ana', { do: 'order' });
+  assert.equal(p.doing?.action, 'order');
+  assert.deepEqual(said.map((s) => s.key), ['order_up']);
+  assert.ok(w.lang.test('said:order_up', w.ctx(p)));
+});
+
 test('practices make role actions more appealing to those who fill the role', () => {
   const w = rocinante({ start: 18 * HOUR });
   w.advance(1);
@@ -329,6 +342,17 @@ test('stock runs out and restocks; household goods go in the pantry', () => {
   void mara;
 });
 
+test('goods: a kind that conditions can count, and a label the inspector shows', () => {
+  const w = rocinante({ start: 9 * HOUR });
+  w.ceres.good({ id: 'apple', kind: 'food', label: 'an apple' });
+  w.give('kofi', 'apple', 2);
+  w.give('kofi', 'food', 1);
+  const ctx = w.ctx(w.get('kofi'));
+  assert.equal(w.lang.value('goods:food', ctx), 3);
+  assert.equal(w.lang.value('goods:gadget', ctx), 0);
+  assert.match(w.describe('kofi'), /an apple x2/);
+});
+
 test('wages for work, rent and incomes on their days', () => {
   const w = rocinante({ start: 16 * HOUR });
   const ines = w.get('ines');
@@ -445,6 +469,13 @@ test('a listener for every event gets the real event name', () => {
   assert.ok(witnessed, 'witnessed arrives as witnessed');
   assert.equal(witnessed.kind, 'theft', 'with its payload as before');
   assert.ok(seen.some((e) => e.event === 'log' && e.kind === 'log'));
+});
+
+test('a directive\'s label is logged and shown', () => {
+  const w = rocinante({ start: 10 * HOUR });
+  w.direct('kofi', { do: 'walk', at: 'park', label: 'meet the player at the park' });
+  assert.match(w.describe('kofi'), /directed to: walk \(meet the player at the park\)/);
+  assert.equal(w.westmarch.find({ k: 'directed', who: 'kofi' })[0].d.label, 'meet the player at the park');
 });
 
 test('Westmarch: the log and a chronicle of someone\'s day', () => {

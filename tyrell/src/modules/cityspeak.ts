@@ -314,6 +314,13 @@ export class Cityspeak implements Module {
   // Social acts
   // -------------------------------------------------------------------------
 
+  /** An action that says something on starting (its `says` topic) says it. */
+  started(p: PersonState, d: Doing): void {
+    if (d.kind !== 'act') return;
+    const topic = this.w.actions.get(d.action)?.says;
+    if (topic) this.applySay(p.id, d.target ? { topic, to: d.target } : { topic });
+  }
+
   ended(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
     if (d.kind !== 'act' || interrupted || frac < 0.5 || !d.target) return;
     const a = this.w.actions.get(d.action);

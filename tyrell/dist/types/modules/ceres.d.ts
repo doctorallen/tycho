@@ -3,11 +3,12 @@ import type { Candidate, Doing, Id, PersonState, Value } from '../core/types';
 import type { World } from '../core/world';
 export interface GoodDef {
     id: Id;
-    /** A kind of good: 'food', 'drink', 'part'... */
+    /** A kind of good: 'food', 'drink', 'part'... The term goods:<kind> counts every good of a kind. */
     kind?: string;
     price?: number;
     /** Needs it meets when used up: { hunger: 0.4 }. */
     satisfies?: Record<Id, number>;
+    /** A readable name: Palantír shows it. */
     label?: string;
 }
 interface Rent {
@@ -37,6 +38,8 @@ export declare class Ceres implements Module {
     private get st();
     attach(w: World): void;
     good(def: GoodDef): this;
+    /** How many goods of a kind a person can use (their own and their household's pantry). */
+    ofKind(p: PersonState, kind: string): number;
     /** The purse a person spends from: their household's if it shares one, else their own. */
     purseOf(id: Id): {
         kind: 'person' | 'household';

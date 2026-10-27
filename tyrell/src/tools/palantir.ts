@@ -84,7 +84,7 @@ export class Palantir {
     if (needs) lines.push(`needs: ${needs}`);
     const money = p.vars.money;
     if (money !== undefined) lines.push(`money: ${money}`);
-    const inv = Object.entries(p.inv).map(([k, v]) => `${k} x${v}`).join(', ');
+    const inv = Object.entries(p.inv).map(([k, v]) => `${w.ceres?.goods.get(k)?.label ?? k} x${v}`).join(', ');
     if (inv) lines.push(`carrying: ${inv}`);
     const rv = w.reverie;
     if (rv) {
@@ -98,7 +98,7 @@ export class Palantir {
       const top = p.plan.stack[p.plan.stack.length - 1];
       lines.push(`plan: ${p.plan.task}${top ? `, step ${top.i + 1} of ${top.steps.length} of ${top.task}` : ''}`);
     }
-    if (p.directive) lines.push(`directed to: ${p.directive.do}${p.directive.done ? ' (done)' : ''}`);
+    if (p.directive) lines.push(`directed to: ${p.directive.do}${p.directive.label ? ` (${p.directive.label})` : ''}${p.directive.done ? ' (done)' : ''}`);
     const req = w.mind.required(p).map((r) => `${r.layer}: ${r.do}${r.at ? ' at ' + r.at : ''}`).join('; ');
     if (req) lines.push(`expected: ${req}`);
     const last = this.why(id);

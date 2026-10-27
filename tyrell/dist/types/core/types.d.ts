@@ -150,7 +150,7 @@ export interface ActionDef {
     targetIf?: Cond[];
     /** What the game should show: a pose name ('sit', 'work', 'walk'...). */
     pose?: string;
-    /** A line key to say on starting. */
+    /** A line topic said on starting (Cityspeak): the person's best line on it, to the target if there is one, as with cityspeak.say. */
     says?: string;
     /** Values this action goes against: doing it adds stress to those who hold them (Reverie). */
     against?: string[];
@@ -360,6 +360,7 @@ export interface Directive {
     done?: boolean;
     /** Repeat until `until`. */
     repeat?: boolean;
+    /** What it's for, in words: shown by Palantír and logged. */
     label?: string;
 }
 /**

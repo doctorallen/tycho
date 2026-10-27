@@ -58,7 +58,8 @@ world.action({ id: 'eat_home', at: 'home', minutes: 25, relieves: { hunger: 0.55
 | `id` | The good's id, as used in `buys`, `uses`, `gives`, `has:`, inventories |
 | `price` | Its price, read by the `price:<good>` term |
 | `satisfies` | Needs it meets when used up: `{ hunger: 0.2 }` lowers hunger by 0.2 per unit when an action `uses` it, at the start |
-| `kind`, `label` | For the game; Ceres doesn't read them in this version |
+| `kind` | A kind of good (`'food'`, `'part'`): the `goods:<kind>` term counts every good of that kind a person can use |
+| `label` | A readable name: `world.describe` shows it for what people carry |
 
 Goods don't have to be declared: any id works in `buys`, `uses` and `gives`. Declare a good to give it a price or `satisfies`.
 
@@ -119,6 +120,7 @@ Stock is in each place's state (`world.s.places[id].stock`); a person's own mone
 | Method | Returns | |
 |---|---|---|
 | `good(def)` | this | Declares a good |
+| `ofKind(person, kind)` | number | How many goods of a kind a person (a PersonState) can use |
 | `money(id)` | number | What a person can spend |
 | `purseOf(id)` | `{ kind, id }` | Where a person's money is: `'person'` or `'household'` |
 | `pay(from, to, amount, why = 'paid')` | void | **Input.** Moves money (`'world'` for outside) |
@@ -135,7 +137,7 @@ Stock is in each place's state (`world.s.places[id].stock`); a person's own mone
 
 ## Terms and effects
 
-Terms: `purse`, `price:<good>`, `stock:<place>.<item>` (or `stock:<item>` at the context's place), `afford:<n>`. Effect: `pay:<to>=n` (from the person's purse; `pay=n` pays the world). See [Conditions](../conditions.md#ceres).
+Terms: `purse`, `price:<good>`, `stock:<place>.<item>` (or `stock:<item>` at the context's place), `afford:<n>`, `goods:<kind>`. Effect: `pay:<to>=n` (from the person's purse; `pay=n` pays the world). See [Conditions](../conditions.md#ceres).
 
 ## Events and log
 

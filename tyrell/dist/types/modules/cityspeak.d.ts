@@ -141,6 +141,8 @@ export declare class Cityspeak implements Module {
     /** The mood of the room: everyone at the place, plus the practices' tone. */
     room(place: Id): number;
     consider(p: PersonState, c: Candidate): Array<[string, number]> | void;
+    /** An action that says something on starting (its `says` topic) says it. */
+    started(p: PersonState, d: Doing): void;
     ended(p: PersonState, d: Doing, frac: number, interrupted: boolean): void;
     /** Resolves a social act: does the target accept? Applies the outcome. */
     resolve(actId: Id, from: Id, to: Id): boolean;

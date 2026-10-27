@@ -2096,7 +2096,7 @@ var Palantir = class {
     if (needs) lines.push(`needs: ${needs}`);
     const money = p.vars.money;
     if (money !== void 0) lines.push(`money: ${money}`);
-    const inv = Object.entries(p.inv).map(([k, v]) => `${k} x${v}`).join(", ");
+    const inv = Object.entries(p.inv).map(([k, v]) => `${w.ceres?.goods.get(k)?.label ?? k} x${v}`).join(", ");
     if (inv) lines.push(`carrying: ${inv}`);
     const rv = w.reverie;
     if (rv) {
@@ -2110,7 +2110,7 @@ var Palantir = class {
       const top = p.plan.stack[p.plan.stack.length - 1];
       lines.push(`plan: ${p.plan.task}${top ? `, step ${top.i + 1} of ${top.steps.length} of ${top.task}` : ""}`);
     }
-    if (p.directive) lines.push(`directed to: ${p.directive.do}${p.directive.done ? " (done)" : ""}`);
+    if (p.directive) lines.push(`directed to: ${p.directive.do}${p.directive.label ? ` (${p.directive.label})` : ""}${p.directive.done ? " (done)" : ""}`);
     const req = w.mind.required(p).map((r) => `${r.layer}: ${r.do}${r.at ? " at " + r.at : ""}`).join("; ");
     if (req) lines.push(`expected: ${req}`);
     const last = this.why(id);
@@ -2946,7 +2946,7 @@ var World = class {
       const p = this.s.people[id];
       if (!p) return;
       p.directive = d ? { ...d } : null;
-      this.log(d ? "directed" : "released", id, d ? { do: d.do } : void 0);
+      this.log(d ? "directed" : "released", id, d ? { do: d.do, ...d.label ? { label: d.label } : {} } : void 0);
       this.clock.rethink(p, "directive");
     });
     this.defineInput("reward", (id, action, amount) => {
@@ -4328,6 +4328,12 @@ var Cityspeak = class {
   // -------------------------------------------------------------------------
   // Social acts
   // -------------------------------------------------------------------------
+  /** An action that says something on starting (its `says` topic) says it. */
+  started(p, d) {
+    if (d.kind !== "act") return;
+    const topic = this.w.actions.get(d.action)?.says;
+    if (topic) this.applySay(p.id, d.target ? { topic, to: d.target } : { topic });
+  }
   ended(p, d, frac, interrupted) {
     if (d.kind !== "act" || interrupted || frac < 0.5 || !d.target) return;
     const a = this.w.actions.get(d.action);
@@ -4883,6 +4889,7 @@ var Ceres = class {
       return this.stock(pl, item);
     });
     w.lang.term("afford", (c, a) => c.person ? this.money(c.person.id) >= Number(a) : false);
+    w.lang.term("goods", (c, a) => c.person ? this.ofKind(c.person, a) : 0);
     w.lang.effect("pay", (c, a, _op, v) => {
       if (c.person) this.transfer(c.person.id, a || "world", Number(v ?? 0), "pay");
     });
@@ -4903,6 +4910,12 @@ var Ceres = class {
   good(def) {
     this.goods.set(def.id, def);
     return this;
+  }
+  /** How many goods of a kind a person can use (their own and their household's pantry). */
+  ofKind(p, kind) {
+    let n = 0;
+    for (const g of this.goods.values()) if (g.kind === kind) n += this.w.have(p, g.id);
+    return n;
   }
   // -------------------------------------------------------------------------
   // Money

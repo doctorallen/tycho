@@ -183,6 +183,7 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `price:<good>` | A good's declared price |
 | `stock:<place>.<item>` | Stock at a place; `stock:<item>` at the context's place |
 | `afford:<n>` | Their purse is at least `n` |
+| `goods:<kind>` | How many goods of that kind (`GoodDef.kind`) they can use: their own plus their household's pantry |
 
 ### Cradle
 

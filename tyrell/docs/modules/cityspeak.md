@@ -64,6 +64,7 @@ const back = world.cityspeak.answer(said, 'player');                            
 
 - `choose(who, { to?, topic? })` returns a `Said` or `null` and changes nothing.
 - `say(who, { to?, topic? })` is an input: it chooses, remembers it was said (for `once` and `cooldown`), applies the line's `then` effects (with the speaker as `person` and the listener as `target`), logs `said` and emits `say`. It returns the `Said`, or `null`. It applies at once even inside a listener.
+- An action with `says: '<topic>'` says the person's best line on that topic when it starts, the same way as `say` (to the action's target, if it has one).
 - `answer(said, by)` returns the listener's reply. A `reply` of `'topic:<x>'` chooses the listener's best line on topic `x` (to the first speaker); a reply key returns that line directly, with the first of its texts, without checking its conditions.
 
 `Said` is `{ who, key, text?, to?, topic?, reply? }`.

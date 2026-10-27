@@ -642,7 +642,7 @@ export class World {
       const p = this.s.people[id];
       if (!p) return;
       p.directive = d ? { ...d } : null;
-      this.log(d ? 'directed' : 'released', id, d ? { do: d.do } : undefined);
+      this.log(d ? 'directed' : 'released', id, d ? { do: d.do, ...(d.label ? { label: d.label } : {}) } : undefined);
       this.clock.rethink(p, 'directive');
     });
     this.defineInput('reward', (id: Id, action: Id, amount: number) => {

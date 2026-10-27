@@ -5,7 +5,7 @@
 //   prices    paid when an action starts, to whoever owns the place
 //   stock     places sell goods from stock, which runs out and restocks
 //   wages     paid per hour for work, at the end of a stint
-//   goods     have a kind, so a need can be met by any of several (Victoria 3)
+//   goods     have a kind, so conditions can ask for any of several (goods:food)
 //   rent      due every so many days; missing it is felt, and remembered
 //   affording people weigh prices against what they have, by thrift
 import type { Module } from '../core/module';
@@ -15,11 +15,12 @@ import { DAY, HOUR, clamp, round } from '../core/util';
 
 export interface GoodDef {
   id: Id;
-  /** A kind of good: 'food', 'drink', 'part'... */
+  /** A kind of good: 'food', 'drink', 'part'... The term goods:<kind> counts every good of a kind. */
   kind?: string;
   price?: number;
   /** Needs it meets when used up: { hunger: 0.4 }. */
   satisfies?: Record<Id, number>;
+  /** A readable name: Palantír shows it. */
   label?: string;
 }
 
@@ -40,6 +41,7 @@ export class Ceres implements Module {
     w.lang.term('price', (_c, a) => this.goods.get(a)?.price ?? 0);
     w.lang.term('stock', (c, a) => { const [pl, item] = a.includes('.') ? a.split('.') : [c.place ?? '', a]; return this.stock(pl, item); });
     w.lang.term('afford', (c, a) => (c.person ? this.money(c.person.id) >= Number(a) : false));
+    w.lang.term('goods', (c, a) => (c.person ? this.ofKind(c.person, a) : 0));
     w.lang.effect('pay', (c, a, _op, v) => { if (c.person) this.transfer(c.person.id, a || 'world', Number(v ?? 0), 'pay'); });
     w.defineInput('pay', (from: Id, to: Id, amount: number, why: string) => this.transfer(from, to, amount, why));
     w.defineInput('rent', (id: Id, amount: number, everyDays: number, to: Id | null) => {
@@ -56,6 +58,13 @@ export class Ceres implements Module {
   }
 
   good(def: GoodDef): this { this.goods.set(def.id, def); return this; }
+
+  /** How many goods of a kind a person can use (their own and their household's pantry). */
+  ofKind(p: PersonState, kind: string): number {
+    let n = 0;
+    for (const g of this.goods.values()) if (g.kind === kind) n += this.w.have(p, g.id);
+    return n;
+  }
 
   // -------------------------------------------------------------------------
   // Money

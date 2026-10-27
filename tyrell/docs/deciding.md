@@ -74,7 +74,7 @@ Every field of `ActionDef`:
 | `target` | `'person'` | none | Aimed at someone: one option per suitable person at the place (up to six) |
 | `targetIf` | Cond[] | none | Conditions on the target: `ctx.target` is the candidate (`'regard>0.2'`, `'target.is:child'`) |
 | `pose` | string | `'idle'` | What the body shows while doing it ('sit', 'work', 'sleep') |
-| `says` | string | none | Declared for a line key to say on starting; this version of the engine doesn't read it |
+| `says` | string | none | A line topic said when it starts (Cityspeak): the person's best line on that topic, to the target if there is one, as with `cityspeak.say` (remembered, its `then` applied, a `say` event) |
 | `against` | string[] | none | Values it goes against (Reverie): weighs less for people who hold them, and costs them stress and a guilty conscience |
 | `price` | number | none | Paid when it starts, to the place's owner (Ceres). Blocks it if they can't afford it |
 | `buys` | `{ item: n }` | none | Goods bought from the place's stock when it starts (Ceres) |
@@ -213,7 +213,7 @@ world.direct('kofi', null);                                                    /
 | `until` | none | Until this time (minutes). An action chosen by a directive with `until` fills to that time |
 | `rank` | 3 | The rank. Use something lower to let a job or urgent need win |
 | `repeat` | false | Keep doing it until `until`, not just once |
-| `label` | none | For your own use; the engine doesn't read it |
+| `label` | none | What it's for, in words: logged with `directed` and shown by `world.describe` |
 | `done` | (set by the engine) | Set when the action starts, or when the task's plan completes |
 
 A directive is active while it isn't done (or repeats) and `until` hasn't passed. It stays on the person (marked `done`) until you replace it or clear it with `null`. `world.direct` makes the person stop what they're doing and think again at once.

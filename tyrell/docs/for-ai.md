@@ -192,7 +192,6 @@ console.log(world.describe('mo'));
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
 | `chance:` in line conditions or inspected conditions | Looking (`choose`, barks, `whyNot`, Joi) advances a person's stream: watched and unwatched worlds differ | Use line `weight`s; keep `chance:` to actions' `if` |
-| Consideration inputs `'habit'`, `'crowd'`, `'price'` | Read 0 (not terms; `price` needs a good) | A function input: `(ctx) => ctx.world.ring.crowd(ctx.place)` |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |
 | Relying on `step` for every change | Idling (nothing to do) emits no `step` | Refresh from `world.body(id)` when `world.now >= body.end` |
 | A task whose methods' conditions can all fail | `no-plan`, the person idles 20 minutes and picks it again | Give the task `if` conditions, or a last method with none |

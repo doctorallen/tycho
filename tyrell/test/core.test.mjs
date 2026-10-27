@@ -272,6 +272,20 @@ test('considerations: curves, ranges, outputs and compensation', () => {
   assert.equal(Tyrell.curveAt('step', 0.6), 1);
 });
 
+test('consideration inputs: habit, crowd and price read the action, the place and its price', () => {
+  const w = tiny();
+  w.action({ id: 'coffee', at: 'cafe', slot: 'seat', minutes: 20, base: 0.3, price: 3 });
+  const p = w.person('ana', { home: 'home_a', vars: { money: 10 } });
+  w.reward('ana', 'coffee', 1);
+  w.ring.claim('cafe', 'seat', 'someone'); // one of three seats taken
+  const ctx = w.ctx(p, { action: 'coffee', place: 'cafe' });
+  assert.equal(w.mind.consider({ input: 'habit', range: [0, 4] }, ctx), w.mind.habit(p, 'coffee') / 4);
+  assert.ok(w.mind.habit(p, 'coffee') > 1);
+  assert.ok(Math.abs(w.mind.consider({ input: 'crowd' }, ctx) - 1 / 3) < 1e-9);
+  assert.equal(w.mind.consider({ input: 'price', range: [0, 10] }, ctx), 0.3);
+  assert.ok(w.lang.test('crowd:cafe>0.3', ctx), 'they work in conditions too');
+});
+
 test('habits learn from how things went, and rewards nudge them', () => {
   const w = tiny();
   const p = w.person('ana', { home: 'home_a' });

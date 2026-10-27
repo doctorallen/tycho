@@ -38,7 +38,7 @@ export class Ceres implements Module {
   attach(w: World): void {
     this.w = w;
     w.lang.term('purse', (c) => (c.person ? this.money(c.person.id) : 0));
-    w.lang.term('price', (_c, a) => this.goods.get(a)?.price ?? 0);
+    w.lang.term('price', (c, a) => (a ? this.goods.get(a)?.price ?? 0 : w.actions.get(c.action ?? '')?.price ?? 0));
     w.lang.term('stock', (c, a) => { const [pl, item] = a.includes('.') ? a.split('.') : [c.place ?? '', a]; return this.stock(pl, item); });
     w.lang.term('afford', (c, a) => (c.person ? this.money(c.person.id) >= Number(a) : false));
     w.lang.term('goods', (c, a) => (c.person ? this.ofKind(c.person, a) : 0));

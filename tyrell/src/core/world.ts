@@ -590,6 +590,8 @@ export class World {
     L.term('person', (c) => c.person?.id ?? null);
     L.term('place', (c, a) => (a ? c.place === a : c.place ?? null));
     L.term('home', (c) => c.person?.def.home ?? null);
+    L.term('habit', (c, a) => (c.person ? this.mind.habit(c.person, a || c.action || '') : 1));
+    L.term('crowd', (c, a) => { const pl = a || c.place || c.person?.place; return pl ? this.ring.crowd(pl) : 0; });
     // effects -------------------------------------------------------------
     L.effect('var', (c, a, op, v) => {
       if (!c.person) return;

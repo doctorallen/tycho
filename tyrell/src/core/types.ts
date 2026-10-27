@@ -60,10 +60,12 @@ export interface Consideration {
   /** A label for the inspector. */
   name?: string;
   /**
-   * The input. Strings: 'need.<id>', 'var.<name>', 'trait.<name>',
-   * 'value.<name>', 'hour', 'travel' (minutes), 'mood', 'stress', 'habit',
-   * 'regard' (toward the target), 'money', 'price', 'heat', 'crowd' (share of
-   * the place's slots taken), 'room' (mood of the room), or a function.
+   * The input: any term, or a function. Some useful ones: 'need.<id>',
+   * 'var.<name>', 'trait.<name>', 'value.<name>', 'hour', 'travel' (minutes),
+   * 'habit' (this person's habit for this action), 'crowd' (share of the
+   * place's slots taken, 0..1), 'money', 'price' (the action's price, Ceres),
+   * 'mood', 'stress' (Reverie), 'regard' (toward the target, Fellowship),
+   * 'heat' (Wormtongue), 'room' (mood of the room, Cityspeak).
    */
   input: string | ((ctx: Ctx) => number);
   /** The input range that maps to 0..1. Default [0, 1]. */

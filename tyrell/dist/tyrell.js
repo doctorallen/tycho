@@ -2883,6 +2883,11 @@ var Tyrell = (() => {
       L.term("person", (c) => c.person?.id ?? null);
       L.term("place", (c, a) => a ? c.place === a : c.place ?? null);
       L.term("home", (c) => c.person?.def.home ?? null);
+      L.term("habit", (c, a) => c.person ? this.mind.habit(c.person, a || c.action || "") : 1);
+      L.term("crowd", (c, a) => {
+        const pl = a || c.place || c.person?.place;
+        return pl ? this.ring.crowd(pl) : 0;
+      });
       L.effect("var", (c, a, op, v) => {
         if (!c.person) return;
         const name = a.startsWith("var.") ? a.slice(4) : a;
@@ -4883,7 +4888,7 @@ var Tyrell = (() => {
     attach(w) {
       this.w = w;
       w.lang.term("purse", (c) => c.person ? this.money(c.person.id) : 0);
-      w.lang.term("price", (_c, a) => this.goods.get(a)?.price ?? 0);
+      w.lang.term("price", (c, a) => a ? this.goods.get(a)?.price ?? 0 : w.actions.get(c.action ?? "")?.price ?? 0);
       w.lang.term("stock", (c, a) => {
         const [pl, item] = a.includes(".") ? a.split(".") : [c.place ?? "", a];
         return this.stock(pl, item);

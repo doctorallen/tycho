@@ -277,12 +277,12 @@ world.action({ id: 'gamble', at: 'tag:casino', minutes: 60, base: 0.2,
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | the input string | A label for the inspector |
-| `input` | required | A term from the [condition language](conditions.md) (`'need.hunger'`, `'trait.courage'`, `'hour'`, `'money'`, `'mood'`, `'regard'`...), `'travel'` (minutes to the place), or a function `(ctx) => number` |
+| `input` | required | A term from the [condition language](conditions.md) (`'need.hunger'`, `'trait.courage'`, `'hour'`, `'money'`, `'habit'`, `'crowd'`, `'price'`, `'mood'`, `'regard'`...), `'travel'` (minutes to the place), or a function `(ctx) => number` |
 | `range` | `[0, 1]` | The input range that maps to 0..1. Inputs outside it clamp |
 | `curve` | `'linear'` | How 0..1 maps to 0..1 |
 | `out` | `[0, 1]` | The output range the curve's 0..1 maps to. `[0.5, 1.5]` makes a consideration that can raise as well as lower |
 
-The input is read with the option's context: the person, the candidate `place`, the `target`, the `action`. Any term works; terms that don't exist read as a fact of that name (usually nothing, so 0). In this version the inputs `'habit'` and `'crowd'` mentioned in the type comments aren't terms (they read 0), and `'price'` needs a good (`'price.radio'`); use a function input for anything else, such as `(ctx) => ctx.world.ring.crowd(ctx.place)`.
+The input is read with the option's context: the person, the candidate `place`, the `target`, the `action`. Any term works; terms that don't exist read as a fact of that name (usually nothing, so 0). Some read the option itself: `'habit'` is the person's habit for this action (1 when they have none; habits run from 0.25 to 4, so give it a `range`), `'crowd'` is how full the place is (the share of its slots taken, 0..1), and `'price'` is the action's price (Ceres). Use a function input for anything else.
 
 Curves:
 

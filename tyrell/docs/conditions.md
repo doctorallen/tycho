@@ -107,6 +107,8 @@ Always available. "The person" is the context's person.
 | `person` | The person's id |
 | `place` | The context's place; `place:<id>` is true if it's that place |
 | `home` | The person's home id |
+| `habit`, `habit:<action>` | The person's habit weight for the context's action (or the one named): 1 with none, 0.25 to 4 |
+| `crowd`, `crowd:<place>` | How full a place is: the share of its slots taken, 0..1 (the context's place, else where the person is) |
 | any other word | The world fact of that name |
 
 ## Module terms
@@ -180,7 +182,7 @@ Each module registers its terms when it's switched on. With a module off, its te
 | Term | Value |
 |---|---|
 | `purse` | What the person can spend: their household's purse if it shares one, else their money |
-| `price:<good>` | A good's declared price |
+| `price:<good>` | A good's declared price. `price` alone is the context's action's `price` (a consideration's option) |
 | `stock:<place>.<item>` | Stock at a place; `stock:<item>` at the context's place |
 | `afford:<n>` | Their purse is at least `n` |
 | `goods:<kind>` | How many goods of that kind (`GoodDef.kind`) they can use: their own plus their household's pantry |

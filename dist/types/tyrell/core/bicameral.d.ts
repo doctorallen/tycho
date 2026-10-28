@@ -19,7 +19,11 @@ export declare function curveAt(curve: Curve | undefined, x: number): number;
 export declare const backoffKey: (action: Id, place: Id | null | undefined) => string;
 export declare class Bicameral {
     private w;
+    /** The modules that change how fast needs rise (found on first use). */
+    private rateHooks;
     constructor(w: World);
+    /** How fast a need rises for someone now, as a multiplier on its `rise` (modules' `rate`; 1 with none). */
+    riseMul(p: PersonState, need: Id): number;
     /** A need's level at time t (default now), counting any relief in progress. */
     level(p: PersonState, need: Id, t?: number): number;
     /**
@@ -27,6 +31,12 @@ export declare class Bicameral {
      * stored levels, for needs it changed the rate of. Called before relief.
      */
     settle(p: PersonState, d: Doing): void;
+    /**
+     * Keeps the rise so far in every need's stored level (relief in progress
+     * aside), so how fast needs rise can change from now on. Modules call it
+     * before their `rate` answer changes.
+     */
+    settleRise(p: PersonState): void;
     /** Sets a need's level now. */
     setLevel(p: PersonState, need: Id, v: number): void;
     /** Makes sure a person has every declared need. */

@@ -573,6 +573,15 @@ var backoffKey = (action, place) => `@fail:${action}@${place ?? ""}`;
 var Bicameral = class {
   constructor(w) {
     this.w = w;
+    /** The modules that change how fast needs rise (found on first use). */
+    this.rateHooks = null;
+  }
+  /** How fast a need rises for someone now, as a multiplier on its `rise` (modules' `rate`; 1 with none). */
+  riseMul(p, need) {
+    const hooks = this.rateHooks ?? (this.rateHooks = this.w.hooks.filter((m2) => m2.rate));
+    let m = 1;
+    for (const h of hooks) m *= h.rate(p, need);
+    return m;
   }
   // -------------------------------------------------------------------------
   // Needs
@@ -585,11 +594,12 @@ var Bicameral = class {
     const d = p.doing;
     const a = d && d.kind === "act" ? this.w.actions.get(d.action) : void 0;
     const rate = a?.rates?.[need];
+    const rise = def.rise * this.riseMul(p, need);
     let v;
     if (rate !== void 0 && d && t > d.start) {
       const from = Math.max(ns.t, d.start);
-      v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * rate * (t - from) / HOUR;
-    } else v = ns.v + def.rise * (t - ns.t) / HOUR;
+      v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * rate * (t - from) / HOUR;
+    } else v = ns.v + rise * (t - ns.t) / HOUR;
     if (a && d) {
       const r = a.relieves?.[need];
       if (r !== void 0 && t > d.start) {
@@ -611,8 +621,31 @@ var Bicameral = class {
     for (const need in a.rates) {
       const ns = p.needs[need], def = this.w.needs.get(need);
       if (!ns || !def) continue;
+      const rise = def.rise * this.riseMul(p, need);
       const from = Math.max(ns.t, d.start);
-      const v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * a.rates[need] * Math.max(0, now2 - from) / HOUR;
+      const v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * a.rates[need] * Math.max(0, now2 - from) / HOUR;
+      p.needs[need] = { v: clamp(v), t: now2 };
+    }
+  }
+  /**
+   * Keeps the rise so far in every need's stored level (relief in progress
+   * aside), so how fast needs rise can change from now on. Modules call it
+   * before their `rate` answer changes.
+   */
+  settleRise(p) {
+    const now2 = this.w.s.now;
+    const d = p.doing;
+    const a = d && d.kind === "act" ? this.w.actions.get(d.action) : void 0;
+    for (const [need, def] of this.w.needs) {
+      const ns = p.needs[need];
+      if (!ns || ns.t >= now2) continue;
+      const rise = def.rise * this.riseMul(p, need);
+      const rate = a?.rates?.[need];
+      let v;
+      if (rate !== void 0 && d && now2 > d.start) {
+        const from = Math.max(ns.t, d.start);
+        v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * rate * (now2 - from) / HOUR;
+      } else v = ns.v + rise * (now2 - ns.t) / HOUR;
       p.needs[need] = { v: clamp(v), t: now2 };
     }
   }
@@ -643,7 +676,7 @@ var Bicameral = class {
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== void 0) continue;
       const u = def.urgent ?? this.w.config.urgent;
-      const rise = def.rise * (a?.rates?.[id] ?? 1);
+      const rise = def.rise * this.riseMul(p, id) * (a?.rates?.[id] ?? 1);
       if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
       for (const line of [u, Math.max(u, 0.97), 1]) {
@@ -680,7 +713,7 @@ var Bicameral = class {
     const ns = p.needs[need];
     const def = this.w.needs.get(need);
     if (!ns || !def) return 0;
-    return clamp(ns.v + def.rise * (this.w.s.now - ns.t) / HOUR);
+    return clamp(ns.v + def.rise * this.riseMul(p, need) * (this.w.s.now - ns.t) / HOUR);
   }
   urgencyAt(need, v) {
     return curveAt(this.w.needs.get(need)?.curve ?? "pow1.5", v);
@@ -2338,6 +2371,8 @@ var Palantir = class {
     if (wishes) lines.push(`wishes: ${wishes}`);
     const tol = Object.keys(p.tol || {}).sort().map((k) => [k, w.mind.tolerance(p, k)]).filter(([, v]) => v > 0.05).map(([k, v]) => `${w.pastimes.get(k)?.label ?? k} ${round(v, 2)}`).join(", ");
     if (tol) lines.push(`had enough of: ${tol}`);
+    const under = w.athelas?.of(id).map((c) => `${c.label} (${c.phaseLabel || c.phase}, until ${clock(c.until)})`).join(", ");
+    if (under) lines.push(`under: ${under}`);
     const rv = w.reverie;
     if (rv) {
       lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);
@@ -2906,6 +2941,10 @@ var World = class {
   get joi() {
     return this.modules.get("joi");
   }
+  /** Conditions that run a course: ale, colds, toxins. */
+  get athelas() {
+    return this.modules.get("athelas");
+  }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
   // -------------------------------------------------------------------------
@@ -3437,7 +3476,7 @@ var World = class {
     });
   }
 };
-var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw"]);
+var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict"]);
 var MIGRATIONS = {
   // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
   // old records are kept apart (it takes the line definitions to read them).
@@ -6072,6 +6111,280 @@ var Joi = class {
   }
 };
 
+// tyrell/src/modules/athelas.ts
+var Athelas = class {
+  constructor() {
+    this.name = "athelas";
+    this.courses = /* @__PURE__ */ new Map();
+  }
+  /** The state for reading: undefined until someone is first afflicted. */
+  get st() {
+    return this.w.s.mod.athelas;
+  }
+  /** The state for writing (inside the simulation): made when first needed. */
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).athelas || (_a.athelas = { on: {}, immune: {}, k: 0 });
+  }
+  attach(w) {
+    this.w = w;
+    const L = w.lang;
+    L.term("under", (c, a) => {
+      if (!c.person) return a ? false : 0;
+      const on = this.st?.on[c.person.id];
+      if (!a) return on ? Object.keys(on).length : 0;
+      if (a.startsWith("tag:")) return !!on && Object.keys(on).some((id) => this.courses.get(id)?.tags?.includes(a.slice(4)));
+      const r = on?.[a];
+      return r ? this.courses.get(a)?.phases[r.p]?.id ?? true : false;
+    });
+    L.term("immune", (c, a) => c.person ? this.immune(c.person.id, a) : false);
+    L.effect("afflict", (c, a) => {
+      if (c.person) this.applyAfflict(c.person.id, a, c.target ?? void 0);
+    });
+    L.effect("cure", (c, a) => {
+      if (c.person) this.applyCure(c.person.id, a || void 0);
+    });
+    w.defineInput("afflict", (id, course, from) => this.applyAfflict(id, course, from ?? void 0));
+    w.defineInput("cure", (id, course) => this.applyCure(id, course ?? void 0));
+  }
+  // -------------------------------------------------------------------------
+  // Declaring and asking
+  // -------------------------------------------------------------------------
+  course(def) {
+    this.courses.set(def.id, def);
+    return this;
+  }
+  /** The courses running for someone: which phase, since and until when. */
+  of(id) {
+    const on = this.st?.on[id];
+    if (!on) return [];
+    return Object.keys(on).map((course) => {
+      const r = on[course], def = this.courses.get(course), ph = def?.phases[r.p];
+      const out = {
+        course,
+        label: def?.label ?? course,
+        phase: ph?.id ?? String(r.p),
+        phaseLabel: ph?.label ?? ph?.id ?? "",
+        since: r.since,
+        until: r.until
+      };
+      if (r.from) out.from = r.from;
+      return out;
+    });
+  }
+  /** Is someone immune to a course now? */
+  immune(id, course) {
+    return (this.st?.immune[id]?.[course] ?? -Infinity) > this.w.s.now;
+  }
+  /** Afflicts someone with a course (from the game: recorded). Returns whether it took. */
+  afflict(id, course, from) {
+    return this.w.input("afflict", [id, course, from ?? null]) === true;
+  }
+  /** Cures someone of a course, or of every course (from the game: recorded). */
+  cure(id, course) {
+    this.w.input("cure", [id, course ?? null]);
+  }
+  // -------------------------------------------------------------------------
+  // Running a course
+  // -------------------------------------------------------------------------
+  phaseMinutes(p, ph) {
+    let m = Array.isArray(ph.minutes) ? this.w.stream(p).range(ph.minutes[0], ph.minutes[1]) : ph.minutes;
+    if (ph.scale?.length) {
+      const ctx = this.w.ctx(p);
+      for (const k of ph.scale) m *= this.w.mind.consider(k, ctx);
+    }
+    return round(Math.max(1, m), 4);
+  }
+  schedule(id, course, r) {
+    r.k = ++this.mut().k;
+    this.w.clock.schedule({ t: r.until, k: "module", ref: this.name, who: id, data: { c: course, k: r.k } });
+  }
+  label(def, ph) {
+    return (def.label ?? def.id) + (ph?.label ? `: ${ph.label}` : "");
+  }
+  /** Afflicts someone, inside the simulation. */
+  applyAfflict(id, course, from) {
+    var _a;
+    const w = this.w;
+    const p = w.s.people[id];
+    const def = this.courses.get(course);
+    if (!p || p.status === "gone" || !def || !def.phases.length) return false;
+    const now2 = w.s.now;
+    const cur = this.st?.on[id]?.[course];
+    if (cur) {
+      const again = def.again ?? "ignore";
+      if (again === "ignore") return false;
+      if (again === "extend") {
+        cur.until = round(cur.until + this.phaseMinutes(p, def.phases[cur.p]), 4);
+        this.schedule(id, course, cur);
+      } else {
+        w.mind.settleRise(p);
+        this.enter(p, course, 0);
+      }
+      w.log("afflicted", id, { course, again });
+      w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course, again });
+      return true;
+    }
+    if (this.immune(id, course)) return false;
+    const st = this.mut();
+    if (st.immune[id]) {
+      delete st.immune[id][course];
+      if (!Object.keys(st.immune[id]).length) delete st.immune[id];
+    }
+    w.mind.settleRise(p);
+    const r = { p: 0, since: now2, until: now2, k: 0 };
+    if (from) r.from = from;
+    ((_a = st.on)[id] || (_a[id] = {}))[course] = r;
+    w.log("afflicted", id, { course, ...from ? { from } : {} });
+    w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course });
+    this.enter(p, course, 0);
+    return true;
+  }
+  /** Starts a phase (needs settled by the caller). */
+  enter(p, course, i) {
+    const w = this.w;
+    const def = this.courses.get(course);
+    const r = this.st.on[p.id][course];
+    const ph = def.phases[i];
+    r.p = i;
+    r.since = w.s.now;
+    r.until = round(w.s.now + this.phaseMinutes(p, ph), 4);
+    this.schedule(p.id, course, r);
+    w.log("course", p.id, { course, phase: ph.id });
+    w.emit("course", { id: p.id, course, phase: ph.id, label: this.label(def, ph) });
+    if (ph.feel && w.reverie) w.reverie.applyFeel(p.id, ph.feel, def.label ?? course);
+    if (ph.then) w.lang.applyAll(ph.then, w.ctx(p));
+    if (p.doing) w.clock.scheduleChecks(p);
+    if (ph.stop) w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { c: course, stop: true } });
+  }
+  /** A course passes, or is cured (needs settled by the caller). */
+  end(p, course, cured) {
+    var _a, _b;
+    const w = this.w;
+    const st = this.st;
+    const def = this.courses.get(course);
+    delete st.on[p.id][course];
+    if (!Object.keys(st.on[p.id]).length) delete st.on[p.id];
+    if (def?.immunity) ((_a = st.immune)[_b = p.id] || (_a[_b] = {}))[course] = w.s.now + def.immunity;
+    w.log("recovered", p.id, { course, ...cured ? { cured } : {} });
+    w.emit("recovered", { id: p.id, course, cured, label: def?.label ?? course });
+    if (def?.then && !cured) w.lang.applyAll(def.then, w.ctx(p));
+    if (p.doing) w.clock.scheduleChecks(p);
+  }
+  /** Cures someone of a course (or all of them), inside the simulation. */
+  applyCure(id, course) {
+    const p = this.w.s.people[id];
+    const on = this.st?.on[id];
+    if (!p || !on) return;
+    const which = course ? on[course] ? [course] : [] : Object.keys(on);
+    if (!which.length) return;
+    this.w.mind.settleRise(p);
+    for (const c of which) this.end(p, c, true);
+  }
+  timer(item) {
+    const w = this.w;
+    const p = item.who ? w.s.people[item.who] : void 0;
+    if (!p || p.status === "gone") return;
+    const course = String(item.data?.c ?? "");
+    if (item.data?.stop) {
+      if (p.status === "active" && this.st?.on[p.id]?.[course]) {
+        const def2 = this.courses.get(course);
+        w.clock.rethink(p, this.label(def2, def2?.phases[this.st.on[p.id][course].p]));
+      }
+      return;
+    }
+    const r = this.st?.on[p.id]?.[course];
+    if (!r || r.k !== item.data?.k) return;
+    w.mind.settleRise(p);
+    const def = this.courses.get(course);
+    if (def && r.p + 1 < def.phases.length) this.enter(p, course, r.p + 1);
+    else this.end(p, course, false);
+  }
+  // -------------------------------------------------------------------------
+  // Hooks
+  // -------------------------------------------------------------------------
+  rate(p, need) {
+    const on = this.st?.on[p.id];
+    if (!on) return 1;
+    let m = 1;
+    for (const course in on) {
+      const r = this.courses.get(course)?.phases[on[course].p]?.rates?.[need];
+      if (r !== void 0) m *= r;
+    }
+    return m;
+  }
+  /** The phase's `weigh` entry for an option: its id, else a tag it has, else '*'. */
+  weighFor(weigh, c) {
+    if (weigh[c.id] !== void 0) return weigh[c.id];
+    const tags = (c.kind === "task" ? this.w.tasks.get(c.id)?.tags : this.w.actions.get(c.id)?.tags) || [];
+    for (const key2 of Object.keys(weigh)) if (key2.startsWith("tag:") && tags.includes(key2.slice(4))) return weigh[key2];
+    return weigh["*"];
+  }
+  consider(p, c) {
+    const on = this.st?.on[p.id];
+    if (!on) return;
+    const out = [];
+    for (const course in on) {
+      const def = this.courses.get(course);
+      const ph = def?.phases[on[course].p];
+      if (!def || !ph?.weigh) continue;
+      const f = this.weighFor(ph.weigh, c);
+      if (f !== void 0) out.push([this.label(def, ph), f]);
+    }
+    return out;
+  }
+  block(p, c) {
+    const on = this.st?.on[p.id];
+    if (!on) return null;
+    for (const course in on) {
+      const def = this.courses.get(course);
+      const ph = def?.phases[on[course].p];
+      if (!def || !ph?.blocks) continue;
+      const tags = (c.kind === "task" ? this.w.tasks.get(c.id)?.tags : this.w.actions.get(c.id)?.tags) || [];
+      if (ph.blocks.some((b) => b === c.id || b.startsWith("tag:") && tags.includes(b.slice(4)))) return this.label(def, ph);
+    }
+    return null;
+  }
+  /** Someone with a catching course passes it on, now and then, to whoever they spend time with. */
+  spread(from, to, minutes) {
+    const on = this.st?.on[from.id];
+    if (!on || to.status !== "active") return;
+    for (const course of Object.keys(on)) {
+      const def = this.courses.get(course);
+      const cg = def?.contagion;
+      if (!def || !cg || def.phases[on[course].p]?.spreads === false) continue;
+      if (this.st?.on[to.id]?.[course] || this.immune(to.id, course)) continue;
+      let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance)), minutes / 60);
+      if (cg.resist?.length) {
+        const ctx = this.w.ctx(to, { target: from.id });
+        for (const k of cg.resist) chance *= this.w.mind.consider(k, ctx);
+      }
+      if (chance > 0 && this.w.stream(to).chance(chance)) this.applyAfflict(to.id, course, from.id);
+    }
+  }
+  met(a, b, _place, minutes) {
+    if (!this.st) return;
+    this.spread(a, b, minutes);
+    this.spread(b, a, minutes);
+  }
+  /** Immunities that have run out are let go. */
+  day() {
+    const st = this.st;
+    if (!st) return;
+    const now2 = this.w.s.now;
+    for (const id of Object.keys(st.immune)) {
+      for (const c of Object.keys(st.immune[id])) if (st.immune[id][c] <= now2) delete st.immune[id][c];
+      if (!Object.keys(st.immune[id]).length) delete st.immune[id];
+    }
+  }
+  removed(p) {
+    const st = this.st;
+    if (!st) return;
+    delete st.on[p.id];
+    delete st.immune[p.id];
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
   "nobody-starves": {
@@ -6258,7 +6571,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -6271,7 +6584,8 @@ function create(opts = {}) {
     gaff: () => new Gaff(cfg.gaff),
     ceres: () => new Ceres(),
     cradle: () => new Cradle(cfg.cradle),
-    joi: () => new Joi()
+    joi: () => new Joi(),
+    athelas: () => new Athelas()
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -6281,6 +6595,7 @@ function create(opts = {}) {
 }
 var VoightKampff = { run, compare: compare2 };
 export {
+  Athelas,
   Ceres,
   Cityspeak,
   Cradle,

@@ -55,7 +55,7 @@
   w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
   w.action({ id: 'steal_food', label: 'pocketing food', at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
   w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink' });
+  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
   w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
   w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
   w.action({ id: 'chat', label: 'chatting', target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
@@ -264,6 +264,30 @@
     });
     w.on('timer:rain-stops', () => w.fact('raining', false));
     w.on('timer:power-back', () => w.fact('closed:bar', false));
+  }
+
+  // ---- Athelas: courses that run their course -------------------------------
+  const athelas = w.athelas;
+  if (athelas) {
+    athelas.course({ id: 'ale', label: 'A few drinks', again: 'extend', phases: [
+      { id: 'merry', label: 'merry', minutes: 180, rates: { energy: 1.3 }, weigh: { 'tag:work': 0.7, chat: 1.3 } },
+      { id: 'sore_head', label: 'a sore head', minutes: 360, weigh: { nap: 1.5, 'tag:social': 0.8 } },
+    ] });
+    athelas.course({
+      id: 'cold', label: 'A cold', tags: ['illness'], immunity: 5 * DAY,
+      contagion: { chance: 0.05, resist: [{ name: 'courage', input: 'trait.courage', out: [1.3, 0.7] }] },
+      phases: [
+        { id: 'coming_on', label: 'coming on', minutes: [300, 540], spreads: false },
+        { id: 'sniffles', label: 'the sniffles', minutes: [900, 1800], rates: { energy: 1.4 }, weigh: { nap: 2, sleep: 1.3, 'tag:outdoors': 0.5, '*': 0.85 } },
+      ],
+    });
+    if (gaff) {
+      // now and then someone comes down with a cold, and it goes round
+      gaff.storylet({
+        id: 'a_cold', label: 'A cold going round', mtb: 4 * DAY, cooldown: 2 * DAY,
+        fire: (world) => { const who = world.worldStream('a_cold').pick(world.people().map((p) => p.id).sort()); if (who) world.athelas.afflict(who, 'cold'); },
+      });
+    }
   }
 
   // ---- Strangers -------------------------------------------------------------

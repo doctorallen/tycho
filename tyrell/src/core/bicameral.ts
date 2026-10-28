@@ -25,6 +25,7 @@ import type {
   RoutineEntry, RoutineVariant, TaskDef, Value, WishDef,
 } from './types';
 import type { World } from './world';
+import type { Module } from './module';
 import { DAY, HOUR, clamp, dayOf, hourOf, inHours, lerp, round } from './util';
 
 /** What a layer of the stack requires right now. */
@@ -77,7 +78,18 @@ const mid = (r: number | [number, number]): number => (Array.isArray(r) ? (r[0] 
 export const backoffKey = (action: Id, place: Id | null | undefined): string => `@fail:${action}@${place ?? ''}`;
 
 export class Bicameral {
+  /** The modules that change how fast needs rise (found on first use). */
+  private rateHooks: Module[] | null = null;
+
   constructor(private w: World) {}
+
+  /** How fast a need rises for someone now, as a multiplier on its `rise` (modules' `rate`; 1 with none). */
+  riseMul(p: PersonState, need: Id): number {
+    const hooks = (this.rateHooks ??= this.w.hooks.filter((m) => m.rate));
+    let m = 1;
+    for (const h of hooks) m *= (h.rate as NonNullable<Module['rate']>)(p, need);
+    return m;
+  }
 
   // -------------------------------------------------------------------------
   // Needs
@@ -91,12 +103,13 @@ export class Bicameral {
     const d = p.doing;
     const a = d && d.kind === 'act' ? this.w.actions.get(d.action) : undefined;
     const rate = a?.rates?.[need];
+    const rise = def.rise * this.riseMul(p, need);
     let v: number;
     if (rate !== undefined && d && t > d.start) {
       // the usual rise up to the start, then the action's rate
       const from = Math.max(ns.t, d.start);
-      v = ns.v + (def.rise * Math.max(0, d.start - ns.t)) / HOUR + (def.rise * rate * (t - from)) / HOUR;
-    } else v = ns.v + (def.rise * (t - ns.t)) / HOUR;
+      v = ns.v + (rise * Math.max(0, d.start - ns.t)) / HOUR + (rise * rate * (t - from)) / HOUR;
+    } else v = ns.v + (rise * (t - ns.t)) / HOUR;
     if (a && d) {
       const r = a.relieves?.[need];
       if (r !== undefined && t > d.start) {
@@ -119,8 +132,32 @@ export class Bicameral {
     for (const need in a.rates) {
       const ns = p.needs[need], def = this.w.needs.get(need);
       if (!ns || !def) continue;
+      const rise = def.rise * this.riseMul(p, need);
       const from = Math.max(ns.t, d.start);
-      const v = ns.v + (def.rise * Math.max(0, d.start - ns.t)) / HOUR + (def.rise * a.rates[need] * Math.max(0, now - from)) / HOUR;
+      const v = ns.v + (rise * Math.max(0, d.start - ns.t)) / HOUR + (rise * a.rates[need] * Math.max(0, now - from)) / HOUR;
+      p.needs[need] = { v: clamp(v), t: now };
+    }
+  }
+
+  /**
+   * Keeps the rise so far in every need's stored level (relief in progress
+   * aside), so how fast needs rise can change from now on. Modules call it
+   * before their `rate` answer changes.
+   */
+  settleRise(p: PersonState): void {
+    const now = this.w.s.now;
+    const d = p.doing;
+    const a = d && d.kind === 'act' ? this.w.actions.get(d.action) : undefined;
+    for (const [need, def] of this.w.needs) {
+      const ns = p.needs[need];
+      if (!ns || ns.t >= now) continue;
+      const rise = def.rise * this.riseMul(p, need);
+      const rate = a?.rates?.[need];
+      let v: number;
+      if (rate !== undefined && d && now > d.start) {
+        const from = Math.max(ns.t, d.start);
+        v = ns.v + (rise * Math.max(0, d.start - ns.t)) / HOUR + (rise * rate * (now - from)) / HOUR;
+      } else v = ns.v + (rise * (now - ns.t)) / HOUR;
       p.needs[need] = { v: clamp(v), t: now };
     }
   }
@@ -154,7 +191,7 @@ export class Bicameral {
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== undefined) continue;
       const u = def.urgent ?? this.w.config.urgent;
-      const rise = def.rise * (a?.rates?.[id] ?? 1);
+      const rise = def.rise * this.riseMul(p, id) * (a?.rates?.[id] ?? 1);
       if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
       for (const line of [u, Math.max(u, 0.97), 1]) {
@@ -193,7 +230,7 @@ export class Bicameral {
     const ns = p.needs[need];
     const def = this.w.needs.get(need);
     if (!ns || !def) return 0;
-    return clamp(ns.v + (def.rise * (this.w.s.now - ns.t)) / HOUR);
+    return clamp(ns.v + (def.rise * this.riseMul(p, need) * (this.w.s.now - ns.t)) / HOUR);
   }
 
   private urgencyAt(need: Id, v: number): number { return curveAt(this.w.needs.get(need)?.curve ?? 'pow1.5', v); }

@@ -21,6 +21,7 @@ import { Gaff } from './modules/gaff';
 import { Ceres } from './modules/ceres';
 import { Cradle } from './modules/cradle';
 import { Joi } from './modules/joi';
+import { Athelas } from './modules/athelas';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -29,7 +30,7 @@ import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from '
 export const VERSION = '2.0.0';
 
 /** Every module that ships with Tyrell, by name. */
-export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi'] as const;
+export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
@@ -53,6 +54,7 @@ export function create(opts: CreateOptions = {}): World {
     ceres: () => new Ceres(),
     cradle: () => new Cradle(cfg.cradle as any),
     joi: () => new Joi(),
+    athelas: () => new Athelas(),
   };
   const modules: Module[] = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -66,7 +68,7 @@ export const VoightKampff = { run, compare };
 
 export {
   World, DEFAULT_CONFIG, MIGRATIONS, SCHEMA,
-  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi,
+  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
 export type { SaveData, Module };
@@ -80,6 +82,7 @@ export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
 export type { GoodDef, ChainDef, GoodReport, ProductionReport } from './modules/ceres';
 export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken } from './modules/joi';
+export type { CourseDef, CoursePhase } from './modules/athelas';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';

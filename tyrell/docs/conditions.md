@@ -76,6 +76,8 @@ Conditions are compiled once and cached, so using them is cheap.
 | `SocialActDef.acceptIf`, `accept` | The target of the act as `person`; the asker as `target` |
 | `SocialActDef.onAccept`, `onRefuse` (effects) | The asker as `person`; the target as `target` |
 | `StoryletDef.when` (Gaff) | No person: world terms only |
+| `CoursePhase.scale`, `then` (Athelas) | The person |
+| `CourseDef.contagion.resist` (Athelas) | The one who might catch it; `target` is the carrier |
 | `Consideration.input` | A term (not a condition), read in the option's context |
 
 ## Core terms
@@ -206,6 +208,15 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `stage` | Life stage (`'child'`, `'adult'`...); `stage:<name>` is true if it's that |
 | `married` | They have a partner (needs Fellowship) |
 
+### Athelas
+
+| Term | Value |
+|---|---|
+| `under:<course>` | The phase the course is in (its id), or `false` when it isn't running: `under:ale=sore_head` |
+| `under:tag:<tag>` | Any running course has the tag (`under:tag:illness`) |
+| `under` | How many courses are running |
+| `immune:<course>` | Immune to it now |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.
@@ -240,6 +251,8 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `fame:<group>.<subject>+=n` | Fellowship | Standing; `-=` lowers it, any other operator adds. Without `.subject`, the person (or `'player'` with no person), as for the term |
 | `infamy:<group>.<subject>+=n` | Fellowship | The same for infamy |
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
+| `afflict:<course>` | Athelas | Afflicts the person (caught from the context's target, if any) |
+| `cure:<course>`, `cure` | Athelas | Ends the course, or every course |
 
 ## Functions
 

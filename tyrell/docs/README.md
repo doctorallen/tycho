@@ -47,7 +47,7 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **[Integration](integration.md).** The shell (travel, near, check), regions and focus, bodies and their fields, mapping places and slots to coordinates, walking along routes, reporting failures, who owns the clock, sensing and deeds, talking, directing, custom inputs, saving, and notes for a side-scroller with many small levels and a top-down game with one map. Ends with a checklist.
 
-**[Deciding (Bicameral)](deciding.md).** Needs, every field of an action, the layered stack of ranks (break, story, job, routine, needs), routines and their variants, jobs and shifts, directives, urgent and desperate needs, how an option's weight is built, considerations and curves, the pick, when people think, habits, and every config field.
+**[Deciding (Bicameral)](deciding.md).** Needs, every field of an action, the layered stack of ranks (break, story, job, routine, needs), routines and their variants, jobs and shifts, directives, urgent and desperate needs, how an option's weight is built, considerations and curves, the pick, when people think, habits and instincts, skills and talents, pastimes that pall, wishes and dreams, and every config field.
 
 **[Places (Ring) and strangers](places.md).** Places, tags, nesting, regions, hours and closing, slots and capacity, offers, owners, quality and stock, travel by links or by the shell, place specs, and the passers-by who cost nothing until promoted.
 
@@ -75,9 +75,10 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 | Cityspeak | [cityspeak.md](modules/cityspeak.md) | Lines, barks, practices with roles, social acts, the room, ink |
 | Mentat | [mentat.md](modules/mentat.md) | Planning: tasks with methods, `get:` searches, replanning |
 | Gaff | [gaff.md](modules/gaff.md) | The director: storylets, intensity phases, decks, unseen places |
-| Ceres | [ceres.md](modules/ceres.md) | Money, prices, stock, wages, rent, incomes, purses and pantries |
+| Ceres | [ceres.md](modules/ceres.md) | Money, prices, stock, wages, rent, incomes, purses and pantries, production |
 | Cradle | [cradle.md](modules/cradle.md) | Ages and stages, couples, births, departures and inheritance |
 | Joi | [joi.md](modules/joi.md) | An optional language-model voice that never changes the world |
+| Athelas | [athelas.md](modules/athelas.md) | Conditions that run a course: phases, needs' rates, weights, contagion, immunity |
 
 ## Glossary
 

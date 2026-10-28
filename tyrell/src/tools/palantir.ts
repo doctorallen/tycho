@@ -95,6 +95,8 @@ export class Palantir {
     if (wishes) lines.push(`wishes: ${wishes}`);
     const tol = Object.keys(p.tol || {}).sort().map((k) => [k, w.mind.tolerance(p, k)] as const).filter(([, v]) => v > 0.05).map(([k, v]) => `${w.pastimes.get(k)?.label ?? k} ${round(v, 2)}`).join(', ');
     if (tol) lines.push(`had enough of: ${tol}`);
+    const under = w.athelas?.of(id).map((c) => `${c.label} (${c.phaseLabel || c.phase}, until ${clock(c.until)})`).join(', ');
+    if (under) lines.push(`under: ${under}`);
     const rv = w.reverie;
     if (rv) {
       lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);

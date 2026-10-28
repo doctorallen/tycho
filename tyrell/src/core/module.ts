@@ -18,6 +18,12 @@ export interface Module {
   consider?(p: PersonState, c: Candidate): Array<[string, number]> | void;
   /** Rule an option out: return a reason, or null. */
   block?(p: PersonState, c: Candidate): string | null;
+  /**
+   * A multiplier on how fast a need rises for someone now (a cold tires,
+   * a toxin kills the appetite). Before the answer changes, call
+   * world.mind.settleRise(p) so the levels so far are kept.
+   */
+  rate?(p: PersonState, need: Id): number;
   /** Someone started doing something. */
   started?(p: PersonState, d: Doing): void;
   /** Someone finished (or stopped) doing something; frac is how much of it they did. */

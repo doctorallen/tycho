@@ -29,7 +29,7 @@ world.tick(1 / 60);                        // every frame
 
 | Part | Named for | What it does |
 |---|---|---|
-| **Bicameral** (core) | Westworld's bicameral mind | Needs, the layered priorities (story, job, routine, needs), considerations, the pick, habits that learn |
+| **Bicameral** (core) | Westworld's bicameral mind | Needs, the layered priorities (story, job, routine, needs), considerations, the pick, habits that learn, instincts, pastimes that pall, wishes and dreams; skills that grow with practice |
 | **Ring** (core) | The Expanse's Ring | Places, travel times, opening hours, slots with a capacity, what each place offers |
 | **Entmoot** (core) | The Ents' council | The clock: an event queue that jumps between action ends; near and far; handing bodies to the game |
 | **Esper** (core) | Blade Runner's photo machine | Time walk: run faster, rewind, play backward, branch, bookmark |
@@ -39,9 +39,10 @@ world.tick(1 / 60);                        // every frame
 | **Cityspeak** | Blade Runner's street language | Lines chosen by the most specific rule, barks, practices with roles, social acts, an ink bridge |
 | **Mentat** | Dune's human computers | Planning: HTN tasks with methods, `get:` searches (GOAP) for getting hold of things, replanning |
 | **Gaff** | Blade Runner's origami watcher | The director: storylets, mean time between events, intensity phases, decks, unseen places |
-| **Ceres** | The Expanse's trading station | Money, prices, stock, wages, rent, incomes, household purses and pantries |
+| **Ceres** | The Expanse's trading station | Money, prices, stock, wages, rent, incomes, household purses and pantries, production chains and a daily report |
 | **Cradle** | Westworld's Cradle | Ages and stages, couples, births with inherited traits, departures, grief and inheritance |
 | **Joi** | Blade Runner 2049's companion | An optional language-model voice that never changes the world |
+| **Athelas** | The kingsfoil of the Houses of Healing | Conditions that run a course: phases that change needs and choices, contagion, immunity |
 | **Palantír** (tool) | The seeing-stones | The inspector: every choice with its scores, "why not that?", a readable account |
 | **Westmarch** (tool) | The Red Book of Westmarch | The log of what happened, and chronicles of anyone's day |
 | **Voight-Kampff** (tool) | Blade Runner's test | Headless seeded runs that check people still behave like people |

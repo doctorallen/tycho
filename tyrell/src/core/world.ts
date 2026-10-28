@@ -25,6 +25,7 @@ import type { Gaff } from '../modules/gaff';
 import type { Ceres } from '../modules/ceres';
 import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
+import type { Athelas } from '../modules/athelas';
 import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState,
   PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState,
@@ -296,6 +297,8 @@ export class World {
   get cradle(): Cradle | undefined { return this.modules.get('cradle') as Cradle | undefined; }
   /** The optional language-model voice. */
   get joi(): Joi | undefined { return this.modules.get('joi') as Joi | undefined; }
+  /** Conditions that run a course: ale, colds, toxins. */
+  get athelas(): Athelas | undefined { return this.modules.get('athelas') as Athelas | undefined; }
 
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
@@ -753,7 +756,7 @@ export class World {
 }
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
-const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw']);
+const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
 export const MIGRATIONS: Record<number, (s: any) => any> = {

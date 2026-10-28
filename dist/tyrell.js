@@ -1273,6 +1273,7 @@ var Tyrell = (() => {
         if (def.about !== void 0 && (x === void 0 || x === null)) continue;
         let weight = 1;
         if (typeof def.weight === "number") weight = def.weight;
+        else if (typeof def.weight === "function") weight = Number(def.weight(ctx)) || 0;
         else if (def.weight) for (const k of def.weight) weight *= this.consider(k, ctx);
         if (weight > 0) out.push({ id, x, w: weight });
       }
@@ -6231,8 +6232,12 @@ var Tyrell = (() => {
       L.effect("cure", (c, a) => {
         if (c.person) this.applyCure(c.person.id, a || void 0);
       });
+      L.effect("hasten", (c, a, _op, v) => {
+        if (c.person) this.applyHasten(c.person.id, a, Number(v ?? 0));
+      });
       w.defineInput("afflict", (id, course, from) => this.applyAfflict(id, course, from ?? void 0));
       w.defineInput("cure", (id, course) => this.applyCure(id, course ?? void 0));
+      w.defineInput("hasten", (id, course, minutes) => this.applyHasten(id, course, minutes));
     }
     // -------------------------------------------------------------------------
     // Declaring and asking
@@ -6270,6 +6275,10 @@ var Tyrell = (() => {
     /** Cures someone of a course, or of every course (from the game: recorded). */
     cure(id, course) {
       this.w.input("cure", [id, course ?? null]);
+    }
+    /** Brings the end of the phase someone's in sooner by some minutes (a visit, a remedy that helps): recorded. */
+    hasten(id, course, minutes) {
+      this.w.input("hasten", [id, course, minutes]);
     }
     // -------------------------------------------------------------------------
     // Running a course
@@ -6357,6 +6366,13 @@ var Tyrell = (() => {
       w.emit("recovered", { id: p.id, course, cured, label: def?.label ?? course });
       if (def?.then && !cured) w.lang.applyAll(def.then, w.ctx(p));
       if (p.doing) w.clock.scheduleChecks(p);
+    }
+    /** Brings a phase's end sooner (or, with a negative number, later), inside the simulation. */
+    applyHasten(id, course, minutes) {
+      const r = this.st?.on[id]?.[course];
+      if (!r || !minutes) return;
+      r.until = round(Math.max(this.w.s.now, r.until - minutes), 4);
+      this.schedule(id, course, r);
     }
     /** Cures someone of a course (or all of them), inside the simulation. */
     applyCure(id, course) {

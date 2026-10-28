@@ -765,6 +765,7 @@ export class Bicameral {
       if (def.about !== undefined && (x === undefined || x === null)) continue;
       let weight = 1;
       if (typeof def.weight === 'number') weight = def.weight;
+      else if (typeof def.weight === 'function') weight = Number(def.weight(ctx)) || 0;
       else if (def.weight) for (const k of def.weight) weight *= this.consider(k, ctx);
       if (weight > 0) out.push({ id, x, w: weight });
     }

@@ -278,6 +278,7 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
 | `afflict:<course>` | Athelas | Afflicts the person (caught from the context's target, if any) |
 | `cure:<course>`, `cure` | Athelas | Ends the course, or every course |
+| `hasten:<course>=minutes` | Athelas | The phase they're in ends that much sooner |
 | `learn:<key>=v`, `learn:<key>` | Voice | The target (the speaker) learns something about the person (`true` without a value) |
 | `promise:<id>=days`, `promise:<id>` | Voice | A promise to the person, from the target |
 | `sore:<thread>=days`, `sore` | Voice | A subject best left a while (the current one, two days, by default) |

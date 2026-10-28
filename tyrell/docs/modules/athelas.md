@@ -56,7 +56,7 @@ Afflicted with a course they already have:
 - `'extend'`: the phase they're in runs on as long again (another pint keeps them merry longer);
 - `'restart'`: back to the first phase.
 
-`athelas.cure(id, course?)` (an input) ends one course, or every course, at once: `recovered` with `cured: true`, immunity as usual, but not the course's `then` (which is for a course run out). Effects can `afflict:<course>` and `cure:<course>` too (a remedy's `then`, a toadstool eaten).
+`athelas.cure(id, course?)` (an input) ends one course, or every course, at once: `recovered` with `cured: true`, immunity as usual, but not the course's `then` (which is for a course run out). `athelas.hasten(id, course, minutes)` brings the end of the phase they're in sooner by that many minutes (a friend's visit with soup; a negative number puts it off). Effects can `afflict:<course>`, `cure:<course>` and `hasten:<course>=<minutes>` too (a remedy's `then`, a toadstool eaten).
 
 ## Why not Reverie
 
@@ -83,10 +83,11 @@ Phase changes are queue items addressed to the module, so they save and rewind.
 | `course(def)` | this | Declares a course: [CourseDef](#coursedef) |
 | `afflict(id, course, from?)` | boolean | **Input** (applies at once). Afflicts someone; false if it didn't take (immune, already has it and `again: 'ignore'`, unknown) |
 | `cure(id, course?)` | void | **Input.** Ends a course, or all of them |
+| `hasten(id, course, minutes)` | void | **Input.** The phase they're in ends that much sooner (later, if negative) |
 | `of(id)` | array | The courses running for someone: `{ course, label, phase, phaseLabel, since, until, from? }` |
 | `immune(id, course)` | boolean | Immune now? |
 | `courses` | Map | The declared courses |
-| `applyAfflict(id, course, from?)`, `applyCure(id, course?)` | | **Engine** versions |
+| `applyAfflict(id, course, from?)`, `applyCure(id, course?)`, `applyHasten(id, course, minutes)` | | **Engine** versions |
 
 ### CourseDef
 
@@ -119,7 +120,7 @@ Phase changes are queue items addressed to the module, so they save and rewind.
 
 ## Terms, effects, events and log
 
-Terms: `under:<course>` (the phase's id while it runs, else `false`), `under:tag:<tag>` (any course with the tag), `under` (how many courses), `immune:<course>`. Effects: `afflict:<course>` (from the context's target, if any), `cure:<course>`, `cure` (all).
+Terms: `under:<course>` (the phase's id while it runs, else `false`), `under:tag:<tag>` (any course with the tag), `under` (how many courses), `immune:<course>`. Effects: `afflict:<course>` (from the context's target, if any), `cure:<course>`, `cure` (all), `hasten:<course>=<minutes>`.
 
 | Event | Payload |
 |---|---|

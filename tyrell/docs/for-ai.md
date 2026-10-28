@@ -31,7 +31,7 @@ This describes Tyrell 2.0.0 (save schema 2).
 5. **Constant definitions.** Don't change definitions or decision config during a run; Esper replays with whatever is current. `config.minutesPerSecond` and `config.budgetMs` are safe to change.
 6. **Stable order.** Custom module code iterates in a stable order.
 
-Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `train`, `setSkill`, `wishFor`, `grant`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`; `athelas.afflict`, `cure`; `delos.set`; `voice.start`, `answer`, `end`.
+Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `train`, `setSkill`, `wishFor`, `grant`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`; `athelas.afflict`, `cure`, `hasten`; `delos.set`; `voice.start`, `answer`, `end`.
 
 ## Procedure
 

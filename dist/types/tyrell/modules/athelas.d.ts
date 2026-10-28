@@ -70,6 +70,8 @@ export declare class Athelas implements Module {
     afflict(id: Id, course: Id, from?: Id): boolean;
     /** Cures someone of a course, or of every course (from the game: recorded). */
     cure(id: Id, course?: Id): void;
+    /** Brings the end of the phase someone's in sooner by some minutes (a visit, a remedy that helps): recorded. */
+    hasten(id: Id, course: Id, minutes: number): void;
     private phaseMinutes;
     private schedule;
     private label;
@@ -79,6 +81,8 @@ export declare class Athelas implements Module {
     private enter;
     /** A course passes, or is cured (needs settled by the caller). */
     private end;
+    /** Brings a phase's end sooner (or, with a negative number, later), inside the simulation. */
+    applyHasten(id: Id, course: Id, minutes: number): void;
     /** Cures someone of a course (or all of them), inside the simulation. */
     applyCure(id: Id, course?: Id): void;
     timer(item: QueueItem): void;

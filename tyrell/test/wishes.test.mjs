@@ -146,7 +146,7 @@ test('wishes come at the wish hours, by weight and conditions, a couple at a tim
   w.wish({ id: 'cake', weight: 3 });
   w.wish({ id: 'tea', weight: 1 });
   w.wish({ id: 'swing', if: ['is:child'] });
-  w.wish({ id: 'nap', weight: 0.5 });
+  w.wish({ id: 'nap', weight: (ctx) => (ctx.person.def.tags?.includes('child') ? 0 : 0.5) });
   w.person('ana', { home: 'home_a' });
   w.person('kid', { home: 'home_b', tags: ['child'] });
   const seen = new Map();
@@ -156,6 +156,7 @@ test('wishes come at the wish hours, by weight and conditions, a couple at a tim
   for (let i = 0; i < 6; i++) { w.advance(DAY); assert.ok(w.wishesOf('ana').length <= 2); }
   const all = [...seen.get('ana'), ...seen.get('kid')];
   assert.ok(all.filter((x) => x === 'cake').length > all.filter((x) => x === 'nap').length);
+  assert.ok(!seen.get('kid').includes('nap'), 'a weight can be a function: no naps for the child');
 });
 
 test('wishes and pastimes are state: they rewind and save', () => {

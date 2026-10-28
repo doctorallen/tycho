@@ -147,6 +147,19 @@ test('a cure ends it at once, without its effects, and leaves immunity; a phase 
   assert.ok(w.athelas.immune('ana', 'cold'));
 });
 
+test('a phase can be hastened: a visit or a remedy that helps', () => {
+  const w = tiny();
+  cold(w);
+  w.person('ana', { home: 'home_a' });
+  w.athelas.afflict('ana', 'cold');
+  w.advance(7 * HOUR);
+  const until = w.athelas.of('ana')[0].until;
+  w.athelas.hasten('ana', 'cold', 4 * HOUR);
+  assert.equal(w.athelas.of('ana')[0].until, until - 4 * HOUR);
+  w.advance(until - 4 * HOUR - w.now + 1);
+  assert.equal(w.athelas.of('ana').length, 0, 'over sooner');
+});
+
 test('courses are state: they rewind and save, and a world without them keeps none', () => {
   const build = () => {
     const w = tiny();

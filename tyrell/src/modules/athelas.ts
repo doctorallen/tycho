@@ -109,8 +109,10 @@ export class Athelas implements Module {
     L.term('immune', (c, a) => (c.person ? this.immune(c.person.id, a) : false));
     L.effect('afflict', (c, a) => { if (c.person) this.applyAfflict(c.person.id, a, c.target ?? undefined); });
     L.effect('cure', (c, a) => { if (c.person) this.applyCure(c.person.id, a || undefined); });
+    L.effect('hasten', (c, a, _op, v) => { if (c.person) this.applyHasten(c.person.id, a, Number(v ?? 0)); });
     w.defineInput('afflict', (id: Id, course: Id, from: Id | null) => this.applyAfflict(id, course, from ?? undefined));
     w.defineInput('cure', (id: Id, course: Id | null) => this.applyCure(id, course ?? undefined));
+    w.defineInput('hasten', (id: Id, course: Id, minutes: number) => this.applyHasten(id, course, minutes));
   }
 
   // -------------------------------------------------------------------------
@@ -141,6 +143,9 @@ export class Athelas implements Module {
 
   /** Cures someone of a course, or of every course (from the game: recorded). */
   cure(id: Id, course?: Id): void { this.w.input('cure', [id, course ?? null]); }
+
+  /** Brings the end of the phase someone's in sooner by some minutes (a visit, a remedy that helps): recorded. */
+  hasten(id: Id, course: Id, minutes: number): void { this.w.input('hasten', [id, course, minutes]); }
 
   // -------------------------------------------------------------------------
   // Running a course
@@ -229,6 +234,14 @@ export class Athelas implements Module {
     w.emit('recovered', { id: p.id, course, cured, label: def?.label ?? course });
     if (def?.then && !cured) w.lang.applyAll(def.then, w.ctx(p));
     if (p.doing) w.clock.scheduleChecks(p);
+  }
+
+  /** Brings a phase's end sooner (or, with a negative number, later), inside the simulation. */
+  applyHasten(id: Id, course: Id, minutes: number): void {
+    const r = this.st?.on[id]?.[course];
+    if (!r || !minutes) return;
+    r.until = round(Math.max(this.w.s.now, r.until - minutes), 4);
+    this.schedule(id, course, r);
   }
 
   /** Cures someone of a course (or all of them), inside the simulation. */

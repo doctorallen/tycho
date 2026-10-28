@@ -296,8 +296,8 @@ export interface WishDef {
   label?: string;
   /** Who may wish it, and when: conditions on the person. */
   if?: Cond[];
-  /** How likely it is to be wished, against the others that fit: a number, or considerations multiplied. Default 1. */
-  weight?: number | Consideration[];
+  /** How likely it is to be wished, against the others that fit: a number, considerations multiplied, or a function. Default 1. */
+  weight?: number | Consideration[] | ((ctx: Ctx) => number);
   /**
    * What it's about, worked out when it's wished (a favorite dish, a friend
    * to see): a term, or a function. Undefined or null means it can't be

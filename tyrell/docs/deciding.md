@@ -418,7 +418,7 @@ world.wish({ id: 'master', label: 'Become an expert baker', dream: true, if: ['j
   progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8, toward: ['bake'] });
 ```
 
-- **Coming to wish.** At each of `config.wishHours` (8, 13 and 17), each person with fewer than `config.wishMax` (2) wishes may come to wish one, with probability `config.wishChance` (0.5): a weighted draw, from their own stream, among the wishes they don't hold whose `if` holds, by `weight` (a number, or considerations multiplied). Someone without a dream may come to dream one the same way. A dream (and any wish with `once`) is never wished again once it's come true. The game gives one with `world.wishFor(id, wish, about?)` (an input), effects with `wish:<id>`.
+- **Coming to wish.** At each of `config.wishHours` (8, 13 and 17), each person with fewer than `config.wishMax` (2) wishes may come to wish one, with probability `config.wishChance` (0.5): a weighted draw, from their own stream, among the wishes they don't hold whose `if` holds, by `weight` (a number, considerations multiplied, or a function). Someone without a dream may come to dream one the same way. A dream (and any wish with `once`) is never wished again once it's come true. The game gives one with `world.wishFor(id, wish, about?)` (an input), effects with `wish:<id>`.
 - **What it's about.** `about` (a term, or a function of the context) is worked out when it's wished: a favorite dish, a friend's id, a number to beat. If it comes out `null` or `undefined`, the wish can't be wished now. It's kept with the wish (`x`). When it's a person, the wish is aimed at them: it pulls only toward options aimed at them (or at nobody), and only an action aimed at them grants it; in its `when`, `then` and `fades`, `ctx.target` is that person (`ctx.data.x` holds whatever it's about, always).
 - **The pull.** While it's held, options whose id or tag is in `toward` weigh `pull` (`config.wishPull`, 1.35) more: the part `wish: <label>` (or `dream: <label>`). At most one wish and one dream count for an option.
 - **Coming true.** A wish is granted when the person finishes an action in its `by` (ids or `tag:<tag>`); or when its `when` conditions hold, checked each hour and whenever they finish something; or, each hour, when its `progress` (a term or a function, 0..1) reaches 1. The game grants one with `world.grant(id, wish)`, effects with `grant:<id>`. Granting removes it, counts it (`granted:<id>`), logs and emits `granted`, runs `then`, and gives the `next` wish, if any.
@@ -431,7 +431,7 @@ Read them with `world.wishesOf(id)` (each `{ id, label, t, until?, x?, dream?, p
 | `id` | required | |
 | `label` | the id | A readable name |
 | `if` | none | Who may wish it, and when |
-| `weight` | 1 | A number, or considerations multiplied |
+| `weight` | 1 | A number, considerations multiplied, or a function of the context |
 | `about` | none | A term or a function: what it's about |
 | `toward` | none | Action or task ids, or `tag:<tag>`, it pulls toward |
 | `pull` | `config.wishPull` | How much more those weigh |

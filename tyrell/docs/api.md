@@ -298,7 +298,7 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `trigger`, `bump`, `draw` | Gaff |
 | `pay`, `rent`, `income`, `stock` (`restock`) | Ceres |
 | `birth`, `pair`, `depart` | Cradle |
-| `afflict`, `cure` | Athelas |
+| `afflict`, `cure`, `hasten` | Athelas |
 | `genome` (`set`) | Delos |
 | `voice.start`, `voice.answer`, `voice.end` | Voice |
 

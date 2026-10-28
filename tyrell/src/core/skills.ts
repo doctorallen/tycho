@@ -28,7 +28,7 @@ export class Skills {
     if (!rec) return p.def.skills?.[id] ?? def?.start ?? 0;
     const [v, since] = rec;
     if (!def?.decay) return v;
-    const idle = (t - since) / DAY - (def.grace ?? 3);
+    const idle = (t - since) / DAY - (def.grace ?? this.w.cfg.skillGrace);
     if (idle <= 0) return v;
     return round(Math.max(Math.min(v, def.floor ?? 0), v - def.decay * idle), 5);
   }
@@ -62,7 +62,9 @@ export class Skills {
     if (!(hours > 0) || !(mul > 0)) return before;
     const def = this.def(id);
     const max = def.max ?? 1;
-    let rate = (def.rate ?? 0.02) * this.talent(p, id) * mul;
+    // the headline knob: how fast skills are learned, the world's times the person's own
+    const pace = this.w.cfg.learning * this.w.own(p, 'core', 'learning');
+    let rate = (def.rate ?? this.w.cfg.skillRate) * this.talent(p, id) * mul * pace;
     if (def.learn?.length) {
       const ctx = this.w.ctx(p);
       for (const k of def.learn) rate *= this.w.mind.consider(k, ctx);

@@ -635,7 +635,7 @@ var Bicameral = class {
     const hooks = this.rateHooks ?? (this.rateHooks = this.w.hooks.filter((m2) => m2.rate));
     let m = 1;
     for (const h of hooks) m *= h.rate(p, need);
-    return m;
+    return m * this.w.cfg.needs * this.w.own(p, "core", "needs");
   }
   // -------------------------------------------------------------------------
   // Needs
@@ -710,14 +710,14 @@ var Bicameral = class {
   }
   /** Makes sure a person has every declared need. */
   ensureNeeds(p) {
-    for (const [id, def] of this.w.needs) if (!p.needs[id]) p.needs[id] = { v: def.start ?? 0.2, t: this.w.s.now };
+    for (const [id, def] of this.w.needs) if (!p.needs[id]) p.needs[id] = { v: def.start ?? this.w.cfg.needStart, t: this.w.s.now };
   }
   quality(place) {
     return this.w.ring.get(place)?.quality ?? 1;
   }
   /** The urgency of a need: its level through its curve. */
   urgency(p, need, t = this.w.s.now) {
-    return curveAt(this.w.needs.get(need)?.curve ?? "pow1.5", this.level(p, need, t));
+    return curveAt(this.w.needs.get(need)?.curve ?? this.w.cfg.needCurve, this.level(p, need, t));
   }
   /**
    * When the next need will cross a line that matters: urgent, desperate, or
@@ -727,13 +727,14 @@ var Bicameral = class {
     let best = Infinity;
     const a = p.doing?.kind === "act" ? this.w.actions.get(p.doing.action) : void 0;
     const relieving = a?.relieves;
+    const cfg = this.w.cfg;
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== void 0) continue;
-      const u = def.urgent ?? this.w.config.urgent;
+      const u = def.urgent ?? cfg.urgent;
       const rise = def.rise * this.riseMul(p, id) * (a?.rates?.[id] ?? 1);
       if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
-      for (const line of [u, Math.max(u, 0.97), 1]) {
+      for (const line of [u, Math.max(u, cfg.desperate), 1]) {
         if (v >= line - 1e-9) continue;
         const t = this.w.s.now + (line - v) / rise * HOUR;
         if (t < best) best = t;
@@ -770,7 +771,7 @@ var Bicameral = class {
     return clamp(ns.v + def.rise * this.riseMul(p, need) * (this.w.s.now - ns.t) / HOUR);
   }
   urgencyAt(need, v) {
-    return curveAt(this.w.needs.get(need)?.curve ?? "pow1.5", v);
+    return curveAt(this.w.needs.get(need)?.curve ?? this.w.cfg.needCurve, v);
   }
   // -------------------------------------------------------------------------
   // Habits
@@ -781,22 +782,23 @@ var Bicameral = class {
   }
   /** Learns from how an action went: realized relief against what was expected. */
   learn(p, id, got, expected, bonus = 0) {
-    const c = this.w.config;
+    const c = this.w.cfg;
+    const k = c.habits * this.w.own(p, "core", "habits");
     const h = p.habits[id] || [1, 1];
     let fast = h[0], slow = h[1];
-    const ratio = expected > 1e-6 ? clamp(got / expected, 0, 2) : 1;
-    fast += c.habitFast * (ratio - 1) + bonus;
-    fast += 0.02 * (1 - fast);
+    const ratio = expected > 1e-6 ? clamp(got / expected, 0, c.habitBest) : 1;
+    fast += c.habitFast * k * (ratio - 1) + bonus;
+    fast += c.habitDrift * k * (1 - fast);
     fast = clamp(fast, c.habitMin, c.habitMax);
-    slow = clamp(slow + c.habitSlow * (fast - slow), c.habitMin, c.habitMax);
+    slow = clamp(slow + c.habitSlow * k * (fast - slow), c.habitMin, c.habitMax);
     p.habits[id] = [round(fast, 5), round(slow, 5)];
   }
   /** A reward or a telling-off: nudges the habit directly. */
   nudge(p, id, amount) {
-    const c = this.w.config;
+    const c = this.w.cfg;
     const h = p.habits[id] || [1, 1];
     const fast = clamp(h[0] + amount, c.habitMin, c.habitMax);
-    p.habits[id] = [round(fast, 5), round(clamp(h[1] + amount * 0.25, c.habitMin, c.habitMax), 5)];
+    p.habits[id] = [round(fast, 5), round(clamp(h[1] + amount * c.nudgeSlow, c.habitMin, c.habitMax), 5)];
   }
   // -------------------------------------------------------------------------
   // The layered stack
@@ -807,7 +809,7 @@ var Bicameral = class {
     if (!r || !r.length) return null;
     if (Array.isArray(r[0])) return r;
     const day = dayOf(t);
-    const weekday = day % this.w.config.week;
+    const weekday = day % this.w.cfg.week;
     for (const v of r) {
       if (v.days && !v.days.includes(weekday)) continue;
       if (v.when && !this.w.lang.all(v.when, this.w.ctx(p))) continue;
@@ -839,7 +841,7 @@ var Bicameral = class {
       if (!inHours(h, [a, b])) continue;
       const startedToday = a <= b || h >= a;
       const startDay = startedToday ? dayOf(t) : dayOf(t) - 1;
-      if (job.days && !job.days.includes(startDay % this.w.config.week)) continue;
+      if (job.days && !job.days.includes(startDay % this.w.cfg.week)) continue;
       let end = dayStart + b * HOUR;
       if (end <= t) end += DAY;
       return { until: end };
@@ -850,17 +852,18 @@ var Bicameral = class {
   required(p) {
     const out = [];
     const now2 = this.w.s.now;
+    const cfg = this.w.cfg;
     const d = p.directive;
     if (d && !(d.done && !d.repeat) && !(d.until !== void 0 && d.until <= now2)) {
-      out.push({ do: d.do, at: d.at, rank: d.rank ?? 3, layer: "story", until: d.until ?? Infinity, target: d.target });
+      out.push({ do: d.do, at: d.at, rank: d.rank ?? cfg.storyRank, layer: "story", until: d.until ?? Infinity, target: d.target });
     }
     const shift = this.shiftAt(p);
-    if (shift && p.def.job) out.push({ do: p.def.job.action, at: p.def.job.place, rank: 2, layer: "job", until: shift.until });
+    if (shift && p.def.job) out.push({ do: p.def.job.action, at: p.def.job.place, rank: cfg.jobRank, layer: "job", until: shift.until });
     const r = this.routineAt(p);
     if (r) {
       const [, at, act, extra] = r.entry;
       const free = (act === "*" || act === "free") && (at === null || at === void 0 || at === "here");
-      if (!free) out.push({ do: act, at, rank: extra?.rank ?? 1, layer: "routine", until: r.until, with: extra?.with, any: act === "*" });
+      if (!free) out.push({ do: act, at, rank: extra?.rank ?? cfg.routineRank, layer: "routine", until: r.until, with: extra?.with, any: act === "*" });
     }
     return out;
   }
@@ -911,7 +914,7 @@ var Bicameral = class {
       const at = r.at !== void 0 ? r.at : def.at;
       const places = this.w.ring.resolve(at, p, r.target);
       const target = r.target;
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         this.addOption(p, out, { id: r.do, kind, place, target, rank: r.rank, layer: r.layer, until: r.until }, true);
         reqIds.add(r.do + "@" + place);
       }
@@ -922,7 +925,7 @@ var Bicameral = class {
       if (a.rank !== void 0 && a.rank < 0) continue;
       if (!a.relieves && !a.base) continue;
       const places = this.w.ring.resolve(a.at ?? null, p);
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(a.id + "@" + place)) continue;
         if (a.at !== void 0 && a.at !== null && !this.offeredAt(a, place, p)) continue;
         if (a.target === "person") {
@@ -934,7 +937,7 @@ var Bicameral = class {
       if (!t.relieves && !t.base) continue;
       if (t.rank !== void 0 && t.rank < 0) continue;
       const places = t.at !== void 0 ? this.w.ring.resolve(t.at, p) : [null];
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(t.id + "@" + place)) continue;
         this.addOption(p, out, { id: t.id, kind: "task", place, rank: t.rank ?? 0, layer: "need" }, false);
       }
@@ -969,7 +972,7 @@ var Bicameral = class {
       if (a.targetIf && !this.w.lang.all(a.targetIf, ctx)) continue;
       out.push(id);
     }
-    return out.slice(0, 6);
+    return out.slice(0, this.w.cfg.targets);
   }
   addOption(p, out, base, required) {
     const c = { ...base, weight: 0, parts: [] };
@@ -1012,7 +1015,7 @@ var Bicameral = class {
   }
   /** Weighs one option: fills in weight, parts and rank (or blocked). */
   weigh(p, c, required) {
-    const w = this.w;
+    const w = this.w, cfg = w.cfg;
     c.parts = [];
     const why = this.blockedReason(p, c);
     if (why) {
@@ -1033,11 +1036,11 @@ var Bicameral = class {
         if (!nd) continue;
         const r = mid(def.relieves[need]) * q;
         const lvl = this.level(p, need, arrive);
-        base += curveAt(nd.curve ?? "pow1.5", lvl) * Math.min(r, Math.max(lvl, 0.05));
-        if (r >= 0.3) {
-          const u = nd.urgent ?? w.config.urgent;
-          if (lvl >= Math.max(u, 0.97)) lift = Math.max(lift, w.config.desperateRank + (lvl - 0.97) * 10);
-          else if (lvl >= u) lift = Math.max(lift, w.config.urgentRank);
+        base += curveAt(nd.curve ?? cfg.needCurve, lvl) * Math.min(r, Math.max(lvl, cfg.reliefFloor));
+        if (r >= cfg.liftRelief) {
+          const u = nd.urgent ?? cfg.urgent;
+          if (lvl >= Math.max(u, cfg.desperate)) lift = Math.max(lift, cfg.desperateRank + (lvl - cfg.desperate) * cfg.desperateSlope);
+          else if (lvl >= u) lift = Math.max(lift, cfg.urgentRank);
         }
       }
     }
@@ -1060,7 +1063,7 @@ var Bicameral = class {
       const n = cons.length;
       for (const k of cons) {
         let v = this.consider(k, ctx, travel);
-        if (w.config.compensate && n > 1 && v < 1 && v > 0) v = v + (1 - v) * (1 - 1 / n) * v;
+        if (cfg.compensate && n > 1 && v < 1 && v > 0) v = v + (1 - v) * (1 - 1 / n) * v;
         mul(k.name || (typeof k.input === "string" ? k.input : "consideration"), v);
         if (v <= 0) break;
       }
@@ -1071,16 +1074,16 @@ var Bicameral = class {
     const kind = isTask ? null : this.pallKind(def);
     if (kind) {
       const tol = this.tolerance(p, kind);
-      if (tol > 0.05) {
+      if (tol > cfg.pallFrom) {
         const pd = w.pastimes.get(kind);
-        mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? w.config.pallPenalty) * tol, 4));
+        mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? cfg.pallPenalty) * tol, 4));
       }
     }
     if (p.wishes?.length) for (const [name, f] of this.wishPull(p, c, def.tags)) mul(name, f);
-    if (travel > 0) mul("travel", 1 / (1 + travel / w.config.travelScale));
+    if (travel > 0) mul("travel", 1 / (1 + travel / cfg.travelScale));
     const sleepy = def.tags?.includes("sleep");
-    if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== void 0 && w.s.now - p.lastEnd < 90) mul("did it last", w.config.repeat);
-    if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul("carrying on", w.config.inertia);
+    if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== void 0 && w.s.now - p.lastEnd < cfg.repeatWindow) mul("did it last", cfg.repeat);
+    if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul("carrying on", cfg.inertia);
     for (const m of w.hooks) {
       const parts = m.consider?.(p, c);
       if (parts) for (const [name, f] of parts) mul(name, f);
@@ -1119,7 +1122,7 @@ var Bicameral = class {
   tolerance(p, kind, t = this.w.s.now) {
     const rec = p.tol?.[kind];
     if (!rec) return 0;
-    const decay = this.w.pastimes.get(kind)?.decay ?? this.w.config.pallDecay;
+    const decay = this.w.pastimes.get(kind)?.decay ?? this.w.cfg.pallDecay;
     return round(Math.max(0, rec[0] - decay * Math.max(0, t - rec[1]) / HOUR), 4);
   }
   /** One more go at a pastime (inside the simulation). */
@@ -1128,7 +1131,7 @@ var Bicameral = class {
     const tol = p.tol || (p.tol = {});
     const before = this.tolerance(p, kind);
     for (const k of Object.keys(tol)) if (this.tolerance(p, k) <= 0) delete tol[k];
-    tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.config.pallGain)), 4), now2];
+    tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.cfg.pallGain)), 4), now2];
   }
   // -------------------------------------------------------------------------
   // Wishes and dreams
@@ -1185,7 +1188,7 @@ var Bicameral = class {
       const def = this.w.wishes.get(h.id);
       if (!def?.toward || !this.matches(def.toward, c.id, tags)) continue;
       if (this.isPerson(h.x) && c.target && c.target !== h.x) continue;
-      out.push([`${h.dream ? "dream" : "wish"}: ${def.label ?? def.id}`, def.pull ?? this.w.config.wishPull]);
+      out.push([`${h.dream ? "dream" : "wish"}: ${def.label ?? def.id}`, def.pull ?? this.w.cfg.wishPull]);
       if (h.dream) dream = true;
       else wish = true;
     }
@@ -1205,7 +1208,7 @@ var Bicameral = class {
     }
     const now2 = w.s.now;
     const h = { id, t: now2 };
-    const minutes = def.dream ? 0 : def.minutes ?? w.config.wishMinutes;
+    const minutes = def.dream ? 0 : def.minutes ?? w.cfg.wishMinutes;
     if (minutes > 0) h.until = now2 + minutes;
     if (x !== void 0) h.x = x;
     if (def.dream) h.dream = true;
@@ -1281,14 +1284,15 @@ var Bicameral = class {
   }
   /** Now and then, a new wish (and a dream, for someone without one). */
   rollWishes(p) {
-    const w = this.w, c = w.config;
+    const w = this.w, c = w.cfg;
+    const k = c.wishes * w.own(p, "core", "wishes");
     const held = p.wishes || [];
     for (const dream of [false, true]) {
       if (dream ? held.some((h) => h.dream) : held.filter((h) => !h.dream).length >= c.wishMax) continue;
       const pool = this.wishable(p, dream);
       if (!pool.length) continue;
       const r = w.stream(p);
-      if (!r.chance(c.wishChance)) continue;
+      if (!r.chance(c.wishChance * k)) continue;
       const pick = r.weighted(pool, (o) => o.w);
       if (pick) this.applyWish(p, pick.id, pick.x === void 0 ? void 0 : pick.x);
     }
@@ -1296,7 +1300,7 @@ var Bicameral = class {
   /** An action ended (Entmoot calls this): a pastime palls, and wishes it grants come true. */
   finished(p, d, frac, interrupted) {
     const kind = this.pallKind(this.w.actions.get(d.action));
-    if (kind && frac > 0.2) this.applyPall(p, kind);
+    if (kind && frac > this.w.cfg.pallDone) this.applyPall(p, kind);
     if (!interrupted && p.wishes?.length) this.checkWishes(p, d, false);
   }
   /** Every hour (Entmoot calls this): wishes are checked, fade, and new ones come at the wish hours. */
@@ -1304,7 +1308,7 @@ var Bicameral = class {
     const w = this.w;
     if (!w.wishes.size) return;
     const h = hourOf(t);
-    const rolling = w.config.wishHours.some((x) => Math.abs(x - h) < 1e-6);
+    const rolling = w.cfg.wishHours.some((x) => Math.abs(x - h) < 1e-6);
     for (const id in w.s.people) {
       const p = w.s.people[id];
       if (p.status !== "active") continue;
@@ -1352,7 +1356,7 @@ var Bicameral = class {
     for (const c of valid) top = Math.max(top, c.rank);
     let pool = valid.filter((c) => c.rank === top);
     const best = Math.max(...pool.map((c) => c.weight));
-    const cfg = this.w.config;
+    const cfg = this.w.cfg;
     pool = pool.filter((c) => c.weight >= best * cfg.cut).sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1)).slice(0, cfg.top);
     const r = this.w.stream(p);
     const picked = r.weighted(pool, (c) => Math.pow(c.weight, cfg.power)) || pool[0];
@@ -1590,7 +1594,7 @@ var Entmoot = class {
   /** Nothing to do: wait where they are, then think again. */
   idle(p) {
     const w = this.w;
-    const end = w.s.now + w.config.idle;
+    const end = w.s.now + w.cfg.idle;
     const seq = this.scheduleEnd(p, end);
     p.doing = { kind: "wait", action: "wait", place: p.place, start: w.s.now, end, rank: -1, layer: "idle", seq };
     this.announce(p);
@@ -1615,7 +1619,7 @@ var Entmoot = class {
       return;
     }
     if (c.id.startsWith("@wait:")) {
-      const minutes = Number(c.id.slice(6)) || w.config.idle;
+      const minutes = Number(c.id.slice(6)) || w.cfg.idle;
       const end = w.s.now + minutes;
       const seq = this.scheduleEnd(p, end);
       p.doing = { kind: "wait", action: "wait", place: p.place, start: w.s.now, end, rank: c.rank, layer: c.layer, seq, task: p.plan?.task };
@@ -1760,7 +1764,7 @@ var Entmoot = class {
         for (const m of w.hooks) m.did?.(p.id, a.deed, data);
       }
     }
-    if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
+    if (a && frac > w.cfg.habitDone) w.mind.learn(p, a.id, got, expected);
     if (a?.trains) w.skills.practiced(p, a.trains, d.start);
     w.mind.finished(p, d, frac, interrupted);
     if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
@@ -1827,7 +1831,7 @@ var Entmoot = class {
     for (const m of w.hooks) m.failed?.(p, why);
     if (failed) {
       for (const k in p.cool) if (k.startsWith("@fail:") && p.cool[k] <= now2) delete p.cool[k];
-      p.cool[backoffKey(failed.action, failed.place)] = now2 + w.config.backoff;
+      p.cool[backoffKey(failed.action, failed.place)] = now2 + w.cfg.backoff;
     }
     if (n >= MAX_FAILS) {
       if (p.plan && w.mentat) w.mentat.suspend(p);
@@ -1868,12 +1872,13 @@ var Entmoot = class {
     const others = w.ring.present(d.place).filter((id) => id !== p.id);
     if (!others.length) return;
     const r = w.stream(p);
-    const chosen = others.length <= 3 ? others : r.shuffle(others).slice(0, 3);
+    const cfg = w.cfg;
+    const chosen = others.length <= cfg.meetMax ? others : r.shuffle(others).slice(0, cfg.meetMax);
     for (const id of chosen) {
       const o = w.s.people[id];
       if (!o.doing || o.doing.kind !== "act") continue;
       const minutes = Math.min(d.end, o.doing.end) - w.s.now;
-      if (minutes < 3) continue;
+      if (minutes < cfg.meetMinutes) continue;
       for (const m of w.hooks) m.met?.(p, o, d.place, minutes);
     }
   }
@@ -1927,7 +1932,8 @@ var Entmoot = class {
     const away = p.away;
     p.status = "active";
     p.place = away?.place ?? p.def.home ?? null;
-    for (const id in p.needs) p.needs[id] = { v: Math.min(p.needs[id].v, 0.4), t: w.s.now };
+    const most = w.cfg.awayNeeds;
+    for (const id in p.needs) p.needs[id] = { v: Math.min(p.needs[id].v, most), t: w.s.now };
     delete p.away;
     w.log("back", p.id, { summary: away?.summary ?? "" });
     w.emit("back", { id: p.id, summary: away?.summary ?? "" });
@@ -2267,7 +2273,7 @@ var Westmarch = class {
     if (d !== void 0) e.d = d;
     const log = w.s.log;
     log.push(e);
-    const over = log.length - w.config.logSize;
+    const over = log.length - w.cfg.logSize;
     if (over > 0) log.splice(0, over);
     w.emit("log", e);
   }
@@ -2354,7 +2360,7 @@ var Palantir = class {
     const cands = d.candidates.slice().sort((a, b) => b.rank - a.rank || b.weight - a.weight);
     d.candidates = cands.filter((c, i) => i < 16 || c.layer !== "need");
     list.push(d);
-    if (list.length > this.w.config.decisions) list.shift();
+    if (list.length > this.w.cfg.decisions) list.shift();
     this.decisions.set(d.who, list);
     this.w.emit("decided", { who: d.who, picked: d.picked?.id ?? null, place: d.picked?.place ?? null });
   }
@@ -2495,11 +2501,12 @@ var Strangers = class {
     if (!def || !def.errands.length) return [];
     const out = [];
     const H = Math.floor(t / HOUR);
+    const crowds = this.w.cfg.crowds;
     for (let k = 4; k >= 0; k--) {
       const hh = H - k;
       const hourOfDay = (hh % 24 + 24) % 24;
       const count = Array.isArray(def.perHour) ? def.perHour[hourOfDay] ?? 0 : def.perHour;
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < count * crowds; i++) {
         const b = this.make(region, def, hh, i, t);
         if (b) out.push(b);
       }
@@ -2569,7 +2576,7 @@ var Skills = class {
     if (!rec) return p.def.skills?.[id] ?? def?.start ?? 0;
     const [v, since] = rec;
     if (!def?.decay) return v;
-    const idle = (t - since) / DAY - (def.grace ?? 3);
+    const idle = (t - since) / DAY - (def.grace ?? this.w.cfg.skillGrace);
     if (idle <= 0) return v;
     return round(Math.max(Math.min(v, def.floor ?? 0), v - def.decay * idle), 5);
   }
@@ -2601,7 +2608,8 @@ var Skills = class {
     if (!(hours > 0) || !(mul > 0)) return before;
     const def = this.def(id);
     const max = def.max ?? 1;
-    let rate = (def.rate ?? 0.02) * this.talent(p, id) * mul;
+    const pace = this.w.cfg.learning * this.w.own(p, "core", "learning");
+    let rate = (def.rate ?? this.w.cfg.skillRate) * this.talent(p, id) * mul * pace;
     if (def.learn?.length) {
       const ctx = this.w.ctx(p);
       for (const k2 of def.learn) rate *= this.w.mind.consider(k2, ctx);
@@ -2679,6 +2687,9 @@ var DEFAULT_CONFIG = {
   urgent: 0.85,
   urgentRank: 1.5,
   desperateRank: 2.5,
+  storyRank: 3,
+  jobRank: 2,
+  routineRank: 1,
   cut: 0.25,
   top: 3,
   power: 2,
@@ -2703,8 +2714,36 @@ var DEFAULT_CONFIG = {
   wishHours: [8, 13, 17],
   wishChance: 0.5,
   wishMinutes: 2160,
-  wishPull: 1.35
+  wishPull: 1.35,
+  needs: 1,
+  habits: 1,
+  learning: 1,
+  wishes: 1,
+  crowds: 1,
+  traitDefault: 0.5,
+  needStart: 0.2,
+  needCurve: "pow1.5",
+  reliefFloor: 0.05,
+  liftRelief: 0.3,
+  desperate: 0.97,
+  desperateSlope: 10,
+  habitDrift: 0.02,
+  habitBest: 2,
+  habitDone: 0.2,
+  nudgeSlow: 0.25,
+  pallFrom: 0.05,
+  pallDone: 0.2,
+  repeatWindow: 90,
+  targets: 6,
+  meetMax: 3,
+  meetMinutes: 3,
+  awayNeeds: 0.4,
+  skillRate: 0.02,
+  skillGrace: 3
 };
+var CORE_KNOBS = { needs: "person", habits: "person", learning: "person", wishes: "person", crowds: "world" };
+var UNTUNED = /* @__PURE__ */ new Set(["minutesPerSecond", "budgetMs"]);
+var CURVES = /* @__PURE__ */ new Set(["needCurve"]);
 var World = class {
   constructor(opts, modules) {
     this.lang = new Lang();
@@ -2734,6 +2773,8 @@ var World = class {
     /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
     this.looking = 0;
     this._speed = 1;
+    /** The settings in force, by module, made from the overrides they were made from (s.tune's, kept whole: a new tune makes a new object). */
+    this.tunedCache = /* @__PURE__ */ new Map();
     this.config = { ...DEFAULT_CONFIG, ...opts.config || {} };
     this.shell = opts.shell || {};
     const seed = String(opts.seed ?? "tyrell");
@@ -2789,7 +2830,7 @@ var World = class {
   }
   /** The day of the week, 0 to config.week - 1. */
   get weekday() {
-    return this.day % this.config.week;
+    return this.day % this.cfg.week;
   }
   /** How fast time runs: 1 normal, 4 four times as fast, 0 paused, negative runs backward. */
   get speed() {
@@ -3105,6 +3146,122 @@ var World = class {
     return this.s.game[key2];
   }
   // -------------------------------------------------------------------------
+  // Tuning: settings changed during play
+  // -------------------------------------------------------------------------
+  /**
+   * Changes settings during play (a slider in the game's options). It's an
+   * input, so time walk replays the change at the moment it was made, and
+   * the overrides are kept in the state, so a save keeps them. `module` is a
+   * module's name, or 'core' for the config; `values` are fields of its
+   * settings (any of them, not only the headline knobs), each over what was
+   * declared. A field set to null goes back to what was declared, and
+   * `values` null puts the whole module back. With `person`, it's that
+   * person's own headline knobs instead (their `tune`). See docs/tuning.md.
+   */
+  tune(module2, values, person) {
+    const base = this.tuneBase(module2);
+    const knobs = this.knobsOf(module2);
+    if (values !== null && (typeof values !== "object" || Array.isArray(values))) throw new Error(`Tyrell: tune ${module2} with an object of settings, or null`);
+    if (person !== void 0 && !this.s.people[person]) throw new Error(`Tyrell: can't tune '${person}': there's nobody by that id`);
+    for (const key2 of Object.keys(values || {})) {
+      const v = values[key2];
+      if (person !== void 0) {
+        if (knobs[key2] !== "person") throw new Error(`Tyrell: '${key2}' isn't a knob of ${module2}'s a person can have their own of`);
+        if (v !== null && !(typeof v === "number" && isFinite(v) && v >= 0)) throw new Error(`Tyrell: a person's '${key2}' must be a number, 0 or more, or null`);
+        continue;
+      }
+      if (module2 === "core" && UNTUNED.has(key2)) throw new Error(`Tyrell: set world.config.${key2} directly: it changes nothing that happens`);
+      if (!(key2 in base)) throw new Error(`Tyrell: ${module2} has no setting '${key2}'`);
+      if (v === null) continue;
+      const want = base[key2];
+      if (!plain(v)) throw new Error(`Tyrell: '${key2}' must be plain data (numbers, strings, true or false, lists and objects of them)`);
+      const curve = CURVES.has(key2) && (typeof v === "string" || Array.isArray(v));
+      if (!curve && want !== null && want !== void 0 && kindOf(v) !== kindOf(want)) throw new Error(`Tyrell: '${key2}' is a ${kindOf(want)} in ${module2}, not a ${kindOf(v)}`);
+    }
+    this.input("tune", [module2, values === null ? null : clone(values), person ?? null]);
+  }
+  /**
+   * The settings in force for a module (or 'core'): a copy of what was
+   * declared with any overrides from tune() over it. With a person, their
+   * headline knobs as they apply to them: the world's times their own.
+   */
+  tuning(module2, person) {
+    const now2 = { ...this.tuneBase(module2), ...this.s.tune?.[module2] || {} };
+    if (person === void 0) return now2;
+    const p = this.s.people[person];
+    const out = {};
+    const knobs = this.knobsOf(module2);
+    for (const k of Object.keys(knobs)) if (knobs[k] === "person") out[k] = Number(now2[k]) * this.own(p, module2, k);
+    return out;
+  }
+  /** The core config in force: what was declared (world.config), under any overrides made with tune(). */
+  get cfg() {
+    return this.tuned("core", this.config);
+  }
+  /**
+   * A module's settings in force (or the core's, as 'core'): `base`, what was
+   * declared, under any overrides made with tune(). Untuned, it's `base`
+   * itself; tuned, an object whose own fields are the overrides and whose
+   * prototype is `base` (so a field the game sets on `base` still shows).
+   */
+  tuned(name, base) {
+    const t = this.s.tune;
+    if (t === void 0) return base;
+    const o = t[name];
+    if (o === void 0) return base;
+    const c = this.tunedCache.get(name);
+    if (c && c.src === o && c.base === base) return c.out;
+    const out = Object.assign(Object.create(base), o);
+    this.tunedCache.set(name, { src: o, base, out });
+    return out;
+  }
+  /** A person's own multiplier for one of a module's headline knobs (their `tune`): 1 if they have none. */
+  own(p, module2, knob) {
+    const v = p?.def.tune?.[module2]?.[knob];
+    return typeof v === "number" ? v : 1;
+  }
+  /** What tune() works over: the config for 'core', else the module's declared settings. */
+  tuneBase(module2) {
+    if (module2 === "core") return this.config;
+    const m = this.modules.get(module2);
+    if (!m) throw new Error(`Tyrell: can't tune '${module2}': no module by that name is switched on`);
+    if (!m.config) throw new Error(`Tyrell: ${module2} has no settings to tune`);
+    return m.config;
+  }
+  knobsOf(module2) {
+    return module2 === "core" ? CORE_KNOBS : this.modules.get(module2)?.knobs ?? {};
+  }
+  /** Applies a tune (the input): the overrides kept whole, a new object each time, so what's made from them is made again. */
+  applyTune(module2, values, person) {
+    const p = person !== null ? this.s.people[person] : void 0;
+    if (person !== null && !p) return;
+    const held = (p ? p.def.tune : this.s.tune) || {};
+    const cur = held[module2] || {};
+    const next = values === null ? {} : { ...cur };
+    for (const k of Object.keys(values || {})) {
+      const v = values[k];
+      if (v === null) delete next[k];
+      else next[k] = v;
+    }
+    const rising = module2 === "core" && ("needs" in cur || "needs" in next) && cur.needs !== next.needs;
+    const who = [];
+    if (rising) for (const id in this.s.people) {
+      const q = this.s.people[id];
+      if (q.status !== "gone" && (!p || q === p)) who.push(q);
+    }
+    for (const q of who) this.mind.settleRise(q);
+    const all = { ...held };
+    if (Object.keys(next).length) all[module2] = next;
+    else delete all[module2];
+    if (p) {
+      if (Object.keys(all).length) p.def.tune = all;
+      else delete p.def.tune;
+    } else if (Object.keys(all).length) this.s.tune = all;
+    else delete this.s.tune;
+    for (const q of who) if (q.status === "active" && q.doing) this.clock.scheduleChecks(q);
+    this.log("tuned", person ?? void 0, { module: module2, values });
+  }
+  // -------------------------------------------------------------------------
   // Asking about people
   // -------------------------------------------------------------------------
   /** A person's state (read it, don't change it: go through the API). */
@@ -3359,7 +3516,7 @@ var World = class {
   }
   makePerson(id, def) {
     const needs = {};
-    for (const [nid, nd] of this.needs) needs[nid] = { v: clamp(def.needs?.[nid] ?? nd.start ?? 0.2), t: this.s.now };
+    for (const [nid, nd] of this.needs) needs[nid] = { v: clamp(def.needs?.[nid] ?? nd.start ?? this.cfg.needStart), t: this.s.now };
     const p = {
       id,
       name: def.name || id,
@@ -3390,7 +3547,7 @@ var World = class {
     L.term("need", (c, a) => c.person ? this.mind.level(c.person, a) : void 0);
     L.term("var", (c, a) => c.person?.vars[a]);
     L.term("money", (c) => Number(c.person?.vars.money ?? 0));
-    L.term("trait", (c, a) => c.person?.def.traits?.[a] ?? 0.5);
+    L.term("trait", (c, a) => c.person?.def.traits?.[a] ?? this.cfg.traitDefault);
     L.term("value", (c, a) => c.person?.def.values?.[a] ?? 0);
     L.term("has", (c, a) => c.person ? this.have(c.person, a) : 0);
     L.term("hour", () => this.hour);
@@ -3537,8 +3694,20 @@ var World = class {
     this.defineInput("at", (t, name, data) => {
       this.clock.schedule({ t, k: "timer", ref: name, data });
     });
+    this.defineInput("tune", (module2, values, person2) => this.applyTune(module2, values, person2));
   }
 };
+function plain(v) {
+  if (v === null || typeof v === "string" || typeof v === "boolean") return true;
+  if (typeof v === "number") return isFinite(v);
+  if (Array.isArray(v)) return v.every(plain);
+  if (typeof v === "object") {
+    const proto = Object.getPrototypeOf(v);
+    return (proto === Object.prototype || proto === null) && Object.values(v).every(plain);
+  }
+  return false;
+}
+var kindOf = (v) => Array.isArray(v) ? "list" : v === null ? "null" : typeof v;
 var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer"]);
 var MIGRATIONS = {
   // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
@@ -7325,7 +7494,7 @@ var builtins = {
     name: "nobody-starves",
     sample(w, acc, fail) {
       const since = acc.starve || (acc.starve = {});
-      const vital = [...w.needs.values()].filter((d) => (d.urgent ?? w.config.urgent) <= 1).map((d) => d.id);
+      const vital = [...w.needs.values()].filter((d) => (d.urgent ?? w.cfg.urgent) <= 1).map((d) => d.id);
       for (const p of w.people()) for (const n of vital) {
         const k = p.id + ":" + n;
         if (w.mind.level(p, n) >= 0.999) {

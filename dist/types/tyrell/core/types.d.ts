@@ -58,13 +58,14 @@ export interface NeedDef {
     id: Id;
     /** How much the need rises per game hour (0..1 scale, 1 is desperate). */
     rise: number;
-    /** Starting value for new people. Default 0.2. */
+    /** Starting value for new people. Default config.needStart (0.2). */
     start?: number;
-    /** How the need's level turns into urgency when weighing relief. Default 'pow1.5'. */
+    /** How the need's level turns into urgency when weighing relief. Default config.needCurve ('pow1.5'). */
     curve?: Curve;
     /**
-     * Above this level the need is urgent: something that meets it (by 0.3 or
-     * more) is lifted above routines, and at 0.97 above work. Default
+     * Above this level the need is urgent: something that meets it (by
+     * config.liftRelief, 0.3, or more) is lifted above routines, and at
+     * config.desperate (0.97) above work. Default
      * config.urgent (0.85). Set it above 1 for needs that should never break
      * a routine (fun, company).
      */
@@ -211,7 +212,7 @@ export interface SkillDef {
     label?: string;
     /** The top of the scale. Default 1. */
     max?: number;
-    /** Level gained per hour of practice at talent 1, from nothing. Default 0.02 (about fifty hours to the top of 1). */
+    /** Level gained per hour of practice at talent 1, from nothing. Default config.skillRate (0.02: about fifty hours to the top of 1). */
     rate?: number;
     /**
      * How much harder each step is: progress is scaled by (1 - level / max) to
@@ -220,7 +221,7 @@ export interface SkillDef {
     diminish?: number;
     /** Level lost per day without practice, once `grace` days have gone by. Default 0: never forgotten. */
     decay?: number;
-    /** Days without practice before it starts to slip. Default 3. */
+    /** Days without practice before it starts to slip. Default config.skillGrace (3). */
     grace?: number;
     /** Forgetting never takes a level below this. Default 0. */
     floor?: number;
@@ -388,6 +389,12 @@ export interface PersonDef {
     talents?: Record<Id, number>;
     /** Inborn tastes: a standing multiplier on an action's (or task's) weight (default 1). Delos fills these in from a genome. */
     instincts?: Record<Id, number>;
+    /**
+     * This person's own pace for the headline knobs, by module ('core' for
+     * the minds themselves): { fellowship: { friendship: 2 }, reverie: { breaks: 0.5 } }.
+     * Each multiplies the world's knob for them alone (default 1). See docs/tuning.md.
+     */
+    tune?: Record<string, Record<string, number>>;
     /** Anything the game wants to keep: a look, a sprite id. */
     data?: Record<string, unknown>;
 }
@@ -488,7 +495,7 @@ export interface Directive {
     target?: Id;
     /** Until this time (minutes); default until done once. */
     until?: Minutes;
-    /** Rank; default 3. */
+    /** Rank; default config.storyRank (3). */
     rank?: number;
     /** Done once already. */
     done?: boolean;
@@ -561,6 +568,11 @@ export interface WorldState {
     n: number;
     /** Ids handed out at runtime. */
     ids: number;
+    /**
+     * Settings changed during play (world.tune), by module ('core' for the
+     * config): each over what was declared. Absent until something is tuned.
+     */
+    tune?: Record<string, Record<string, Value | Value[] | Record<string, Value>>>;
 }
 /** What the engine asks the game. All optional. */
 export interface Shell {
@@ -581,6 +593,10 @@ export interface Config {
     /** Urgent needs lift an option to this rank (above routines). Default 1.5; desperate (>= 0.97) to 2.5. */
     urgentRank: number;
     desperateRank: number;
+    /** The ranks of the layered stack: a directive (unless it says its own), a job's shift, a routine entry (unless it says its own). Defaults 3, 2 and 1. */
+    storyRank: number;
+    jobRank: number;
+    routineRank: number;
     /** Options under this share of the best weight are dropped. Default 0.25. */
     cut: number;
     /** At most this many options go into the final draw. Default 3. */
@@ -625,6 +641,56 @@ export interface Config {
     wishMinutes: number;
     /** How much more a wish's `toward` actions weigh. Default 1.35. */
     wishPull: number;
+    /** How fast every need rises (2: twice as fast, so people eat, sleep and seek company more often). Default 1. */
+    needs: number;
+    /** How fast habits form and fade (habitFast, habitSlow and the pull back to neutral). 0 freezes them. Default 1. */
+    habits: number;
+    /** How fast skills are learned (every skill's rate, on top of talents). 0 learns nothing. Default 1. */
+    learning: number;
+    /** How often new wishes and dreams come (wishChance). 0 brings none. Default 1. */
+    wishes: number;
+    /** How many strangers pass each hour (every region's perHour). Default 1. */
+    crowds: number;
+    /** The trait a person has when their definition doesn't give it (the `trait` term, and every module that reads traits). Default 0.5. */
+    traitDefault: number;
+    /** Default starting level of a need with no `start`. Default 0.2. */
+    needStart: number;
+    /** Default curve a need's level goes through to make its urgency. Default 'pow1.5'. */
+    needCurve: Curve;
+    /** An option's relief for a need counts as no more than the need's level, but at least this. Higher: needs nearly met still pull. Default 0.05. */
+    reliefFloor: number;
+    /** An urgent need lifts an option's rank only if it relieves at least this much. Lower: smaller things break routines. Default 0.3. */
+    liftRelief: number;
+    /** A need this high (or its `urgent`, if higher) is desperate: it lifts options above work. Default 0.97. */
+    desperate: number;
+    /** Rank added per point of level past desperate (so starving wakes the exhausted). Default 10. */
+    desperateSlope: number;
+    /** Each go pulls a habit back toward neutral by this share of the way. Higher: habits fade sooner. Default 0.02. */
+    habitDrift: number;
+    /** A go counts as at most this many times as good as expected when habits learn. Default 2. */
+    habitBest: number;
+    /** The share of a go that must be done for habits to learn from it. Default 0.2. */
+    habitDone: number;
+    /** The share of a reward (world.reward) that reaches the slow habit. Default 0.25. */
+    nudgeSlow: number;
+    /** Below this tolerance a pastime doesn't pall at all. Default 0.05. */
+    pallFrom: number;
+    /** The share of a go at a pastime that must be done for it to add to the tolerance. Default 0.2. */
+    pallDone: number;
+    /** Minutes after doing something that a free choice of it again counts as 'did it last'. Default 90. */
+    repeatWindow: number;
+    /** Most people an action aimed at someone is weighed against at once. Default 6. */
+    targets: number;
+    /** Most people someone meets on starting something with others about (regard, gossip, colds). Default 3. */
+    meetMax: number;
+    /** The shortest time together, in minutes, that counts as meeting. Default 3. */
+    meetMinutes: number;
+    /** Coming back from away, needs are at most this. Default 0.4. */
+    awayNeeds: number;
+    /** Default level gained per hour of practice, for a skill with no `rate`. Default 0.02. */
+    skillRate: number;
+    /** Default days without practice before a skill with `decay` starts to slip. Default 3. */
+    skillGrace: number;
 }
 export interface Options {
     /** The world's seed: the same seed and the same calls give the same world. */

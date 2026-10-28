@@ -28,7 +28,7 @@ export class Westmarch {
     if (d !== undefined) e.d = d;
     const log = w.s.log;
     log.push(e);
-    const over = log.length - w.config.logSize;
+    const over = log.length - w.cfg.logSize;
     if (over > 0) log.splice(0, over);
     w.emit('log', e);
   }

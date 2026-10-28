@@ -216,7 +216,7 @@ export class Entmoot {
   /** Nothing to do: wait where they are, then think again. */
   idle(p: PersonState): void {
     const w = this.w;
-    const end = w.s.now + w.config.idle;
+    const end = w.s.now + w.cfg.idle;
     const seq = this.scheduleEnd(p, end);
     p.doing = { kind: 'wait', action: 'wait', place: p.place, start: w.s.now, end, rank: -1, layer: 'idle', seq };
     this.announce(p);
@@ -241,7 +241,7 @@ export class Entmoot {
       return;
     }
     if (c.id.startsWith('@wait:')) {
-      const minutes = Number(c.id.slice(6)) || w.config.idle;
+      const minutes = Number(c.id.slice(6)) || w.cfg.idle;
       const end = w.s.now + minutes;
       const seq = this.scheduleEnd(p, end);
       p.doing = { kind: 'wait', action: 'wait', place: p.place, start: w.s.now, end, rank: c.rank, layer: c.layer, seq, task: p.plan?.task };
@@ -361,7 +361,7 @@ export class Entmoot {
         for (const m of w.hooks) m.did?.(p.id, a.deed, data);
       }
     }
-    if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
+    if (a && frac > w.cfg.habitDone) w.mind.learn(p, a.id, got, expected);
     if (a?.trains) w.skills.practiced(p, a.trains, d.start);
     w.mind.finished(p, d, frac, interrupted);
     if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
@@ -427,7 +427,7 @@ export class Entmoot {
     // back off: don't choose the same thing at the same place again at once
     if (failed) {
       for (const k in p.cool) if (k.startsWith('@fail:') && p.cool[k] <= now) delete p.cool[k];
-      p.cool[backoffKey(failed.action, failed.place)] = now + w.config.backoff;
+      p.cool[backoffKey(failed.action, failed.place)] = now + w.cfg.backoff;
     }
     if (n >= MAX_FAILS) {
       // too many at once: set any plan aside and rest a while instead of choosing again
@@ -469,12 +469,13 @@ export class Entmoot {
     const others = w.ring.present(d.place).filter((id) => id !== p.id);
     if (!others.length) return;
     const r = w.stream(p);
-    const chosen = others.length <= 3 ? others : r.shuffle(others).slice(0, 3);
+    const cfg = w.cfg;
+    const chosen = others.length <= cfg.meetMax ? others : r.shuffle(others).slice(0, cfg.meetMax);
     for (const id of chosen) {
       const o = w.s.people[id];
       if (!o.doing || o.doing.kind !== 'act') continue;
       const minutes = Math.min(d.end, o.doing.end) - w.s.now;
-      if (minutes < 3) continue;
+      if (minutes < cfg.meetMinutes) continue;
       for (const m of w.hooks) m.met?.(p, o, d.place, minutes);
     }
   }
@@ -527,7 +528,8 @@ export class Entmoot {
     p.status = 'active';
     p.place = away?.place ?? p.def.home ?? null;
     // a day or two away: needs are whatever they'd settle at
-    for (const id in p.needs) p.needs[id] = { v: Math.min(p.needs[id].v, 0.4), t: w.s.now };
+    const most = w.cfg.awayNeeds;
+    for (const id in p.needs) p.needs[id] = { v: Math.min(p.needs[id].v, most), t: w.s.now };
     delete p.away;
     w.log('back', p.id, { summary: away?.summary ?? '' });
     w.emit('back', { id: p.id, summary: away?.summary ?? '' });

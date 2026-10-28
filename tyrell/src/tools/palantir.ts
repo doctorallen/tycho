@@ -25,7 +25,7 @@ export class Palantir {
     const cands = d.candidates.slice().sort((a, b) => b.rank - a.rank || b.weight - a.weight);
     d.candidates = cands.filter((c, i) => i < 16 || c.layer !== 'need');
     list.push(d);
-    if (list.length > this.w.config.decisions) list.shift();
+    if (list.length > this.w.cfg.decisions) list.shift();
     this.decisions.set(d.who, list);
     this.w.emit('decided', { who: d.who, picked: d.picked?.id ?? null, place: d.picked?.place ?? null });
   }

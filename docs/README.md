@@ -4,6 +4,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 
 - [core.md](core.md): `Tycho.seed`, `Tycho.math`, `Tycho.color`, `Tycho.loop`.
 - [renderer.md](renderer.md): `Tycho.gpu`, `Tycho.light`, `Tycho.post`: the frame on the GPU.
+- [world.md](world.md): `Tycho.grid`, `Tycho.collide`, `Tycho.move`, `Tycho.path`: tiles, the collision query, movers and paths.
 - [shell.md](shell.md): `Tycho.save`, `Tycho.pwa`, `Tycho.dev`, `Tycho.loader`.
 - [minds.md](minds.md): the bridge, `Tycho.minds` (`dist/tycho-minds.js`): the glue between a game and Tyrell.
 - [installable.md](installable.md): the service worker (`dist/tycho-sw.js`).

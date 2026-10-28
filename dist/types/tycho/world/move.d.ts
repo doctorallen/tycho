@@ -37,6 +37,8 @@ export interface PlatformNumbers {
     /** Running and walking pace. */
     speed: number;
     walk: number;
+    /** A sprint past the run, with the stick pushed further still (none: the run is the fastest). */
+    sprint?: number;
     /** Toward the pace on the ground and in the air; slowing with the stick let go. */
     accel: number;
     airAccel: number;
@@ -53,6 +55,9 @@ export interface PlatformOptions {
     /** Under this push of the stick, a walk; then to a run over this much more (0.62, 0.28). */
     walkUnder?: number;
     runSpan?: number;
+    /** With a `sprint` pace: past this push, from the run to the sprint over this much more (0.78, 0.12). */
+    sprintFrom?: number;
+    sprintSpan?: number;
     /** A ladder's taken with the stick up or down past grabY and not across past grabX (0.5, 0.6). */
     grabY?: number;
     grabX?: number;

@@ -68,7 +68,7 @@ const space = new Tycho.collide.Space().tiles(rock).ellipses(() => f.solids || [
 
 ### Platform
 
-A side-on runner, the White Dragon's: a box with gravity whose pace is how far the stick is pushed (a walk under `walkUnder`, then up to a run), coyote time, a jump cut short when it's let go (`hop`), small ledges stepped up, walkways and stairs stood on from above, followed down while walking and dropped through with down and jump, and ladders climbed, jumped off (`leap`) and let go of sideways.
+A side-on runner, the White Dragon's: a box with gravity whose pace is how far the stick is pushed (a walk under `walkUnder`, then up to a run, and with a `sprint` pace in its numbers, past `sprintFrom` up to a sprint), coyote time, a jump cut short when it's let go (`hop`), small ledges stepped up, walkways and stairs stood on from above, followed down while walking and dropped through with down and jump, and ladders climbed, jumped off (`leap`) and let go of sideways.
 
 ```js
 const runner = new Tycho.move.Platform(T.player /* w, h, speed, walk, accel, airAccel, friction, jump, gravity, maxFall, coyote, climb */);
@@ -77,7 +77,7 @@ if (r.grabbed) hold = null;     // a ladder taken this step (and the busy slowdo
 if (r.climbing) { /* on a ladder */ }
 ```
 
-The body is `{ x, y, vx, vy, face, ground, coyote, drop, ladder, walked }`, x the middle of the feet and y the soles. The numbers are read every step, so a game's tuning can change under it. Every finer number (thresholds on the stick, the ladder's grab and leap, the drop, the hop, the ledges, the stairs followed) is an option, each the White Dragon's by default. `hits(space, x, y)` is the body's box test (a hair inside its edges).
+The body is `{ x, y, vx, vy, face, ground, coyote, drop, ladder, walked }`, x the middle of the feet and y the soles. The numbers are read every step, so a game's tuning can change under it. Every finer number (thresholds on the stick, `walkUnder`, `runSpan`, `sprintFrom` and `sprintSpan`, the ladder's grab and leap, the drop, the hop, the ledges, the stairs followed) is an option, each the White Dragon's by default. `hits(space, x, y)` is the body's box test (a hair inside its edges).
 
 ### topdown
 

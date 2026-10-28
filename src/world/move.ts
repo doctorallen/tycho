@@ -50,6 +50,8 @@ export interface PlatformNumbers {
   w: number; h: number;
   /** Running and walking pace. */
   speed: number; walk: number;
+  /** A sprint past the run, with the stick pushed further still (none: the run is the fastest). */
+  sprint?: number;
   /** Toward the pace on the ground and in the air; slowing with the stick let go. */
   accel: number; airAccel: number; friction: number;
   jump: number; gravity: number; maxFall: number;
@@ -62,6 +64,8 @@ export interface PlatformNumbers {
 export interface PlatformOptions {
   /** Under this push of the stick, a walk; then to a run over this much more (0.62, 0.28). */
   walkUnder?: number; runSpan?: number;
+  /** With a `sprint` pace: past this push, from the run to the sprint over this much more (0.78, 0.12). */
+  sprintFrom?: number; sprintSpan?: number;
   /** A ladder's taken with the stick up or down past grabY and not across past grabX (0.5, 0.6). */
   grabY?: number; grabX?: number;
   /** How far below the feet a ladder's reached going down (3); not within grabTop of its top going up, or grabBottom of its foot going down (2, 1). */
@@ -81,7 +85,7 @@ export interface PlatformOptions {
 }
 
 const PLATFORM: Required<PlatformOptions> = {
-  walkUnder: 0.62, runSpan: 0.28, grabY: 0.5, grabX: 0.6, grabBelow: 3, grabTop: 2, grabBottom: 1,
+  walkUnder: 0.62, runSpan: 0.28, sprintFrom: 0.78, sprintSpan: 0.12, grabY: 0.5, grabX: 0.6, grabBelow: 3, grabTop: 2, grabBottom: 1,
   leap: 0.7, leapKick: 60, letGoX: 0.6, letGoY: 0.3, dropY: 0.5, dropFoot: 4, dropTime: 0.25,
   hop: 70, hopGravity: 0.9, stepMin: 2, stepMax: 7, follow: 7,
 };
@@ -131,9 +135,11 @@ export class Platform {
       else if (Math.abs(ax) > O.letGoX && Math.abs(ay) < O.letGoY) { b.ladder = null; }
       if (b.ladder) { b.walked += Math.abs(b.vy * dt); res.climbing = true; return res; }
     }
-    // ---- running: the stick sets the pace, a light push walks and a full one runs
+    // ---- running: the stick sets the pace, a light push walks and a full one
+    // runs (or, with a sprint, a full one sprints)
     const m = Math.abs(ax), sp = c.scale === undefined ? 1 : c.scale;
-    const pace = (m < O.walkUnder ? P.walk : lerp(P.walk, P.speed, clamp((m - O.walkUnder) / O.runSpan, 0, 1))) * sp;
+    const pace = (P.sprint !== undefined && m > O.sprintFrom ? lerp(P.speed, P.sprint, clamp((m - O.sprintFrom) / O.sprintSpan, 0, 1))
+      : m < O.walkUnder ? P.walk : lerp(P.walk, P.speed, clamp((m - O.walkUnder) / O.runSpan, 0, 1))) * sp;
     const target = Math.sign(ax) * pace * busy, acc = b.ground ? P.accel : P.airAccel;
     if (ax) b.vx += clamp(target - b.vx, -acc * dt, acc * dt);
     else b.vx -= clamp(b.vx, -P.friction * dt, P.friction * dt);

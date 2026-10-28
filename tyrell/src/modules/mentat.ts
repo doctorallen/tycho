@@ -27,18 +27,50 @@ export interface MentatConfig {
   depth: number;
   /** Minutes of effort one unit of money is worth, before thrift. */
   priceWeight: number;
+
+  // The headline knobs: plain multipliers, 1 changing nothing. A person's
+  // own (PersonDef.tune.mentat) multiplies these for them alone.
+  /** How long people keep at a plan: the replans before they give up (maxTries). 0: they give up at the first failure. Default 1. */
+  persistence: number;
+  /** How much their scruples cost a way of getting something: the extra cost of illegal ways (risk) and of ways against their values. 0: none (the honest and the devout still never). Default 1. */
+  scruples: number;
+
+  // The finer numbers.
+  /** Minutes, at least, before a task given up on is chosen again. Default 120. */
+  giveUp: number;
+  /** Plans kept set aside at once (an urgent need interrupted them). Default 2. */
+  setAside: number;
+  /** Minutes after it began that a plan set aside is dropped instead of picked up again. Default 1440. */
+  stale: number;
+  /** Illegal ways: never for honesty this high; otherwise riskBase + honesty × riskHonesty + heat × riskHeat minutes. Defaults 0.8, 60, 300 and 20. */
+  honestNever: number;
+  riskBase: number;
+  riskHonesty: number;
+  riskHeat: number;
+  /** Ways against a value: never if it's held this much; otherwise held × valuesCost minutes. Defaults 0.9 and 200. */
+  valuesNever: number;
+  valuesCost: number;
 }
 
-export const DEFAULT_MENTAT: MentatConfig = { maxTries: 3, depth: 3, priceWeight: 1 };
+export const DEFAULT_MENTAT: MentatConfig = {
+  maxTries: 3, depth: 3, priceWeight: 1, persistence: 1, scruples: 1,
+  giveUp: 120, setAside: 2, stale: 24 * 60, honestNever: 0.8, riskBase: 60, riskHonesty: 300, riskHeat: 20, valuesNever: 0.9, valuesCost: 200,
+};
 
 interface Route { steps: Step[]; cost: number }
 
 export class Mentat implements Module {
   readonly name = 'mentat';
   readonly config: MentatConfig;
+  readonly knobs = { persistence: 'person', scruples: 'person' } as const;
   private w!: World;
 
   constructor(cfg: Partial<MentatConfig> = {}) { this.config = { ...DEFAULT_MENTAT, ...cfg }; }
+
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): MentatConfig { return this.w.tuned(this.name, this.config); }
+  /** A headline knob for someone: the world's, times their own. */
+  private knob(name: 'persistence' | 'scruples', p: PersonState): number { return this.c[name] * this.w.own(p, this.name, name); }
 
   attach(w: World): void {
     this.w = w;
@@ -105,7 +137,7 @@ export class Mentat implements Module {
         if (step.startsWith('get:')) {
           const item = step.slice(4);
           if (w.have(p, item) > 0) continue;
-          const route = this.route(p, item, this.config.depth, new Set());
+          const route = this.route(p, item, this.c.depth, new Set());
           if (!route) return this.fail(p, `no way to get ${item}`);
           plan.stack.push({ task: 'get:' + item, method: -1, steps: route.steps, i: 0 });
           w.log('route', p.id, { item, steps: route.steps.map((s) => (typeof s === 'string' ? s : s.action)), cost: round(route.cost, 1) });
@@ -186,7 +218,7 @@ export class Mentat implements Module {
     const closed = /^(.*) is closed then$/.exec(why);
     if (closed && w.reverie) w.reverie.applyBelieve(p.id, 'open:' + closed[1], false, 'saw');
     plan.tries++;
-    if (plan.tries > this.config.maxTries) return this.giveUp(p, why);
+    if (plan.tries > this.c.maxTries * this.knob('persistence', p)) return this.giveUp(p, why);
     // mark the innermost real method as failed and choose again, going outward
     while (plan.stack.length) {
       const frame = plan.stack.pop()!;
@@ -211,7 +243,7 @@ export class Mentat implements Module {
     w.emit('planned', { id: p.id, task: plan.task, ok: false, why });
     if (w.reverie?.feelingDefs.has('frustrated')) w.reverie.applyFeel(p.id, 'frustrated', plan.task);
     const def = w.tasks.get(plan.task);
-    p.cool[plan.task] = w.s.now + Math.max(def?.cooldown ?? 0, 120);
+    p.cool[plan.task] = w.s.now + Math.max(def?.cooldown ?? 0, this.c.giveUp);
     p.plan = null;
     return null;
   }
@@ -223,7 +255,8 @@ export class Mentat implements Module {
     const frame = plan.stack[plan.stack.length - 1];
     if (frame && frame.i > 0) frame.i--; // do the interrupted step again
     p.suspended.unshift(plan);
-    if (p.suspended.length > 2) p.suspended.length = 2;
+    const most = this.c.setAside;
+    if (p.suspended.length > most) p.suspended.length = most;
     p.plan = null;
     this.w.log('set-aside', p.id, { task: plan.task });
   }
@@ -235,7 +268,7 @@ export class Mentat implements Module {
     if (pick && pick.rank > plan.rank) return null;
     if (pick && pick.kind === 'task' && pick.id === plan.task) { p.suspended.shift(); return null; }
     p.suspended.shift();
-    if (this.w.s.now - plan.started > 24 * 60) return null; // stale
+    if (this.w.s.now - plan.started > this.c.stale) return null; // stale
     p.plan = plan;
     this.w.log('resumed', p.id, { task: plan.task });
     return this.next(p);
@@ -309,25 +342,27 @@ export class Mentat implements Module {
 
   /** What an action costs a person, in minutes of effort: time, money by thrift, risk by honesty. */
   cost(p: PersonState, a: ActionDef): number {
-    const w = this.w;
+    const w = this.w, c = this.c;
     const minutes = Array.isArray(a.minutes) ? (a.minutes[0] + a.minutes[1]) / 2 : a.minutes;
     let cost = minutes + (a.cost ?? 0);
     const price = a.price ?? 0;
     if (price) {
       const money = Number(p.vars.money ?? 0);
       if (price > money) return Infinity;
-      const thrift = p.def.traits?.thrift ?? 0.5;
-      cost += price * this.config.priceWeight * (0.5 + thrift) * (1 + clamp(price / Math.max(1, money)));
+      const thrift = p.def.traits?.thrift ?? w.cfg.traitDefault;
+      cost += price * c.priceWeight * (0.5 + thrift) * (1 + clamp(price / Math.max(1, money)));
     }
+    // the headline knob: how much their scruples cost them
+    const scruples = a.tags?.includes('illegal') || a.against?.length ? this.knob('scruples', p) : 1;
     if (a.tags?.includes('illegal')) {
-      const honesty = p.def.traits?.honesty ?? 0.5;
-      if (honesty >= 0.8) return Infinity;
-      cost += 60 + honesty * 300 + (w.wormtongue ? w.wormtongue.heat(p.id) * 20 : 0);
+      const honesty = p.def.traits?.honesty ?? w.cfg.traitDefault;
+      if (honesty >= c.honestNever) return Infinity;
+      cost += (c.riskBase + honesty * c.riskHonesty + (w.wormtongue ? w.wormtongue.heat(p.id) * c.riskHeat : 0)) * scruples;
     }
     for (const v of a.against || []) {
       const held = p.def.values?.[v] ?? 0;
-      if (held >= 0.9) return Infinity;
-      cost += held * 200;
+      if (held >= c.valuesNever) return Infinity;
+      cost += held * c.valuesCost * scruples;
     }
     return cost;
   }

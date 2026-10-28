@@ -59,7 +59,7 @@ const builtins: Record<string, VKCheck> = {
     sample(w, acc, fail) {
       const since: Record<string, number> = (acc.starve ||= {});
       // only needs that can break through a routine (urgent at or under 1) can starve someone
-      const vital = [...w.needs.values()].filter((d) => (d.urgent ?? w.config.urgent) <= 1).map((d) => d.id);
+      const vital = [...w.needs.values()].filter((d) => (d.urgent ?? w.cfg.urgent) <= 1).map((d) => d.id);
       for (const p of w.people()) for (const n of vital) {
         const k = p.id + ':' + n;
         if (w.mind.level(p, n) >= 0.999) {

@@ -30,7 +30,7 @@ There is one deliberate exception: a person's definition (`PersonDef`: name, tra
 | Rewound by time walk | No | Yes |
 | Changed by | The game, at setup | Inputs, and the simulation itself |
 
-Treat the world's `config` the same way as definitions: set it at creation and don't change decision settings mid-run, because a rewind replays history with whatever config is current.
+Treat the world's `config` (and each module's `moduleConfig`) the same way as definitions: set it at creation and don't change it by hand mid-run, because a rewind replays history with whatever config is current. To change settings during play, `world.tune(module, values)` is an input: recorded, rewound and saved like any other. See [Tuning](tuning.md).
 
 ## Time is minutes
 

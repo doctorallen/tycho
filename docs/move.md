@@ -12,7 +12,7 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 | 5 | World: grid, collide (the shapes and the space in one), move, path, gen | grid, collide, move and path in (Merryfolk on path); gen next |
 | 6 | Play: input, interact, items, craft, trade, build, mine, guide | input, items and guide in, the White Dragon and Lodestar on them, Merryfolk on its controls and bag; interact, craft, trade, build, mine to come |
 | 7 | The rest of the shell: ui, hud, map, audio, inspect | audio, inspect and ui in, the games on them; hud and map stay the games' |
-| 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production | Done; the White Dragon talks on Voice |
+| 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production; every number a setting | Done; the White Dragon talks on Voice |
 | 9 | Merryfolk's minds onto Tyrell | |
 | 10 | The bridge | In: the White Dragon uses it |
 
@@ -95,6 +95,7 @@ Left in the games, for now: the figures (the White Dragon's `person`, whose mach
 
 - Voice (conversations), Delos (genomes inherited through births), skills that grow with practice, Athelas (conditions that run a course), pastimes that pall and wishes that pull, and production in Ceres. A test holds that a world using none of them is byte for byte what it was.
 - The White Dragon's talk moved onto Voice (`js/talk.js`): what's theirs raised first (what they saw, what they heard, a job, a hand-back, a lead), then subjects, each answer with an approach that lands well or badly by the listener. The smoke test takes Ozzy's job through it.
+- Every number that shapes the minds is a setting the game can change (175 of them, [tuning.md](../tyrell/docs/tuning.md)): each module's config, and the core's, with plain headline knobs that scale a whole behavior (`friendship`, `romance`, `breaks`, `forgetting`, `gossip`, `reporting`, `chatter`, `courtship`, `births`, `contagion`...), each 1 by default and exact at 1, so a world that sets nothing is byte for byte what it was (Rocinante's week, Voight-Kampff, Merryfolk's minds and the White Dragon's smoke run all unchanged). A person's definition can carry their own headline knobs (`tune`), and `world.tune(module, values, person?)` changes settings in play as a recorded input, kept in the state, so time walk replays it and a save keeps it.
 
 ## Phase 10: the bridge
 

@@ -58,7 +58,7 @@ showBubble('ruth', spoken.text || strings[spoken.key]);
 | `flags` | Allowed flags the model suggested |
 | `fromModel` | Whether the text came from the model |
 
-It falls back to the written line when there's no provider, when the provider takes longer than `timeoutMs` (2500 by default), when it throws, or when it returns empty text.
+It falls back to the written line when there's no provider, when the provider takes longer than `timeoutMs` (`config.timeoutMs`, 2500, by default), when it throws, or when it returns empty text.
 
 Because the reply comes back later, a game shouldn't wait on it in the frame loop. Show the written line at once if the conversation can't wait, or show a "..." until the promise settles. Speaking with Joi doesn't say the line in Cityspeak's sense: if the line's `once`, `cooldown` or `then` should count, call `cityspeak.say` too.
 
@@ -68,8 +68,8 @@ Because the reply comes back later, a game shouldn't wait on it in the frame loo
 
 - the name, and the temperament (traits, 0 to 1);
 - what they're doing right now (the action's `label`, or walking somewhere);
-- needs above 0.6 ("You badly want: hunger");
-- with Reverie: mood and emotion, the feelings on their mind, and their three strongest memories (`text`, or the kind);
+- needs above 0.6, `config.wants` ("You badly want: hunger");
+- with Reverie: mood and emotion, the feelings on their mind, and their three strongest memories, `config.memories` (`text`, or the kind);
 - the listener, with Fellowship's regard and Reverie's file on them (the tally of their deeds);
 - the topic;
 - the line they'd usually say;
@@ -98,7 +98,7 @@ if (spoken.flags.includes('offers_job')) world.fact('job_offer:mara', true);
 | `prompt(who, { to?, topic? })` | string | The prompt for a person speaking |
 | `speak(who, { to?, topic?, timeoutMs? })` | Promise of Spoken | Asks the provider, or falls back |
 
-Joi has no state, terms, effects, events or config.
+Joi has no state, terms, effects or events. Its config (`moduleConfig: { joi: { ... } }`) shapes only the prompt and the wait: `wants` (0.6), `memories` (3) and `timeoutMs` (2500). It has no headline knob, because it never changes the world. See [Tuning](../tuning.md#joi).
 
 ## With other modules
 

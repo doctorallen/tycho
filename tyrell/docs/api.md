@@ -25,6 +25,8 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |
 | `DEFAULT_CONFIG` | The default `Config` |
+| `MODULE_DEFAULTS` | Every module's default settings, by name (what `moduleConfig` is merged over). See [Tuning](tuning.md) |
+| `CORE_KNOBS` | The core's headline knobs: `{ needs: 'person', habits: 'person', learning: 'person', wishes: 'person', crowds: 'world' }` |
 | `SCHEMA` | The save schema version: `2` |
 | `MIGRATIONS` | Save migrations: `MIGRATIONS[v](state)` turns a version-`v` state into `v + 1`. See [Saving](saving.md) |
 | `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
@@ -38,7 +40,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `inHours(h, [from, to])` | Is hour `h` inside the span (wrapping past midnight)? |
 | `HOUR`, `DAY` | 60 and 1440 |
 
-Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `CourseDef`, `CoursePhase`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `Requirement`, `LogFilter`).
+Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `CityspeakConfig`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CeresConfig`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `JoiConfig`, `CourseDef`, `CoursePhase`, `AthelasConfig`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `Requirement`, `LogFilter`).
 
 ## Options
 
@@ -52,10 +54,29 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `shell` | `{}` | `{ travel?, near?, check? }`: see [Integration: the shell](integration.md#the-shell) |
 | `config` | | Partial `Config` (below) |
 | `esper` | | Partial `EsperConfig` (below) |
-| `moduleConfig` | | Settings by module name: `{ reverie: {...}, fellowship: {...}, wormtongue: {...}, mentat: {...}, gaff: {...}, cradle: {...}, delos: {...}, voice: {...} }`. Cityspeak, Ceres, Joi and Athelas take none |
+| `moduleConfig` | | Settings by module name: `{ reverie: {...}, fellowship: {...}, cityspeak: {...}, ... }`. Every module takes some: each one's are in [Tuning](tuning.md#every-setting) |
 | `extra` | | Your own modules, added after the built-in ones |
 
-`Config` (all optional; see [Deciding: config](deciding.md#config) for what each does):
+`Config` (all optional; see [Deciding: config](deciding.md#config) for what each does, and [Tuning](tuning.md#core) for every field with its meaning). The headline knobs (plain multipliers, 1 changing nothing) and the finer numbers of the minds:
+
+| Field | Default | | Field | Default |
+|---|---|---|---|---|
+| `needs` | 1 (knob) | | `traitDefault` | 0.5 |
+| `habits` | 1 (knob) | | `needStart` | 0.2 |
+| `learning` | 1 (knob) | | `needCurve` | `'pow1.5'` |
+| `wishes` | 1 (knob) | | `reliefFloor` | 0.05 |
+| `crowds` | 1 (knob) | | `liftRelief` | 0.3 |
+| `storyRank` | 3 | | `desperate` | 0.97 |
+| `jobRank` | 2 | | `desperateSlope` | 10 |
+| `routineRank` | 1 | | `habitBest` | 2 |
+| `habitDone` | 0.2 | | `nudgeSlow` | 0.25 |
+| `pallFrom` | 0.05 | | `pallDone` | 0.2 |
+| `repeatWindow` | 90 | | `targets` | 6 |
+| `meetMax` | 3 | | `meetMinutes` | 3 |
+| `awayNeeds` | 0.4 | | `skillRate` | 0.02 |
+| `skillGrace` | 3 | | | |
+
+The decision settings, habits, pastimes and wishes:
 
 | Field | Default | | Field | Default |
 |---|---|---|---|---|
@@ -74,6 +95,7 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `pallDecay` | 0.08 | | `wishHours` | `[8, 13, 17]` |
 | `pallPenalty` | 0.6 | | `wishChance` | 0.5 |
 | `wishMinutes` | 2160 | | `wishPull` | 1.35 |
+| `habitDrift` | 0.02 | | | |
 
 `EsperConfig` (see [Time](time.md#esperconfig-and-memory)):
 
@@ -90,12 +112,13 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | Property | Type | |
 |---|---|---|
 | `s` | WorldState | The state, plain JSON. Read it; never write it from game code |
-| `config` | Config | The config. `minutesPerSecond` and `budgetMs` can be changed at any time |
+| `config` | Config | The config as declared. `minutesPerSecond` and `budgetMs` can be changed at any time; change the rest during play with `tune` |
+| `cfg` | Config | The config in force: `config` under any overrides made with `tune` |
 | `shell` | Shell | The shell |
 | `now` | number | Minutes since the world began |
 | `hour` | number | Hour of the day, 0 to 24 |
 | `day` | number | Day number |
-| `weekday` | number | `day % config.week` |
+| `weekday` | number | `day % config.week` (as in force) |
 | `speed` | number | Get or set: 1 normal, 0 paused, negative plays backward |
 | `needs`, `actions`, `tasks`, `deeds`, `pastimes`, `wishes` | Map | The declared definitions |
 | `lang` | Lang | The condition language: `test(cond, ctx)`, `all(conds, ctx)`, `failing(conds, ctx)`, `value(term, ctx)`, `compile(cond)`, `apply(effect, ctx)` (engine), `applyAll(effects, ctx)` (engine), `term`, `effect`, `hasTerm(name)` |
@@ -174,6 +197,10 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `remove(id, why = 'left')` | void | **Input.** Gone for good |
 | `keep(key, value)` | void | **Input.** Keeps game state with the world (copied as JSON) |
 | `kept(key)` | value or undefined | Reads it back |
+| `tune(module, values or null, person?)` | void | **Input.** Changes settings during play, over what was declared: a module's (by name) or the core's (`'core'`); `null` for a field (or for `values`) puts it back; with `person`, that person's own headline knobs. Kept in the state. Throws on an unknown module or setting, or a value of the wrong kind: [Tuning](tuning.md#during-play) |
+| `tuning(module, person?)` | object | The settings in force for a module or `'core'` (a copy); with `person`, their headline knobs as they apply to them (the world's times their own) |
+| `tuned(name, base)` | object | The settings in force made from `base` (the declared config): what modules read. `base` itself when nothing is tuned |
+| `own(person, module, knob)` | number | A person's own multiplier for a headline knob (their `tune`), 1 if none |
 
 ### Asking
 
@@ -287,7 +314,7 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | Input | Made by |
 |---|---|
 | `person` | `world.person` |
-| `fact`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at` | The `world` method of the same name |
+| `fact`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `tune` | The `world` method of the same name |
 | `train`, `skill` (`setSkill`), `wish` (`wishFor`), `grant` | The `world` methods |
 | `promote` | `strangers.promote` |
 | `log` | `world.log`, called from the game |
@@ -356,7 +383,7 @@ What the game declares about a person. Plain JSON: it's saved with them.
 | Field | Meaning |
 |---|---|
 | `name` | Their name (default: the id) |
-| `traits` | Personality, 0..1 each: `thrift`, `honesty`, `talkative`, `courage`, `greed`, `lawful`... (read as `trait.<name>`, 0.5 if unset) |
+| `traits` | Personality, 0..1 each: `thrift`, `honesty`, `talkative`, `courage`, `greed`, `lawful`... (read as `trait.<name>`, `config.traitDefault`, 0.5, if unset) |
 | `values` | Values held, 0..1 each: `honesty`, `family`, `law`... (read as `value.<name>`, 0 if unset) |
 | `home` | Their home's place id |
 | `job` | A [JobDef](deciding.md#jobs-and-shifts): `{ id, place, action, shifts, days?, wage? }` |
@@ -371,6 +398,7 @@ What the game declares about a person. Plain JSON: it's saved with them.
 | `skills` | Starting skill levels: `{ baking: 0.3 }` |
 | `talents` | How fast they learn each skill: a multiplier on its rate, 1 if unset (Delos inherits these) |
 | `instincts` | Inborn tastes: a standing multiplier on an action's or task's weight, 1 if unset (Delos inherits these) |
+| `tune` | Their own pace for the headline knobs, by module (`'core'` for the core's): `{ fellowship: { friendship: 2 } }`, each multiplying the world's for them, 1 if unset. See [Tuning](tuning.md#per-person) |
 | `data` | Anything the game wants: a look, a sprite id (on every body) |
 
 ### PersonState
@@ -459,6 +487,7 @@ interface WorldState {
   game: Record<string, unknown>;    // world.keep
   n: number;                        // the world's stream counter
   ids: number;                      // ids handed out (promoted strangers)
+  tune?: Record<string, Record<string, unknown>>;   // world.tune's overrides by module ('core'), only once something is tuned
 }
 interface QueueItem { t: number; seq: number; k: 'end' | 'think' | 'hour' | 'timer' | 'module' | 'back'; who?: string; ref?: number | string; data?: object }
 interface LogEntry { t: number; k: string; who?: string; d?: Record<string, unknown> }
@@ -495,6 +524,8 @@ world.module('curfew');   // the module
 | Hook | Called | Use it to |
 |---|---|---|
 | `attach(world)` | Once, at creation | Keep the world; register terms, effects and inputs |
+| `config` (a field) | | The module's settings as declared, if it has any: `world.tune(name, ...)` can then override them during play. Read the ones in force with `world.tuned(name, this.config)` |
+| `knobs` (a field) | | Its headline knobs: `{ name: 'person' or 'world' }`. `'person'` ones a person's `tune` can multiply (read with `world.own(p, name, knob)`) |
 | `init()` | At creation, and on load if the save has no state for the module | Return the module's fresh state (plain JSON), kept in `world.s.mod[name]` |
 | `loaded()` | After a save is loaded | Fix up anything derived from the state |
 | `candidates(p, out)` | While someone decides | Push extra options (`Candidate`s); unweighed ones (no `parts`) are weighed as required |

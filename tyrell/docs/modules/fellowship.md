@@ -23,20 +23,20 @@ Regard is one person's feeling toward another, -1..1, one way: Ruth can like Kof
 
 It moves:
 
-- **by time together**: when someone starts an action at a place where others are doing something (up to three of them, picked at random), and the two will overlap for 3 minutes or more, they meet. Each one's regard for the other grows by `meetGain × (minutes / 30) × (1 + compat + (mood - 0.5))`, where `minutes` is the overlap, held between -0.05 and 0.08 per meeting. Compatible people in good moods warm faster; incompatible ones can cool;
-- **by deeds**: a deed's `regard` changes the receiver's regard for the doer, and 0.4 of it for anyone who saw (`seenBy`);
+- **by time together**: when someone starts an action at a place where others are doing something (up to three of them, `config.meetMax`, picked at random), and the two will overlap for 3 minutes (`config.meetMinutes`) or more, they meet. Each one's regard for the other grows by `meetGain × (minutes / 30) × (1 + compat × meetCompat + (mood - 0.5) × meetMood)`, where `minutes` is the overlap, held between `meetMin` (-0.05) and `meetMax` (0.08) per meeting, then times the headline knob `friendship` (the world's times the one whose regard it is's own). Compatible people in good moods warm faster; incompatible ones can cool;
+- **by deeds**: a deed's `regard` changes the receiver's regard for the doer, and 0.4 of it (`witnessRegard`) for anyone who saw (`seenBy`);
 - **by social acts** (Cityspeak), silencing by fear (Wormtongue, -0.3), and the game (`fellowship.adjust`);
-- **back toward zero** by `decay` (0.004) every day.
+- **back toward zero** by `decay` (0.004) every day, times the headline knob `fading`.
 
-A passing acquaintance doesn't last: once two people haven't met for `forget` (14) days, and the one's regard and attraction for the other are both under `forgetBelow` (0.05) with no sentiments, the record goes, and they're strangers again (`knows` is false). A big town keeps only the relationships that matter.
+A passing acquaintance doesn't last: once two people haven't met for `forget` (14) days (divided by `fading`), and the one's regard and attraction for the other are both under `forgetBelow` (0.05) with no sentiments, the record goes, and they're strangers again (`knows` is false). A big town keeps only the relationships that matter.
 
-Social actions (tagged `'social'`) aimed at someone weigh `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)`: people seek out the people they like.
+Social actions (tagged `'social'`) aimed at someone weigh `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)` (`socialRegard`, `socialCompat`, `socialMin`, `socialMax`): people seek out the people they like.
 
 ## Attraction and compatibility
 
-**Compatibility** is hidden and the same both ways: a seeded value in ±`compatSpread` (0.6) for each pair, plus up to 0.3 for shared values (`PersonDef.values`), clamped to -1..1. Some people just get on.
+**Compatibility** is hidden and the same both ways: a seeded value in ±`compatSpread` (0.6) for each pair, plus up to 0.3 (`compatValues`) for shared values (`PersonDef.values`), clamped to -1..1. Some people just get on.
 
-**Attraction** is a second track for romance, -1..1. It grows by half the regard gain when they meet, but only for pairs with compatibility over 0.3, and only while the person has no partner. The game can change it with `fellowship.attract(a, b, by)` (an input). Cradle can pair people when regard and attraction are both high.
+**Attraction** is a second track for romance, -1..1. It grows by half the regard gain when they meet (`attractGain`, times the headline knob `romance`), but only for pairs with compatibility over 0.3 (`attractAt`), and only while the person has no partner. The game can change it with `fellowship.attract(a, b, by)` (an input). Cradle can pair people when regard and attraction are both high.
 
 ## Sentiments
 
@@ -79,7 +79,7 @@ world.fellowship.changeStanding('watch', 'player', 0.5, 0);
 world.fellowship.standing('watch', 'player');   // { fame: 0.5, infamy: 0, label: 'liked' }
 ```
 
-Each value falls in a band (under 0.15, under 0.4, under 0.7, above), and the label is `config.labels[fameBand][infamyBand]`:
+Each value falls in a band (under 0.15, under 0.4, under 0.7, above: `bands`), and the label is `config.labels[fameBand][infamyBand]`:
 
 | Fame \ Infamy | low | some | high | very high |
 |---|---|---|---|---|
@@ -92,7 +92,7 @@ Deeds with `fame` or `infamy` change the doer's standing with every group the re
 
 ## Imitation
 
-When two people meet and one likes the other (regard over 0.3), what the liked person is doing becomes a little more appealing: their habit for that action rises by `imitation` (0.03).
+When two people meet and one likes the other (regard over 0.3, `imitateAt`), what the liked person is doing becomes a little more appealing: their habit for that action rises by `imitation` (0.03).
 
 ## State
 
@@ -160,6 +160,11 @@ Fellowship emits no events of its own. It writes log entries: `met` (`{ target, 
 | `forget` | 14 | Days after their last meeting that a passing acquaintance is forgotten: a record with regard and attraction both under `forgetBelow`, and no sentiments. Keeps a big town's relationships to the ones that matter. 0 forgets nobody |
 | `forgetBelow` | 0.05 | How faint a relationship has to be to be forgotten |
 | `labels` | the table above | Standing labels, rows by fame band, columns by infamy band |
+| `friendship` | 1 | Headline knob: how fast friendships and enmities form (the regard each meeting adds or takes away); 0: time together changes nothing |
+| `romance` | 1 | Headline knob: how fast attraction grows from time together |
+| `fading` | 1 | Headline knob: how fast relationships fade (`decay` times it, `forget` divided by it); 0: never |
+
+A person's own `tune: { fellowship: { friendship, romance, fading } }` multiplies the knobs for their regard (and attraction) for others. The finer numbers, each explained in [Tuning](../tuning.md#fellowship): `friendAt` (0.5) and `foeAt` (-0.4) for the `friend` and `foe` terms, `likeAbove` (0.2) for `friends()`, `compatValues` (0.3), `meetMin` (-0.05), `meetMax` (0.08), `meetCompat` (1), `meetMood` (1), `attractAt` (0.3), `attractGain` (0.5), `imitateAt` (0.3), `socialRegard` (0.8), `socialCompat` (0.2), `socialMin` (0.1), `socialMax` (2), `deedSentiment` (0.1), `witnessRegard` (0.4), `bands` (`[0.15, 0.4, 0.7]`). During play, `world.tune('fellowship', { ... })` changes any of them as an input.
 
 ## With other modules
 

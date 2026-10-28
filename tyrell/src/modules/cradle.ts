@@ -27,6 +27,30 @@ export interface CradleConfig {
   fertile: [number, number];
   /** Couples form on their own when regard and attraction both pass these (null to leave it to the game). */
   autoPair: { regard: number; attraction: number } | null;
+
+  // The headline knobs: plain multipliers, 1 changing nothing. A person's
+  // own (PersonDef.tune.cradle) multiplies these for them alone.
+  /** How readily couples form on their own: autoPair's thresholds are divided by it, each for their own side. 0: never. Default 1. */
+  courtship: number;
+  /** How often couples have children (fertility): a couple's is the world's times both partners' own. 0: never. Default 1. */
+  births: number;
+  /** How likely people are to die of old age, each day past the start of their lifespan. 0: never. Default 1. */
+  deaths: number;
+
+  // The finer numbers.
+  /** The age of someone with no `born`. Default 30. */
+  ageUnknown: number;
+  /** The stages that couple up on their own. Default ['adult', 'elder']. */
+  pairStages: string[];
+  /** The sentiment a couple holds for each other ('my partner'), and parents for a newborn ('my child'). Defaults 0.3 and 0.5. */
+  partnerSentiment: number;
+  childSentiment: number;
+  /** A child's trait is their parents' average, give or take up to this (without Delos). Default 0.12. */
+  traitSpread: number;
+  /** Those whose regard for someone who leaves is at least this grieve. Default 0.35. */
+  griefAt: number;
+  /** The chance a day, on top, of dying once past the end of the lifespan. Default 0.2. */
+  pastLifespan: number;
 }
 
 export const DEFAULT_CRADLE: CradleConfig = {
@@ -36,6 +60,8 @@ export const DEFAULT_CRADLE: CradleConfig = {
   fertility: 0.25,
   fertile: [20, 42],
   autoPair: { regard: 0.6, attraction: 0.5 },
+  courtship: 1, births: 1, deaths: 1,
+  ageUnknown: 30, pairStages: ['adult', 'elder'], partnerSentiment: 0.3, childSentiment: 0.5, traitSpread: 0.12, griefAt: 0.35, pastLifespan: 0.2,
 };
 
 interface Departed { name: string; born?: number; left: number; why: string }
@@ -44,6 +70,7 @@ interface State { stage: Record<Id, string>; parents: Record<Id, Id[]>; departed
 export class Cradle implements Module {
   readonly name = 'cradle';
   readonly config: CradleConfig;
+  readonly knobs = { courtship: 'person', births: 'person', deaths: 'person' } as const;
   /** Names a newborn: set this to your game's namer. */
   namer: (r: Stream, parents: PersonState[]) => string = (r) => 'Baby ' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[r.int(26)];
   /** Fills in a newborn's definition (look, home): set this for your game. */
@@ -54,6 +81,10 @@ export class Cradle implements Module {
 
   init(): State { return { stage: {}, parents: {}, departed: {}, next: 0 }; }
   private get st(): State { return this.w.s.mod.cradle as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): CradleConfig { return this.w.tuned(this.name, this.config); }
+  /** A headline knob for someone: the world's, times their own. */
+  private knob(name: 'courtship' | 'births' | 'deaths', p: PersonState | undefined): number { return this.c[name] * this.w.own(p, this.name, name); }
 
   attach(w: World): void {
     this.w = w;
@@ -72,14 +103,15 @@ export class Cradle implements Module {
   /** Age in years (fractional). */
   age(id: Id): number {
     const p = this.w.s.people[id];
-    if (!p || p.born === undefined) return 30;
-    return round((this.w.s.now - p.born) / this.config.year, 3);
+    if (!p || p.born === undefined) return this.c.ageUnknown;
+    return round((this.w.s.now - p.born) / this.c.year, 3);
   }
 
   stage(id: Id): string {
     const age = this.age(id);
-    let out = this.config.stages[0]?.[0] ?? 'adult';
-    for (const [name, from] of this.config.stages) if (age >= from) out = name;
+    const stages = this.c.stages;
+    let out = stages[0]?.[0] ?? 'adult';
+    for (const [name, from] of stages) if (age >= from) out = name;
     return out;
   }
 
@@ -100,8 +132,9 @@ export class Cradle implements Module {
     const f = this.w.fellowship;
     if (!f) return;
     f.applyPartners(a, b);
-    f.applySentiment(a, b, 'my partner', 0.3);
-    f.applySentiment(b, a, 'my partner', 0.3);
+    const by = this.c.partnerSentiment;
+    f.applySentiment(a, b, 'my partner', by);
+    f.applySentiment(b, a, 'my partner', by);
     this.w.log('paired', a, { target: b });
     this.w.emit('paired', { a, b });
   }
@@ -124,7 +157,8 @@ export class Cradle implements Module {
     for (const k of [...keys].sort()) {
       const vals = parents.map((p) => p.def.traits?.[k]).filter((v): v is number => v !== undefined);
       const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
-      traits[k] = round(clamp(avg + r.range(-0.12, 0.12)), 3);
+      const spread = this.c.traitSpread;
+      traits[k] = round(clamp(avg + r.range(-spread, spread)), 3);
     }
     const tpl = this.template(r, parents);
     const home = def.home ?? tpl.home ?? parents[0]?.def.home;
@@ -143,7 +177,7 @@ export class Cradle implements Module {
     w.input('person', [id, child]);
     this.st.parents[id] = parents.map((p) => p.id);
     this.st.stage[id] = this.stage(id);
-    if (w.fellowship) for (const p of parents) { w.fellowship.applySentiment(p.id, id, 'my child', 0.5); }
+    if (w.fellowship) for (const p of parents) { w.fellowship.applySentiment(p.id, id, 'my child', this.c.childSentiment); }
     w.log('born', id, { parents: parents.map((p) => p.id) });
     w.emit('born', { id, parents: parents.map((p) => p.id) });
     return id;
@@ -161,7 +195,7 @@ export class Cradle implements Module {
       for (const o of w.people()) {
         if (o.id === id) continue;
         const regard = w.fellowship.regard(o.id, id);
-        if (regard >= 0.35) {
+        if (regard >= this.c.griefAt) {
           w.reverie.applyFeel(o.id, 'grief', p.name);
           w.reverie.applyRemember(o.id, { k: 'loss', about: id, imp: clamp(Math.round(regard * 10), 5, 10), text: `${p.name} ${why}` });
         }
@@ -189,7 +223,7 @@ export class Cradle implements Module {
   // -------------------------------------------------------------------------
 
   day(): void {
-    const w = this.w, c = this.config, st = this.st;
+    const w = this.w, c = this.c, st = this.st;
     const yearDays = c.year / DAY;
     const people = w.people();
     for (const p of people) {
@@ -204,21 +238,25 @@ export class Cradle implements Module {
       const age = this.age(p.id);
       if (age >= c.lifespan[0]) {
         const span = Math.max(1, c.lifespan[1] - c.lifespan[0]);
-        const pDie = clamp((age - c.lifespan[0]) / span) * 2 / (span * yearDays) + (age >= c.lifespan[1] ? 0.2 : 0);
-        if (w.stream(p).chance(pDie)) this.applyDepart(p.id, 'died');
+        const pDie = clamp((age - c.lifespan[0]) / span) * 2 / (span * yearDays) + (age >= c.lifespan[1] ? c.pastLifespan : 0);
+        if (w.stream(p).chance(pDie * this.knob('deaths', p))) this.applyDepart(p.id, 'died');
       }
     }
     const f = w.fellowship;
     if (!f) return;
     // couples forming on their own
     if (c.autoPair) {
+      const pairs = (id: Id) => c.pairStages.includes(this.stage(id));
       for (const p of people) {
-        if (p.status !== 'active' || f.partner(p.id) || this.stage(p.id) !== 'adult' && this.stage(p.id) !== 'elder') continue;
+        if (p.status !== 'active' || f.partner(p.id) || !pairs(p.id)) continue;
+        // the headline knob: how readily each falls for the other (their thresholds, divided by it)
+        const kp = this.knob('courtship', p);
         for (const r of f.relations(p.id)) {
           const o = w.s.people[r.id];
           if (!o || o.status !== 'active' || f.partner(o.id) || o.id === p.id) continue;
-          if (this.stage(o.id) !== 'adult' && this.stage(o.id) !== 'elder') continue;
-          if (r.regard >= c.autoPair.regard && r.attraction >= c.autoPair.attraction && f.regard(o.id, p.id) >= c.autoPair.regard && f.attraction(o.id, p.id) >= c.autoPair.attraction) {
+          if (!pairs(o.id)) continue;
+          const ko = this.knob('courtship', o);
+          if (r.regard >= c.autoPair.regard / kp && r.attraction >= c.autoPair.attraction / kp && f.regard(o.id, p.id) >= c.autoPair.regard / ko && f.attraction(o.id, p.id) >= c.autoPair.attraction / ko) {
             this.applyPair(p.id, o.id);
             break;
           }
@@ -235,7 +273,8 @@ export class Cradle implements Module {
       if (!o || o.status !== 'active') continue;
       const ages = [this.age(p.id), this.age(q)];
       if (ages.some((a) => a < c.fertile[0] || a > c.fertile[1])) continue;
-      if (w.stream(p).chance(c.fertility / yearDays)) this.applyBirth([p.id, q], {}, null);
+      // the headline knob: the world's, times both partners' own
+      if (w.stream(p).chance((c.fertility * this.knob('births', p) * this.w.own(o, this.name, 'births')) / yearDays)) this.applyBirth([p.id, q], {}, null);
     }
   }
 

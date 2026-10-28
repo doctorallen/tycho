@@ -61,10 +61,55 @@ export interface FellowshipConfig {
   forgetBelow: number;
   /** Standing labels, by fame (rows: low, some, high) and infamy (columns). */
   labels: string[][];
+
+  // The headline knobs: plain multipliers, 1 changing nothing. A person's
+  // own (PersonDef.tune.fellowship) multiplies these for them alone.
+  /** How fast friendships and enmities form: the regard each meeting adds or takes away (after its cap). 0: time together changes nothing. Default 1. */
+  friendship: number;
+  /** How fast attraction grows from time together. 0: it doesn't. Default 1. */
+  romance: number;
+  /** How fast relationships fade: regard drifting back to nothing (decay) and how soon faint acquaintances are forgotten (forget). 0: never. Default 1. */
+  fading: number;
+
+  // The finer numbers.
+  /** The `friend` term: regard at least this. Default 0.5. */
+  friendAt: number;
+  /** The `foe` term: regard at most this. Default -0.4. */
+  foeAt: number;
+  /** friends(): the people liked more than this. Default 0.2. */
+  likeAbove: number;
+  /** How much shared values add to compatibility (each pair's values, matched). Default 0.3. */
+  compatValues: number;
+  /** The most one meeting can take away from regard, and add to it. Defaults -0.05 and 0.08. */
+  meetMin: number;
+  meetMax: number;
+  /** How much compatibility and mood color a meeting's gain (1 + compat × meetCompat + (mood - 0.5) × meetMood). Defaults 1 and 1. */
+  meetCompat: number;
+  meetMood: number;
+  /** Time together grows attraction only between people more compatible than this, by attractGain of the regard gained. Defaults 0.3 and 0.5. */
+  attractAt: number;
+  attractGain: number;
+  /** Someone's habits rub off only on people whose regard for them is over this. Default 0.3. */
+  imitateAt: number;
+  /** A social action aimed at someone weighs 1 + regard × socialRegard + compat × socialCompat, from socialMin to socialMax. Defaults 0.8, 0.2, 0.1 and 2. */
+  socialRegard: number;
+  socialCompat: number;
+  socialMin: number;
+  socialMax: number;
+  /** A deed's sentiment, when the deed moves no regard, holds this much. Default 0.1. */
+  deedSentiment: number;
+  /** Witnesses to a deed take this share of its regard. Default 0.4. */
+  witnessRegard: number;
+  /** Where fame and infamy pass into the next band of `labels`. Default [0.15, 0.4, 0.7]. */
+  bands: number[];
 }
 
 export const DEFAULT_FELLOWSHIP: FellowshipConfig = {
   meetGain: 0.03, compatSpread: 0.6, decay: 0.004, sentiments: 4, imitation: 0.03, forget: 14, forgetBelow: 0.05,
+  friendship: 1, romance: 1, fading: 1,
+  friendAt: 0.5, foeAt: -0.4, likeAbove: 0.2, compatValues: 0.3, meetMin: -0.05, meetMax: 0.08, meetCompat: 1, meetMood: 1,
+  attractAt: 0.3, attractGain: 0.5, imitateAt: 0.3, socialRegard: 0.8, socialCompat: 0.2, socialMin: 0.1, socialMax: 2,
+  deedSentiment: 0.1, witnessRegard: 0.4, bands: [0.15, 0.4, 0.7],
   labels: [
     ['unknown', 'suspect', 'trouble', 'menace'],
     ['familiar', 'mixed', 'rough edges', 'feared'],
@@ -78,6 +123,7 @@ const key = (a: Id, b: Id): string => a + '>' + b;
 export class Fellowship implements Module {
   readonly name = 'fellowship';
   readonly config: FellowshipConfig;
+  readonly knobs = { friendship: 'person', romance: 'person', fading: 'person' } as const;
   readonly groups = new Map<Id, GroupDef>();
   private w!: World;
 
@@ -85,6 +131,10 @@ export class Fellowship implements Module {
 
   init(): State { return { rel: {}, standing: {}, partners: {}, joined: {} }; }
   private get st(): State { return this.w.s.mod.fellowship as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): FellowshipConfig { return this.w.tuned(this.name, this.config); }
+  /** A headline knob for someone: the world's, times their own. */
+  private knob(name: 'friendship' | 'romance' | 'fading', p: PersonState | undefined): number { return this.c[name] * this.w.own(p, this.name, name); }
 
   attach(w: World): void {
     this.w = w;
@@ -93,8 +143,8 @@ export class Fellowship implements Module {
     L.term('regard', (c, a) => { const o = other(c, a); return c.person && o ? this.regard(c.person.id, o) : 0; });
     L.term('attraction', (c, a) => { const o = other(c, a); return c.person && o ? this.attraction(c.person.id, o) : 0; });
     L.term('compat', (c, a) => { const o = other(c, a); return c.person && o ? this.compat(c.person.id, o) : 0; });
-    L.term('friend', (c, a) => { const o = other(c, a); return !!(c.person && o && this.regard(c.person.id, o) >= 0.5); });
-    L.term('foe', (c, a) => { const o = other(c, a); return !!(c.person && o && this.regard(c.person.id, o) <= -0.4); });
+    L.term('friend', (c, a) => { const o = other(c, a); return !!(c.person && o && this.regard(c.person.id, o) >= this.c.friendAt); });
+    L.term('foe', (c, a) => { const o = other(c, a); return !!(c.person && o && this.regard(c.person.id, o) <= this.c.foeAt); });
     L.term('member', (c, a) => (c.person ? this.groupsOf(c.person.id).includes(a) : false));
     L.term('partner', (c, a) => (c.person ? (a ? this.partner(c.person.id) === a : this.partner(c.person.id) ?? null) : null));
     L.term('fame', (c, a) => { const [g, s] = a.split('.'); return this.standing(g, s || c.person?.id || 'player').fame; });
@@ -192,12 +242,13 @@ export class Fellowship implements Module {
   /** Hidden compatibility of a pair, -1..1 (the same both ways). */
   compat(a: Id, b: Id): number {
     const [x, y] = a < b ? [a, b] : [b, a];
-    let c = (hash01(this.w.s.seed, 'compat', x, y) * 2 - 1) * this.config.compatSpread;
+    const cfg = this.c;
+    let c = (hash01(this.w.s.seed, 'compat', x, y) * 2 - 1) * cfg.compatSpread;
     const va = this.w.s.people[a]?.def.values, vb = this.w.s.people[b]?.def.values;
     if (va && vb) {
       let shared = 0, n = 0;
       for (const k in va) if (vb[k] !== undefined) { shared += 1 - Math.abs(va[k] - vb[k]) * 2; n++; }
-      if (n) c += (shared / n) * 0.3;
+      if (n) c += (shared / n) * cfg.compatValues;
     }
     return round(clamp(c, -1, 1), 4);
   }
@@ -214,7 +265,7 @@ export class Fellowship implements Module {
   }
 
   /** The people a person likes most. */
-  friends(a: Id, n = 3): Id[] { return this.relations(a).filter((r) => r.regard > 0.2).slice(0, n).map((r) => r.id); }
+  friends(a: Id, n = 3): Id[] { const above = this.c.likeAbove; return this.relations(a).filter((r) => r.regard > above).slice(0, n).map((r) => r.id); }
 
   /** Changes a's regard for b (from the game: recorded). */
   adjust(a: Id, b: Id, by: number, why?: string): void { this.w.input('regard', [a, b, by, why ?? null]); }
@@ -233,9 +284,10 @@ export class Fellowship implements Module {
     const s: Sentiment = { label, by: round(by, 4) };
     if (minutes !== undefined) s.until = now + minutes;
     r.s.push(s);
-    if (r.s.length > this.config.sentiments) {
+    const most = this.c.sentiments;
+    if (r.s.length > most) {
       r.s.sort((x, y) => Math.abs(y.by) - Math.abs(x.by));
-      r.s.length = this.config.sentiments;
+      r.s.length = most;
     }
     this.w.log('sentiment', a, { target: b, label, by });
   }
@@ -267,8 +319,9 @@ export class Fellowship implements Module {
   /** A subject's standing with a group: fame and infamy (0..1 each) and a label. */
   standing(g: Id, subject: Id): { fame: number; infamy: number; label: string } {
     const [fame, infamy] = this.st.standing[g]?.[subject] || [0, 0];
-    const band = (x: number) => (x < 0.15 ? 0 : x < 0.4 ? 1 : x < 0.7 ? 2 : 3);
-    return { fame, infamy, label: this.config.labels[band(fame)][band(infamy)] };
+    const c = this.c, [b1, b2, b3] = c.bands;
+    const band = (x: number) => (x < b1 ? 0 : x < b2 ? 1 : x < b3 ? 2 : 3);
+    return { fame, infamy, label: c.labels[band(fame)][band(infamy)] };
   }
 
   /** Changes standing (from the game: recorded). */
@@ -285,18 +338,20 @@ export class Fellowship implements Module {
 
   met(a: PersonState, b: PersonState, _place: Id, minutes: number): void {
     const rv = this.w.reverie;
+    const c = this.c, core = this.w.cfg;
     for (const [x, y] of [[a, b], [b, a]] as const) {
       const r = this.record(x.id, y.id);
       const mood = rv ? rv.mood(x.id) - 0.5 : 0;
-      const gain = this.config.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) + mood);
-      r.r = round(clamp(r.r + clamp(gain, -0.05, 0.08), -1, 1), 4);
-      if (this.compat(x.id, y.id) > 0.3 && this.partner(x.id) === undefined) r.a = round(clamp(r.a + gain * 0.5, -1, 1), 4);
+      const gain = c.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) * c.meetCompat + mood * c.meetMood);
+      // the headline knobs, for x: how fast they warm (or cool) to people, and fall for them
+      r.r = round(clamp(r.r + clamp(gain, c.meetMin, c.meetMax) * this.knob('friendship', x), -1, 1), 4);
+      if (this.compat(x.id, y.id) > c.attractAt && this.partner(x.id) === undefined) r.a = round(clamp(r.a + gain * c.attractGain * this.knob('romance', x), -1, 1), 4);
       r.met++;
       r.last = this.w.s.now;
       // imitation: what a liked person is doing becomes a little more appealing
-      if (y.doing && y.doing.kind === 'act' && this.regard(x.id, y.id) > 0.3) {
+      if (y.doing && y.doing.kind === 'act' && this.regard(x.id, y.id) > c.imitateAt) {
         const h = x.habits[y.doing.action] || [1, 1];
-        x.habits[y.doing.action] = [round(clamp(h[0] + this.config.imitation, this.w.config.habitMin, this.w.config.habitMax), 5), h[1]];
+        x.habits[y.doing.action] = [round(clamp(h[0] + c.imitation, core.habitMin, core.habitMax), 5), h[1]];
       }
     }
     this.w.log('met', a.id, { target: b.id, minutes: Math.round(minutes) });
@@ -306,7 +361,8 @@ export class Fellowship implements Module {
     if (!c.target) return;
     const a = this.w.actions.get(c.id);
     if (!a?.tags?.includes('social')) return;
-    return [['regard', round(clamp(1 + this.regard(p.id, c.target) * 0.8 + this.compat(p.id, c.target) * 0.2, 0.1, 2), 4)]];
+    const cfg = this.c;
+    return [['regard', round(clamp(1 + this.regard(p.id, c.target) * cfg.socialRegard + this.compat(p.id, c.target) * cfg.socialCompat, cfg.socialMin, cfg.socialMax), 4)]];
   }
 
   did(actor: Id, verb: string, data: Record<string, Value>): void {
@@ -315,17 +371,20 @@ export class Fellowship implements Module {
     const target = (data.for ?? data.to ?? data.target) as Id | undefined;
     if (target) {
       if (deed.regard) this.applyRegard(target, actor, deed.regard);
-      if (deed.sentiment) this.applySentiment(target, actor, deed.sentiment, deed.regard ?? 0.1);
+      if (deed.sentiment) this.applySentiment(target, actor, deed.sentiment, deed.regard ?? this.c.deedSentiment);
       if (deed.fame || deed.infamy) for (const g of this.groupsOf(target)) this.applyStanding(g, actor, deed.fame ?? 0, deed.infamy ?? 0);
     }
     const seen = Array.isArray(data.seenBy) ? (data.seenBy as unknown as Id[]) : [];
-    for (const wid of seen) if (wid !== target && deed.regard) this.applyRegard(wid, actor, deed.regard * 0.4);
+    for (const wid of seen) if (wid !== target && deed.regard) this.applyRegard(wid, actor, deed.regard * this.c.witnessRegard);
   }
 
   day(): void {
-    const d = this.config.decay, now = this.w.s.now, gone = this.config.forget * DAY, below = this.config.forgetBelow;
+    const c = this.c, now = this.w.s.now, below = c.forgetBelow;
     for (const k in this.st.rel) {
       const r = this.st.rel[k];
+      // the headline knob, for whoever holds the regard: how fast it fades, and how soon they forget a face
+      const f = this.knob('fading', this.w.s.people[k.slice(0, k.indexOf('>'))]);
+      const d = c.decay * f, gone = (c.forget / f) * DAY;
       if (Math.abs(r.r) <= d) r.r = 0; else r.r = round(r.r - Math.sign(r.r) * d, 4);
       r.s = r.s.filter((s) => s.until === undefined || s.until > now);
       // a face in the crowd, long unseen: forgotten

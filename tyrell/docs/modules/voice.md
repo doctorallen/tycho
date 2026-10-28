@@ -77,9 +77,9 @@ An approach **lands** with a number: its `base`, plus every `lands` rule whose c
 
 ## Warmth and patience
 
-**Warmth** is how open the talk is: it starts at `voice.warmth(ctx)` (by default their regard for the speaker × 3, rounded, between -1 and 3, with Fellowship; else 0), rises and falls with each landing, and with the `warmth` effect. Answers can need it.
+**Warmth** is how open the talk is: it starts at `voice.warmth(ctx)` (by default their regard for the speaker × 3, rounded, between -1 and 3, with Fellowship: `warmthRegard`, `warmthMin`, `warmthMax`; else 0), rises and falls with each landing, and with the `warmth` effect. Answers can need it.
 
-**Patience** is how many beats they'll talk for: `voice.patience(ctx)` (by default `config.patience`, 8). Merryfolk's is 6, more for the chatty and those fond of the wizard, less for the hungry, the tired and those at work. When it's spent and a subject ends, they close the talk (topic `close`) and only goodbye is left.
+**Patience** is how many beats they'll talk for: `voice.patience(ctx)` (by default `config.patience`, 8), times the headline knob `chatter` (the world's times the person's own, rounded, at least 1). `chatter` scales the chance they raise something of their own (`theirs`) too. Merryfolk's is 6, more for the chatty and those fond of the wizard, less for the hungry, the tired and those at work. When it's spent and a subject ends, they close the talk (topic `close`) and only goodbye is left.
 
 `warmth` and `patience` are definitions: set them on every start, like Cradle's namer.
 
@@ -92,13 +92,13 @@ world.voice.patience = (ctx) => 6 + (ctx.world.lang.value('trait.talkative', ctx
 At the hub, the subjects offered are the `config.offers` (3) best, among threads whose `if` holds (the person, with the speaker as target) that aren't theirs and haven't come up in this talk:
 
 ```
-score = weight × fresh × (0.1 if sore) × (1.5 if it reveals something not yet learned)  + a little variety
+score = weight × fresh × (0.1 if sore: soreWeight) × (1.5 if it reveals something not yet learned: revealPull)  + a little variety
 fresh = 1 if never talked of, else 1 - e^(-(minutes since) / cooldown)
 ```
 
-A subject under 0.05 before the variety isn't offered. The variety is up to 0.2, the same for a pair all day (it changes nothing). `weight` can be a function. A subject just talked of comes round again gradually over its `cooldown` (three days by default).
+A subject under 0.05 (`salientFloor`) before the variety isn't offered. The variety is up to 0.2 (`variety`), the same for a pair all day (it changes nothing). `weight` can be a function. A subject just talked of comes round again gradually over its `cooldown` (`config.cooldown`, three days, by default).
 
-**Their turn.** At the start of a talk, and whenever a subject ends, with chance `config.theirs` (0.3), they raise a thread marked `theirs` (one whose `if` holds, not talked of within its cooldown, drawn by weight from the talk's own stream). Its first beat is theirs; there's no opener from the speaker. The view's thread says `theirs: true`.
+**Their turn.** At the start of a talk, and whenever a subject ends, with chance `config.theirs` (0.3, times `chatter`), they raise a thread marked `theirs` (one whose `if` holds, not talked of within its cooldown, drawn by weight from the talk's own stream). Its first beat is theirs; there's no opener from the speaker. The view's thread says `theirs: true`.
 
 ## The words
 
@@ -114,10 +114,10 @@ Effects in beats, answers and threads run with the person talked to as the perso
 
 - `learn:<key>=<value>` (`true` without a value): the speaker learns something about them, kept for good (`learned:<key>`; `voice.learned(who)`), with a note in the view the first time (`{ who: 'note', learned, value }`).
 - `promise:<id>=<days>`: a promise to them (below).
-- `sore:<thread>=<days>` (the current thread, two days, by default): a subject best left a while (weighed at a tenth).
+- `sore:<thread>=<days>` (the current thread, two days, `soreDays`, by default): a subject best left a while (weighed at a tenth).
 - `warmth+=n`: the talk warms (or cools).
 
-Each pair keeps a bond: how many talks (counted as each ends), when the last ended, when each subject was last talked of, sore subjects, what's been learned, lines said lately. `familiarity` is half a point a talk plus a point for each thing learned. With `config.deed` set (say, `'talked'`), the end of a talk is a deed the speaker did for them (a [deed](../integration.md#sensing-and-deeds): feelings, regard, a note in their file).
+Each pair keeps a bond: how many talks (counted as each ends), when the last ended, when each subject was last talked of, sore subjects, what's been learned, lines said lately. `familiarity` is half a point a talk plus a point for each thing learned (`familiarTalk`, `familiarLearned`). With `config.deed` set (say, `'talked'`), the end of a talk is a deed the speaker did for them (a [deed](../integration.md#sensing-and-deeds): feelings, regard, a note in their file).
 
 ## Promises
 
@@ -151,7 +151,7 @@ In `world.s.mod.voice`, made with the first talk:
 |---|---|
 | `talks` | By speaker: the talk in progress (`who`, `by`, its start and counter, warmth, patience, the thread and beat, subjects done, what was said, the lines and answers on show, how the last approach landed, whether they've had enough) |
 | `bonds` | By `'<who>><by>'`: `{ talks, last?, seen, sore?, known?, said?, lastThread? }` |
-| `promises` | `{ who, by, id, t, due, state, settled? }` (settled ones kept 30 days) |
+| `promises` | `{ who, by, id, t, due, state, settled? }` (settled ones kept 30 days, `promiseKeep`) |
 
 ## API
 
@@ -182,7 +182,7 @@ In `world.s.mod.voice`, made with the first talk:
 | `label` | the id | What it's offered as: words, or `(ctx) => string` |
 | `if` | none | Conditions for it to come up |
 | `weight` | 1 | A number, or `(ctx) => number` |
-| `cooldown` | 3 days | Minutes for it to come round fresh again |
+| `cooldown` | `config.cooldown` (3 days) | Minutes for it to come round fresh again |
 | `theirs` | false | They raise it themselves |
 | `reveals` | none | A key it's for learning: wanted more until learned |
 | `open` | the label | The speaker's opener: words or a topic, or `{ approach: words }` |
@@ -231,7 +231,7 @@ In `world.s.mod.voice`, made with the first talk:
 | `id` | required | |
 | `label` | none | |
 | `kept`, `broken` | none | Conditions checked each hour |
-| `days` | 3 | Days until it's due (the effect's value overrides) |
+| `days` | `config.promiseDays` (3) | Days until it's due (the effect's value overrides) |
 | `lapse` | `'lapsed'` | What it comes to when due: `'kept'`, `'broken'` or `'lapsed'` |
 | `onKept`, `onBroken`, `onLapsed` | none | Effects when settled |
 
@@ -262,6 +262,16 @@ Log entries: `talk`, `talked`, `learned`, `promised`, `promise`.
 | `onWell`, `onBadly` | `[]` | Effects of a strong landing |
 | `greet`, `bye`, `close`, `react` | `'greet'`, `'bye'`, `'close'`, `'react'` | Line topics |
 | `deed` | `null` | A deed recorded when a talk ends |
+| `chatter` | 1 | Headline knob: how chatty they are (patience and `theirs`, times it). A person's own (`tune: { voice: { chatter } }`) multiplies it |
+| `warmthRegard`, `warmthMin`, `warmthMax` | 3, -1, 3 | The default warmth: regard times this, rounded, between these |
+| `familiarTalk`, `familiarLearned` | 0.5, 1 | `familiarity`: for each talk, for each thing learned |
+| `cooldown` | 4320 (3 days) | A thread's `cooldown` when it gives none |
+| `soreDays`, `soreWeight` | 2, 0.1 | How long `sore` lasts with no number, and what a sore subject is worth |
+| `revealPull` | 1.5 | A subject for learning something not yet learned is worth this much more |
+| `salientFloor`, `variety` | 0.05, 0.2 | Subjects under this aren't offered; up to this much variety |
+| `promiseDays`, `promiseKeep` | 3, 30 | A promise's `days` when it gives none; days a settled promise is remembered |
+
+See [Tuning](../tuning.md#voice); during play, `world.tune('voice', { ... })`.
 
 ## With other modules
 

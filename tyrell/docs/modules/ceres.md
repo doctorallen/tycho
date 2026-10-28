@@ -98,7 +98,7 @@ Both are inputs that set up a standing arrangement in the state; calling them ag
 
 ## Affording things
 
-People weigh a price against what they can spend: an action with a price weighs `clamp(1 - share × (0.4 + thrift × 0.8), 0.05, 1)`, where `share` is the price over their money (at most 1). Thrifty people are put off more. Mentat's `get:` searches cost money the same way.
+People weigh a price against what they can spend: an action with a price weighs `clamp(1 - share × (0.4 + thrift × 0.8) × prices, 0.05, 1)`, where `share` is the price over their money (at most 1), 0.4, 0.8 and 0.05 are `priceShare`, `priceThrift` and `priceFloor`, and `prices` is the headline knob (1; 0: price is no object, though they still can't buy what they can't afford). Thrifty people are put off more. Mentat's `get:` searches cost money the same way.
 
 ## Production
 
@@ -189,7 +189,20 @@ Terms: `purse`, `price:<good>`, `stock:<place>.<item>` (or `stock:<item>` at the
 | `rent-missed` | `{ id, amount }` |
 | `production` | The ProductionReport, each midnight once production is on |
 
-Log entries: `rent` (`{ paid }` or `{ missed }`). Ceres has no config through `moduleConfig`.
+Log entries: `rent` (`{ paid }` or `{ missed }`).
+
+## Config
+
+`Tyrell.create({ moduleConfig: { ceres: { ... } } })`:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `prices` | 1 | Headline knob: how much prices put people off. A person's own (`tune: { ceres: { prices } }`) multiplies it |
+| `priceShare` | 0.4 | How much a price, as a share of what they have, weighs an option down... |
+| `priceThrift` | 0.8 | ...more by this per point of thrift |
+| `priceFloor` | 0.05 | ...never under this |
+
+See [Tuning](../tuning.md#ceres); during play, `world.tune('ceres', { ... })`.
 
 ## With other modules
 

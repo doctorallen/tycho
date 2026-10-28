@@ -68,7 +68,7 @@ Node and bundlers can use `dist/tyrell.mjs` or `dist/tyrell.cjs`; types are in `
 
 ## Documentation
 
-Start with [docs/README.md](docs/README.md). The guides walk through integrating a game; the reference covers every call.
+Start with [docs/README.md](docs/README.md). The guides walk through integrating a game; the reference covers every call. [docs/tuning.md](docs/tuning.md) lists every setting, and the headline knobs that tune a whole behavior (how fast friendships form, how often breaks come, how readily gossip spreads), for everyone, for one person, or during play.
 
 ## Building and testing
 

@@ -55,11 +55,12 @@ export class Strangers {
     if (!def || !def.errands.length) return [];
     const out: Body[] = [];
     const H = Math.floor(t / HOUR);
+    const crowds = this.w.cfg.crowds;
     for (let k = 4; k >= 0; k--) {
       const hh = H - k;
       const hourOfDay = ((hh % 24) + 24) % 24;
       const count = Array.isArray(def.perHour) ? def.perHour[hourOfDay] ?? 0 : def.perHour;
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < count * crowds; i++) {
         const b = this.make(region, def, hh, i, t);
         if (b) out.push(b);
       }

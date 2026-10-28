@@ -21,7 +21,7 @@ export interface CrimeDef {
   kind: string;
   /** 0..1: how bad. */
   severity: number;
-  /** Heat each report adds. Default severity * 10. */
+  /** Heat each report adds. Default severity × config.heatPerSeverity (10). */
   heat?: number;
   /** The group reports go to (the police). Default: any group of kind 'authority'. */
   reportTo?: Id;
@@ -56,15 +56,97 @@ export interface WormtongueConfig {
   heatDecay: number;
   /** Chance that a dishonest teller who dislikes the subject lies. */
   lieChance: number;
+
+  // The headline knobs: plain multipliers, 1 changing nothing. A person's
+  // own (PersonDef.tune.wormtongue) multiplies these for them alone: the
+  // teller's for gossip and lies, the witness's for reporting, the actor's
+  // for heat and cooling.
+  /** How readily gossip spreads: the chance per meeting that someone passes something on. 0: nobody tells anybody. Default 1. */
+  gossip: number;
+  /** How readily crimes are reported: the chance a witness who recognized the actor reports them. 0: nobody reports. Default 1. */
+  reporting: number;
+  /** How much heat each report adds. Default 1. */
+  heat: number;
+  /** How fast heat cools: heatDecay over the days. 0: it never cools. Default 1. */
+  cooling: number;
+  /** How readily a dishonest teller who dislikes the subject lies (lieChance). 0: nobody lies. Default 1. */
+  lies: number;
+
+  // The finer numbers.
+  /** Heat a report adds per point of the crime's severity, for a crime with no `heat`. Default 10. */
+  heatPerSeverity: number;
+  /** Heat under this is let go at midnight. Default 0.05. */
+  heatFloor: number;
+  /** A belief from seeing something is at least this strong, however unclear the sighting. Default 0.3. */
+  sawStrength: number;
+  /** The importance of a witness's memory: crimeMemory + severity × severityMemory for a crime, plainMemory for anything else. Defaults 4, 6 and 3. */
+  crimeMemory: number;
+  severityMemory: number;
+  plainMemory: number;
+  /** How much fear (1 - courage) puts a witness off reporting. Default 0.3. */
+  fearWeight: number;
+  /** How much liking the actor keeps a witness quiet. Default 0.8. */
+  loyalty: number;
+  /** How clearly bystanders see a crime someone commits (a crime action's sighting strength). Default 0.8. */
+  crimeSeen: number;
+  /** Infamy a report adds, per point of severity, with the group it went to and with the witness's groups. Defaults 0.2 and 0.1. */
+  infamyAuthority: number;
+  infamyGroups: number;
+  /** How strongly the authority believes what it's told in a report. Default 0.8. */
+  toldAuthority: number;
+  /**
+   * A bribe's chance: greed × bribeGreed + (the amount, up to bribeFull) /
+   * bribeFull × bribeMoney - honesty × bribeHonesty + bribeBase. Defaults
+   * 0.6, 100, 0.5, 0.4 and 0.1.
+   */
+  bribeGreed: number;
+  bribeFull: number;
+  bribeMoney: number;
+  bribeHonesty: number;
+  bribeBase: number;
+  /** A threat's chance: (1 - courage) × scareFear - honesty × scareHonesty + scareBase; and the regard it costs. Defaults 0.8, 0.2, 0.1 and -0.3. */
+  scareFear: number;
+  scareHonesty: number;
+  scareBase: number;
+  scareRegard: number;
+  /** A secret is passed on only by someone whose regard for its subject is under this. Default -0.3. */
+  secretSpite: number;
+  /** How much more worth telling a crime is, and any other deed, than other news. Defaults 3 and 1.5. */
+  juicyCrime: number;
+  juicyDeed: number;
+  /** News loses this much of its worth in telling an hour. Default 0.99. */
+  gossipRecency: number;
+  /** Someone lies only with honesty under liarBelow, about someone their regard for is under lieSpite, onto someone under scapegoat. Defaults 0.3, -0.3 and -0.2. */
+  liarBelow: number;
+  lieSpite: number;
+  scapegoat: number;
+  /** How far a listener trusts a teller: trustBase + regard × trustRegard, from trustMin to trustMax; trustAlone without Fellowship. Defaults 0.6, 0.4, 0.2, 1 and 0.7. */
+  trustBase: number;
+  trustRegard: number;
+  trustMin: number;
+  trustMax: number;
+  trustAlone: number;
+  /** The share of a belief's strength that survives a telling (before trust). Default 0.9. */
+  toldKeep: number;
+  /** A secret counts as exposed once this many know it. Default 4. */
+  exposedAt: number;
 }
 
 export const DEFAULT_WORMTONGUE: WormtongueConfig = {
   reportChance: 0.6, reportDelay: [10, 90], recognizeStranger: 0.5, gossipChance: 0.45, maxHops: 3, heatDecay: 0.85, lieChance: 0.5,
+  gossip: 1, reporting: 1, heat: 1, cooling: 1, lies: 1,
+  heatPerSeverity: 10, heatFloor: 0.05, sawStrength: 0.3, crimeMemory: 4, severityMemory: 6, plainMemory: 3,
+  fearWeight: 0.3, loyalty: 0.8, crimeSeen: 0.8, infamyAuthority: 0.2, infamyGroups: 0.1, toldAuthority: 0.8,
+  bribeGreed: 0.6, bribeFull: 100, bribeMoney: 0.5, bribeHonesty: 0.4, bribeBase: 0.1,
+  scareFear: 0.8, scareHonesty: 0.2, scareBase: 0.1, scareRegard: -0.3,
+  secretSpite: -0.3, juicyCrime: 3, juicyDeed: 1.5, gossipRecency: 0.99, liarBelow: 0.3, lieSpite: -0.3, scapegoat: -0.2,
+  trustBase: 0.6, trustRegard: 0.4, trustMin: 0.2, trustMax: 1, trustAlone: 0.7, toldKeep: 0.9, exposedAt: 4,
 };
 
 export class Wormtongue implements Module {
   readonly name = 'wormtongue';
   readonly config: WormtongueConfig;
+  readonly knobs = { gossip: 'person', reporting: 'person', heat: 'person', cooling: 'person', lies: 'person' } as const;
   readonly crimes = new Map<string, CrimeDef>();
   private w!: World;
 
@@ -72,6 +154,10 @@ export class Wormtongue implements Module {
 
   init(): State { return { heat: {}, reports: [], secrets: {}, favors: {} }; }
   private get st(): State { return this.w.s.mod.wormtongue as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): WormtongueConfig { return this.w.tuned(this.name, this.config); }
+  /** A headline knob for someone (a person's id, or anyone else: the player): the world's, times their own. */
+  private knob(name: 'gossip' | 'reporting' | 'heat' | 'cooling' | 'lies', id: Id): number { return this.c[name] * this.w.own(this.w.s.people[id], this.name, name); }
 
   attach(w: World): void {
     this.w = w;
@@ -128,7 +214,7 @@ export class Wormtongue implements Module {
   // -------------------------------------------------------------------------
 
   sensed(stim: Stimulus): void {
-    const w = this.w, rv = w.reverie;
+    const w = this.w, rv = w.reverie, c = this.c;
     const crime = this.crimes.get(stim.kind);
     const strength = clamp(stim.strength ?? 1);
     for (const wid of stim.seenBy || []) {
@@ -136,22 +222,24 @@ export class Wormtongue implements Module {
       if (!p || p.status !== 'active' || wid === stim.actor) continue;
       const r = w.stream(p);
       const knows = !!w.fellowship?.knows(wid, stim.actor) || !!rv?.file(wid, stim.actor);
-      const chance = strength * (1 - clamp(stim.disguise ?? 0)) * (knows ? 1 : this.config.recognizeStranger);
+      const chance = strength * (1 - clamp(stim.disguise ?? 0)) * (knows ? 1 : c.recognizeStranger);
       const recognized = r.chance(chance);
       const actor = recognized ? stim.actor : 'someone';
       const key = `did:${actor}:${stim.kind}`;
-      rv?.applyBelieve(wid, key, stim.what ?? true, 'saw', null, Math.max(0.3, strength));
-      rv?.applyRemember(wid, { k: 'saw:' + stim.kind, about: recognized ? stim.actor : undefined, place: stim.place ?? undefined, imp: crime ? 4 + crime.severity * 6 : 3, text: `saw ${actor} ${stim.kind}${stim.what ? ' ' + stim.what : ''}` });
+      rv?.applyBelieve(wid, key, stim.what ?? true, 'saw', null, Math.max(c.sawStrength, strength));
+      rv?.applyRemember(wid, { k: 'saw:' + stim.kind, about: recognized ? stim.actor : undefined, place: stim.place ?? undefined, imp: crime ? c.crimeMemory + crime.severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? ' ' + stim.what : ''}` });
       if (crime && rv) rv.applyFeel(wid, crime.feeling ?? 'witnessed', key);
       w.log('witnessed', wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized });
       w.emit('witnessed', { id: wid, actor, kind: stim.kind, recognized });
       if (crime && recognized) {
-        const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? 0.5;
-        const fear = p.def.traits?.courage !== undefined ? 1 - p.def.traits.courage : 0.5;
+        const mid = w.cfg.traitDefault;
+        const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? mid;
+        const fear = p.def.traits?.courage !== undefined ? 1 - p.def.traits.courage : 1 - mid;
         const regard = w.fellowship ? w.fellowship.regard(wid, stim.actor) : 0;
-        const pReport = clamp((crime.report ?? this.config.reportChance) * (0.5 + lawful) * (1 - fear * 0.3) * (1 - Math.max(0, regard) * 0.8));
+        // the headline knob scales the chance, for the witness
+        const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * this.knob('reporting', wid));
         if (r.chance(pReport)) {
-          const [a, b] = this.config.reportDelay;
+          const [a, b] = c.reportDelay;
           w.clock.schedule({ t: w.s.now + r.range(a, b), k: 'module', ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null } });
         }
       }
@@ -171,7 +259,7 @@ export class Wormtongue implements Module {
   }
 
   private report(wid: Id, actor: Id, kind: string, what?: string): void {
-    const w = this.w;
+    const w = this.w, c = this.c;
     const crime = this.crimes.get(kind);
     if (!crime) return;
     let to = crime.reportTo;
@@ -181,13 +269,13 @@ export class Wormtongue implements Module {
     if (to) rep.to = to;
     this.st.reports.push(rep);
     if (this.st.reports.length > 200) this.st.reports.shift();
-    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * 10), 4);
+    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * c.heatPerSeverity) * this.knob('heat', actor), 4);
     if (w.fellowship) {
-      if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * 0.2);
-      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * 0.1);
+      if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * c.infamyAuthority);
+      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * c.infamyGroups);
     }
     // the authority now knows too
-    if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, 'told', wid, 0.8, 1);
+    if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, 'told', wid, c.toldAuthority, 1);
     w.log('report', wid, { actor, kind, to: to ?? null });
     w.emit('report', { ...rep, heat: this.heat(actor) });
   }
@@ -201,14 +289,16 @@ export class Wormtongue implements Module {
     const rv = w.reverie;
     if (!p || !rv) return;
     const r = w.stream(p);
-    const greed = p.def.traits?.greed ?? 0.5, courage = p.def.traits?.courage ?? 0.5, honesty = p.def.traits?.honesty ?? 0.5;
-    const pAccept = how === 'pay' ? clamp(greed * 0.6 + Math.min(1, amount / 100) * 0.5 - honesty * 0.4 + 0.1) : clamp((1 - courage) * 0.8 - honesty * 0.2 + 0.1);
+    const c = this.c;
+    const mid = w.cfg.traitDefault;
+    const greed = p.def.traits?.greed ?? mid, courage = p.def.traits?.courage ?? mid, honesty = p.def.traits?.honesty ?? mid;
+    const pAccept = how === 'pay' ? clamp(greed * c.bribeGreed + Math.min(1, amount / c.bribeFull) * c.bribeMoney - honesty * c.bribeHonesty + c.bribeBase) : clamp((1 - courage) * c.scareFear - honesty * c.scareHonesty + c.scareBase);
     const ok = r.chance(pAccept);
     if (ok) for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.applySilence(witness, b.key);
     if (how === 'pay' && ok) p.vars.money = Number(p.vars.money ?? 0) + amount;
     if (how === 'scare') {
       rv.applyFeel(witness, 'scared', actor);
-      w.fellowship?.applyRegard(witness, actor, -0.3);
+      w.fellowship?.applyRegard(witness, actor, c.scareRegard);
     }
     w.log('silenced', witness, { actor, how, ok });
     w.emit('silenced', { witness, actor, how, ok });
@@ -227,22 +317,24 @@ export class Wormtongue implements Module {
   private gossip(a: PersonState, b: PersonState): void {
     const w = this.w, rv = w.reverie;
     if (!rv) return;
+    const c = this.c;
     const r = w.stream(a);
-    const talkative = a.def.traits?.talkative ?? 0.5;
-    if (!r.chance(this.config.gossipChance * (0.5 + talkative))) return;
+    const talkative = a.def.traits?.talkative ?? w.cfg.traitDefault;
+    // the headline knob scales the chance, for the teller
+    if (!r.chance(c.gossipChance * (0.5 + talkative) * this.knob('gossip', a.id))) return;
     const now = w.s.now;
     let best: { key: string; v: Value; str: number; hops: number; score: number } | null = null;
     for (const bl of rv.beliefs(a.id)) {
-      if (bl.silenced || bl.hops >= this.config.maxHops) continue;
+      if (bl.silenced || bl.hops >= c.maxHops) continue;
       if (bl.key.startsWith('@')) continue;
       const theirs = rv.belief(b.id, bl.key);
       if (theirs === bl.v) continue;
       const secret = this.secretFor(bl.key);
-      if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < -0.3)) continue;
+      if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < c.secretSpite)) continue;
       const subject = subjectOf(bl.key);
       if (subject === b.id) continue; // not to their face
-      const juicy = bl.key.startsWith('did:') ? (this.crimes.has(bl.key.split(':')[2]) ? 3 : 1.5) : 1;
-      const recency = Math.pow(0.99, (now - bl.t) / HOUR);
+      const juicy = bl.key.startsWith('did:') ? (this.crimes.has(bl.key.split(':')[2]) ? c.juicyCrime : c.juicyDeed) : 1;
+      const recency = Math.pow(c.gossipRecency, (now - bl.t) / HOUR);
       const score = juicy * bl.str * recency;
       if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
     }
@@ -250,18 +342,18 @@ export class Wormtongue implements Module {
     let key = best.key, lie = false;
     const v = best.v;
     const subject = subjectOf(key);
-    const honesty = a.def.traits?.honesty ?? 0.5;
+    const honesty = a.def.traits?.honesty ?? w.cfg.traitDefault;
     // a liar shifts the blame for something done onto someone else they dislike (with nobody to blame, the truth goes on)
-    if (subject && v !== false && v !== null && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
-      const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
+    if (subject && v !== false && v !== null && honesty < c.liarBelow && w.fellowship && w.fellowship.regard(a.id, subject) < c.lieSpite && r.chance(c.lieChance * this.knob('lies', a.id))) {
+      const foes = w.fellowship.relations(a.id).filter((x) => x.regard < c.scapegoat && x.id !== subject && x.id !== b.id);
       if (foes.length) { key = key.replace(`did:${subject}:`, `did:${foes[0].id}:`); lie = true; }
     }
-    const trust = w.fellowship ? clamp(0.6 + w.fellowship.regard(b.id, a.id) * 0.4, 0.2, 1) : 0.7;
-    rv.applyBelieve(b.id, key, v, 'told', a.id, best.str * trust * 0.9, best.hops + 1);
+    const trust = w.fellowship ? clamp(c.trustBase + w.fellowship.regard(b.id, a.id) * c.trustRegard, c.trustMin, c.trustMax) : c.trustAlone;
+    rv.applyBelieve(b.id, key, v, 'told', a.id, best.str * trust * c.toldKeep, best.hops + 1);
     const sec = this.secretFor(key);
     if (sec && !sec.knownBy.includes(b.id)) {
       sec.knownBy.push(b.id);
-      if (sec.knownBy.length === 4) { w.log('exposed', sec.about, { key }); w.emit('exposed', { about: sec.about, key }); }
+      if (sec.knownBy.length === c.exposedAt) { w.log('exposed', sec.about, { key }); w.emit('exposed', { about: sec.about, key }); }
     }
     w.log('told', a.id, { to: b.id, key, v, ...(lie ? { lie: true } : {}) });
     w.emit('told', { from: a.id, to: b.id, key, v, lie });
@@ -310,7 +402,7 @@ export class Wormtongue implements Module {
     const a = this.w.actions.get(d.action);
     if (!a?.crime) return;
     const seenBy = this.w.ring.present(this.w.ring.root(d.place)).filter((id) => id !== p.id);
-    this.sensed({ kind: a.crime, actor: p.id, place: d.place, seenBy, strength: 0.8 });
+    this.sensed({ kind: a.crime, actor: p.id, place: d.place, seenBy, strength: this.c.crimeSeen });
   }
 
   // -------------------------------------------------------------------------
@@ -326,9 +418,12 @@ export class Wormtongue implements Module {
   }
 
   day(): void {
+    const c = this.c;
     for (const k in this.st.heat) {
-      const v = round(this.st.heat[k] * this.config.heatDecay, 4);
-      if (v < 0.05) delete this.st.heat[k]; else this.st.heat[k] = v;
+      // the headline knob, for whoever it's on: how fast it cools
+      const f = this.knob('cooling', k);
+      const v = round(this.st.heat[k] * (f === 1 ? c.heatDecay : Math.pow(c.heatDecay, f)), 4);
+      if (v < c.heatFloor) delete this.st.heat[k]; else this.st.heat[k] = v;
     }
     const cutoff = this.w.s.now - 14 * DAY;
     this.st.reports = this.st.reports.filter((r) => r.t >= cutoff);

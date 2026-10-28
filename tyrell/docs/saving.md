@@ -41,11 +41,12 @@ Everything that changes:
 | The log | The last `config.logSize` entries |
 | Module state | Feelings, memories, beliefs, files, stress; relationships, standing, partners; heat, reports, secrets, favors; lines said; deck draws, intensity; purses, pantries, rent; stages, parents, the departed; promoted strangers |
 | Kept game state | Everything in `world.keep` |
+| Tuning | Settings changed during play with `world.tune` (and people's own `tune`, in their definitions) |
 
 Not in the save, so the game provides them on every start:
 
 - **Definitions**: needs, places, links, actions, tasks, deeds; feelings, breaks, memory kinds, groups, crimes, lines, practices, social acts, storylets, decks, metrics, goods; custom terms, effects and inputs; Cradle's `namer` and `template`; Joi's provider.
-- **The shell, config and listeners.**
+- **The shell, config and listeners.** (Settings changed with `world.tune` are saved: they're laid over the config the game declares on the next start.)
 - **Focus**: call `world.focus` again.
 - **Palantír's decisions** and **bark cooldowns**: they start empty.
 - **Esper's history and marks**, unless you save with history.

@@ -5,7 +5,9 @@
 //
 // Every call that changes the world from outside (a fact, something seen, a
 // deed, a body that couldn't get to its stool...) goes through `input()`, so
-// Esper can record it and play it again after a rewind.
+// Esper can record it and play it again after a rewind. Settings changed
+// during play (`tune()`) are inputs too, kept in the state over the config
+// the game declared, so they rewind and save with everything else.
 import { Lang, combine, itemCount } from './conds';
 import type { Module } from './module';
 import { Ring } from './ring';
@@ -42,6 +44,9 @@ export const DEFAULT_CONFIG: Config = {
   urgent: 0.85,
   urgentRank: 1.5,
   desperateRank: 2.5,
+  storyRank: 3,
+  jobRank: 2,
+  routineRank: 1,
   cut: 0.25,
   top: 3,
   power: 2,
@@ -56,6 +61,7 @@ export const DEFAULT_CONFIG: Config = {
   decisions: 12,
   habitFast: 0.25,
   habitSlow: 0.05,
+  habitDrift: 0.02,
   habitMin: 0.25,
   habitMax: 4,
   compensate: true,
@@ -67,7 +73,43 @@ export const DEFAULT_CONFIG: Config = {
   wishChance: 0.5,
   wishMinutes: 2160,
   wishPull: 1.35,
+  needs: 1,
+  habits: 1,
+  learning: 1,
+  wishes: 1,
+  crowds: 1,
+  traitDefault: 0.5,
+  needStart: 0.2,
+  needCurve: 'pow1.5',
+  reliefFloor: 0.05,
+  liftRelief: 0.3,
+  desperate: 0.97,
+  desperateSlope: 10,
+  habitBest: 2,
+  habitDone: 0.2,
+  nudgeSlow: 0.25,
+  pallFrom: 0.05,
+  pallDone: 0.2,
+  repeatWindow: 90,
+  targets: 6,
+  meetMax: 3,
+  meetMinutes: 3,
+  awayNeeds: 0.4,
+  skillRate: 0.02,
+  skillGrace: 3,
 };
+
+/**
+ * The core's headline knobs (fields of Config): plain multipliers, 1 changing
+ * nothing. 'person' ones a person's own `tune.core` multiplies for them alone;
+ * 'world' ones are the world's only.
+ */
+export const CORE_KNOBS: Readonly<Record<string, 'person' | 'world'>> = { needs: 'person', habits: 'person', learning: 'person', wishes: 'person', crowds: 'world' };
+
+/** Config fields that aren't tuned through world.tune: the game changes them directly (they never change what happens). */
+const UNTUNED = new Set(['minutesPerSecond', 'budgetMs']);
+/** Settings that take more than one kind of value: a curve is a name or a list of points. */
+const CURVES = new Set(['needCurve']);
 
 /** A saved world: what world.save() returns and world.load() takes. */
 export interface SaveData {
@@ -120,6 +162,8 @@ export class World {
   /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
   private looking = 0;
   private _speed = 1;
+  /** The settings in force, by module, made from the overrides they were made from (s.tune's, kept whole: a new tune makes a new object). */
+  private tunedCache = new Map<string, { src: object; base: object; out: object }>();
 
   constructor(opts: Options, modules: Module[]) {
     this.config = { ...DEFAULT_CONFIG, ...(opts.config || {}) };
@@ -161,7 +205,7 @@ export class World {
   /** The day number. */
   get day(): number { return dayOf(this.s.now); }
   /** The day of the week, 0 to config.week - 1. */
-  get weekday(): number { return this.day % this.config.week; }
+  get weekday(): number { return this.day % this.cfg.week; }
 
   /** How fast time runs: 1 normal, 4 four times as fast, 0 paused, negative runs backward. */
   get speed(): number { return this._speed; }
@@ -378,6 +422,122 @@ export class World {
   /** Keeps a piece of the game's own state with the world, so it rewinds with it. */
   keep(key: string, value: unknown): void { this.input('keep', [key, value === undefined ? null : JSON.parse(JSON.stringify(value))]); }
   kept<T = unknown>(key: string): T | undefined { return this.s.game[key] as T | undefined; }
+
+  // -------------------------------------------------------------------------
+  // Tuning: settings changed during play
+  // -------------------------------------------------------------------------
+
+  /**
+   * Changes settings during play (a slider in the game's options). It's an
+   * input, so time walk replays the change at the moment it was made, and
+   * the overrides are kept in the state, so a save keeps them. `module` is a
+   * module's name, or 'core' for the config; `values` are fields of its
+   * settings (any of them, not only the headline knobs), each over what was
+   * declared. A field set to null goes back to what was declared, and
+   * `values` null puts the whole module back. With `person`, it's that
+   * person's own headline knobs instead (their `tune`). See docs/tuning.md.
+   */
+  tune(module: string, values: Record<string, unknown> | null, person?: Id): void {
+    const base = this.tuneBase(module) as Record<string, unknown>;
+    const knobs = this.knobsOf(module);
+    if (values !== null && (typeof values !== 'object' || Array.isArray(values))) throw new Error(`Tyrell: tune ${module} with an object of settings, or null`);
+    if (person !== undefined && !this.s.people[person]) throw new Error(`Tyrell: can't tune '${person}': there's nobody by that id`);
+    for (const key of Object.keys(values || {})) {
+      const v = (values as Record<string, unknown>)[key];
+      if (person !== undefined) {
+        if (knobs[key] !== 'person') throw new Error(`Tyrell: '${key}' isn't a knob of ${module}'s a person can have their own of`);
+        if (v !== null && !(typeof v === 'number' && isFinite(v) && v >= 0)) throw new Error(`Tyrell: a person's '${key}' must be a number, 0 or more, or null`);
+        continue;
+      }
+      if (module === 'core' && UNTUNED.has(key)) throw new Error(`Tyrell: set world.config.${key} directly: it changes nothing that happens`);
+      if (!(key in base)) throw new Error(`Tyrell: ${module} has no setting '${key}'`);
+      if (v === null) continue;
+      const want = base[key];
+      if (!plain(v)) throw new Error(`Tyrell: '${key}' must be plain data (numbers, strings, true or false, lists and objects of them)`);
+      const curve = CURVES.has(key) && (typeof v === 'string' || Array.isArray(v));
+      if (!curve && want !== null && want !== undefined && kindOf(v) !== kindOf(want)) throw new Error(`Tyrell: '${key}' is a ${kindOf(want)} in ${module}, not a ${kindOf(v)}`);
+    }
+    this.input('tune', [module, values === null ? null : clone(values), person ?? null]);
+  }
+
+  /**
+   * The settings in force for a module (or 'core'): a copy of what was
+   * declared with any overrides from tune() over it. With a person, their
+   * headline knobs as they apply to them: the world's times their own.
+   */
+  tuning(module: string, person?: Id): Record<string, unknown> {
+    const now: Record<string, unknown> = { ...(this.tuneBase(module) as Record<string, unknown>), ...(this.s.tune?.[module] || {}) };
+    if (person === undefined) return now;
+    const p = this.s.people[person];
+    const out: Record<string, unknown> = {};
+    const knobs = this.knobsOf(module);
+    for (const k of Object.keys(knobs)) if (knobs[k] === 'person') out[k] = Number(now[k]) * this.own(p, module, k);
+    return out;
+  }
+
+  /** The core config in force: what was declared (world.config), under any overrides made with tune(). */
+  get cfg(): Config { return this.tuned('core', this.config); }
+
+  /**
+   * A module's settings in force (or the core's, as 'core'): `base`, what was
+   * declared, under any overrides made with tune(). Untuned, it's `base`
+   * itself; tuned, an object whose own fields are the overrides and whose
+   * prototype is `base` (so a field the game sets on `base` still shows).
+   */
+  tuned<T extends object>(name: string, base: T): T {
+    const t = this.s.tune;
+    if (t === undefined) return base;
+    const o = t[name];
+    if (o === undefined) return base;
+    const c = this.tunedCache.get(name);
+    if (c && c.src === o && c.base === base) return c.out as T;
+    const out = Object.assign(Object.create(base), o) as T;
+    this.tunedCache.set(name, { src: o, base, out });
+    return out;
+  }
+
+  /** A person's own multiplier for one of a module's headline knobs (their `tune`): 1 if they have none. */
+  own(p: PersonState | null | undefined, module: string, knob: string): number {
+    const v = p?.def.tune?.[module]?.[knob];
+    return typeof v === 'number' ? v : 1;
+  }
+
+  /** What tune() works over: the config for 'core', else the module's declared settings. */
+  private tuneBase(module: string): object {
+    if (module === 'core') return this.config;
+    const m = this.modules.get(module);
+    if (!m) throw new Error(`Tyrell: can't tune '${module}': no module by that name is switched on`);
+    if (!m.config) throw new Error(`Tyrell: ${module} has no settings to tune`);
+    return m.config;
+  }
+
+  private knobsOf(module: string): Readonly<Record<string, 'person' | 'world'>> {
+    return module === 'core' ? CORE_KNOBS : this.modules.get(module)?.knobs ?? {};
+  }
+
+  /** Applies a tune (the input): the overrides kept whole, a new object each time, so what's made from them is made again. */
+  private applyTune(module: string, values: Record<string, Value> | null, person: Id | null): void {
+    const p = person !== null ? this.s.people[person] : undefined;
+    if (person !== null && !p) return;
+    const held = (p ? p.def.tune : this.s.tune) || {};
+    const cur = held[module] || {};
+    const next: Record<string, any> = values === null ? {} : { ...cur };
+    for (const k of Object.keys(values || {})) {
+      const v = (values as Record<string, Value>)[k];
+      if (v === null) delete next[k]; else next[k] = v;
+    }
+    // how fast needs rise changes from now on: the rise so far is kept first, and when they turn urgent is looked at again after
+    const rising = module === 'core' && ('needs' in cur || 'needs' in next) && cur.needs !== next.needs;
+    const who: PersonState[] = [];
+    if (rising) for (const id in this.s.people) { const q = this.s.people[id]; if (q.status !== 'gone' && (!p || q === p)) who.push(q); }
+    for (const q of who) this.mind.settleRise(q);
+    const all: Record<string, any> = { ...held };
+    if (Object.keys(next).length) all[module] = next; else delete all[module];
+    if (p) { if (Object.keys(all).length) p.def.tune = all; else delete p.def.tune; }
+    else if (Object.keys(all).length) this.s.tune = all; else delete this.s.tune;
+    for (const q of who) if (q.status === 'active' && q.doing) this.clock.scheduleChecks(q);
+    this.log('tuned', person ?? undefined, { module, values });
+  }
 
   // -------------------------------------------------------------------------
   // Asking about people
@@ -609,7 +769,7 @@ export class World {
 
   private makePerson(id: Id, def: PersonDef): PersonState {
     const needs: PersonState['needs'] = {};
-    for (const [nid, nd] of this.needs) needs[nid] = { v: clamp(def.needs?.[nid] ?? nd.start ?? 0.2), t: this.s.now };
+    for (const [nid, nd] of this.needs) needs[nid] = { v: clamp(def.needs?.[nid] ?? nd.start ?? this.cfg.needStart), t: this.s.now };
     const p: PersonState = {
       id, name: def.name || id, def: JSON.parse(JSON.stringify(def)), status: 'active',
       needs, vars: { money: 0, ...(def.vars || {}) }, inv: { ...(def.inv || {}) },
@@ -631,7 +791,7 @@ export class World {
     L.term('need', (c, a) => (c.person ? this.mind.level(c.person, a) : undefined));
     L.term('var', (c, a) => c.person?.vars[a]);
     L.term('money', (c) => Number(c.person?.vars.money ?? 0));
-    L.term('trait', (c, a) => c.person?.def.traits?.[a] ?? 0.5);
+    L.term('trait', (c, a) => c.person?.def.traits?.[a] ?? this.cfg.traitDefault);
     L.term('value', (c, a) => c.person?.def.values?.[a] ?? 0);
     L.term('has', (c, a) => (c.person ? this.have(c.person, a) : 0));
     L.term('hour', () => this.hour);
@@ -758,8 +918,24 @@ export class World {
     this.defineInput('at', (t: number, name: string, data: Record<string, Value>) => {
       this.clock.schedule({ t, k: 'timer', ref: name, data });
     });
+    this.defineInput('tune', (module: string, values: Record<string, Value> | null, person: Id | null) => this.applyTune(module, values, person));
   }
 }
+
+/** Is a value plain data that saves as it is (no functions, no undefined, no class instances, finite numbers)? */
+function plain(v: unknown): boolean {
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return true;
+  if (typeof v === 'number') return isFinite(v);
+  if (Array.isArray(v)) return v.every(plain);
+  if (typeof v === 'object') {
+    const proto = Object.getPrototypeOf(v);
+    return (proto === Object.prototype || proto === null) && Object.values(v as object).every(plain);
+  }
+  return false;
+}
+
+/** What kind of value a setting holds, for tune()'s check. */
+const kindOf = (v: unknown): string => (Array.isArray(v) ? 'list' : v === null ? 'null' : typeof v);
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
 const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer']);

@@ -53,7 +53,7 @@ export interface PracticeDef {
   roles: Record<string, { who?: Cond[]; job?: Id; actions: Id[] }>;
   /** Shifts the mood of the room (-1..1). */
   tone?: number;
-  /** How much more appealing role actions are. Default 1.5. */
+  /** How much more appealing role actions are. Default config.practiceBoost (1.5). */
   boost?: number;
 }
 
@@ -89,6 +89,32 @@ export interface ChooseOpts {
   skip?: (l: LineDef, i: number) => boolean;
 }
 
+export interface CityspeakConfig {
+  /**
+   * The headline knob: how chatty people near the player are. It scales the
+   * chance that two people meeting in view strike up an exchange (1, the
+   * default, always does; 0 never) and how many lines it runs to (barkLength
+   * times it, rounded, at least one). A person's own (PersonDef.tune.cityspeak)
+   * multiplies it for them: an exchange takes both people's. Barks change
+   * nothing in the world, so neither does this.
+   */
+  chatter: number;
+  /** Seconds between lines in a bark exchange. Default 2.2. */
+  barkGap: number;
+  /** Most lines in one exchange. Default 3. */
+  barkLength: number;
+  /** Minutes before someone barks the same line again, for a line with no `cooldown`. Default 60. */
+  barkCooldown: number;
+  /** How much more appealing role actions are, for a practice with no `boost`. Default 1.5. */
+  practiceBoost: number;
+  /** The share of an action with a `social` act that must be done for the act to be resolved. Default 0.5. */
+  socialDone: number;
+  /** The mood of a room with nobody in it (before the practices' tone). Default 0.5. */
+  roomEmpty: number;
+}
+
+export const DEFAULT_CITYSPEAK: CityspeakConfig = { chatter: 1, barkGap: 2.2, barkLength: 3, barkCooldown: 60, practiceBoost: 1.5, socialDone: 0.5, roomEmpty: 0.5 };
+
 interface State {
   /** By speaker, by line key (or index, for a line without one): when they last said it. */
   said: Record<Id, Record<string, number>>;
@@ -102,19 +128,33 @@ const lineKey = (l: LineDef, i: number): string => (l.key !== undefined && l.key
 
 export class Cityspeak implements Module {
   readonly name = 'cityspeak';
+  readonly config: CityspeakConfig;
+  readonly knobs = { chatter: 'person' } as const;
   readonly lines: LineDef[] = [];
   readonly practices = new Map<Id, PracticeDef>();
   readonly acts = new Map<Id, SocialActDef>();
   /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
   private barkSaid = new Map<string, number>();
-  /** Seconds between lines in a bark exchange. */
-  barkGap = 2.2;
-  /** Most lines in one exchange. */
-  barkLength = 3;
   private w!: World;
+
+  constructor(cfg: Partial<CityspeakConfig> = {}) { this.config = { ...DEFAULT_CITYSPEAK, ...cfg }; }
+
+  /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
+  get barkGap(): number { return this.w ? this.c.barkGap : this.config.barkGap; }
+  set barkGap(v: number) { this.config.barkGap = v; }
+  /** Most lines in one exchange (config.barkLength: setting it here sets the config). */
+  get barkLength(): number { return this.w ? this.c.barkLength : this.config.barkLength; }
+  set barkLength(v: number) { this.config.barkLength = v; }
 
   init(): State { return { said: {}, acts: [] }; }
   private get st(): State { return this.w.s.mod.cityspeak as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): CityspeakConfig { return this.w.tuned(this.name, this.config); }
+  /** How chatty two people are together: the world's chatter, times each one's own. */
+  private chatter(a: Id, b: Id): number {
+    const w = this.w;
+    return this.c.chatter * w.own(w.s.people[a], this.name, 'chatter') * w.own(w.s.people[b], this.name, 'chatter');
+  }
 
   attach(w: World): void {
     this.w = w;
@@ -275,15 +315,20 @@ export class Cityspeak implements Module {
   converse(a: Id, b: Id, topic = 'chat'): Array<Said & { after: number }> {
     const out: Array<Said & { after: number }> = [];
     const now = this.w.s.now;
+    const c = this.c;
+    // the headline knob: a chattier pair talks longer, a quiet one less (and a mute one not at all)
+    const k = this.chatter(a, b);
+    if (!(k > 0)) return out;
+    const most = k === 1 ? c.barkLength : Math.max(1, Math.round(c.barkLength * k));
     const skip = (who: Id) => (l: LineDef, i: number) => {
       const last = this.barkSaid.get(who + '|' + lineKey(l, i));
-      return last !== undefined && now - last < (l.cooldown ?? 60);
+      return last !== undefined && now - last < (l.cooldown ?? c.barkCooldown);
     };
     let speaker = a, listener = b;
     let line = this.pick(speaker, { to: listener, topic, skip: skip(speaker) });
-    for (let n = 0; line && n < this.barkLength; n++) {
+    for (let n = 0; line && n < most; n++) {
       this.barkSaid.set(speaker + '|' + lineKey(this.lines[line.i], line.i), now);
-      out.push({ ...line.said, after: n * this.barkGap });
+      out.push({ ...line.said, after: n * c.barkGap });
       const reply = this.reply(line.said, listener);
       [speaker, listener] = [listener, speaker];
       line = reply;
@@ -328,7 +373,7 @@ export class Cityspeak implements Module {
   room(place: Id): number {
     const w = this.w;
     const ids = w.ring.present(w.ring.root(place));
-    let m = 0.5;
+    let m = this.c.roomEmpty;
     if (ids.length && w.reverie) m = ids.reduce((acc, id) => acc + w.reverie!.mood(id), 0) / ids.length;
     for (const pr of this.activeAt(place)) m += pr.tone ?? 0;
     return round(clamp(m), 4);
@@ -342,7 +387,7 @@ export class Cityspeak implements Module {
       for (const role in pr.roles) {
         const r = pr.roles[role];
         if (!r.actions.includes(c.id) || !this.fills(p, r)) continue;
-        out.push([`${pr.id}: ${role}`, pr.boost ?? 1.5]);
+        out.push([`${pr.id}: ${role}`, pr.boost ?? this.c.practiceBoost]);
         break;
       }
     }
@@ -361,7 +406,7 @@ export class Cityspeak implements Module {
   }
 
   ended(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
-    if (d.kind !== 'act' || interrupted || frac < 0.5 || !d.target) return;
+    if (d.kind !== 'act' || interrupted || frac < this.c.socialDone || !d.target) return;
     const a = this.w.actions.get(d.action);
     if (!a?.social) return;
     this.applyResolve(a.social, p.id, d.target);
@@ -406,6 +451,9 @@ export class Cityspeak implements Module {
     const w = this.w;
     if (w.replaying) return;
     if (!w.clock.embodied(a.id) && !w.clock.embodied(b.id)) return;
+    // the headline knob: below 1, only some meetings in view start an exchange (a draw that only looks: barks change nothing)
+    const k = this.chatter(a.id, b.id);
+    if (k < 1 && !(k > 0 && w.worldStreamPeek('bark', a.id, b.id, w.s.now).chance(k))) return;
     const lines = this.converse(a.id, b.id);
     if (lines.length) w.emit('bark', { a: a.id, b: b.id, lines });
   }

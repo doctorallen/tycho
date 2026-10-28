@@ -89,15 +89,39 @@ export interface DelosConfig {
   jump: { chance: number; by: number };
   /** A child's chance of a natural gift: one talent raised by `by`. */
   gift: { chance: number; by: number };
+
+  // The headline knobs: plain multipliers, 1 changing nothing (the world's
+  // only: a child's genome is made before they're anyone).
+  /** How often genomes mutate: the chance of a trait jump, of a gift, and every gene's `mutate`. 0: never. Default 1. */
+  mutation: number;
+  /** How far children stray from their parents: every blended value's noise. 0: a child is exactly the blend. Default 1. */
+  variation: number;
+
+  /**
+   * The defaults for each kind of blended value, for a trait, talent,
+   * instinct or look that doesn't say its own: founders' range, bounds,
+   * cross and noise (BlendDef). Give any of them; the rest stay as they were.
+   */
+  traitBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+  talentBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+  instinctBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+  lookBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
 }
 
-export const DEFAULT_DELOS: DelosConfig = { jump: { chance: 0.12, by: 0.35 }, gift: { chance: 0.1, by: 0.4 } };
+export const DEFAULT_DELOS: DelosConfig = {
+  jump: { chance: 0.12, by: 0.35 }, gift: { chance: 0.1, by: 0.4 }, mutation: 1, variation: 1,
+  traitBlend: { ...DEFAULTS.traits }, talentBlend: { ...DEFAULTS.talents }, instinctBlend: { ...DEFAULTS.instincts }, lookBlend: { ...DEFAULTS.looks },
+};
+
+/** Which config field holds each kind's defaults. */
+const BLEND: Record<Kind, 'traitBlend' | 'talentBlend' | 'instinctBlend' | 'lookBlend'> = { traits: 'traitBlend', talents: 'talentBlend', instincts: 'instinctBlend', looks: 'lookBlend' };
 
 interface State { g: Record<Id, Genome> }
 
 export class Delos implements Module {
   readonly name = 'delos';
   readonly config: DelosConfig;
+  readonly knobs = { mutation: 'world', variation: 'world' } as const;
   readonly genes = new Map<Id, GeneDef>();
   readonly blends: Record<Kind, Map<Id, BlendDef>> = { traits: new Map(), talents: new Map(), instincts: new Map(), looks: new Map() };
   private w!: World;
@@ -105,6 +129,8 @@ export class Delos implements Module {
   constructor(cfg: Partial<DelosConfig> = {}) { this.config = { ...DEFAULT_DELOS, ...cfg }; }
 
   private get st(): State | undefined { return this.w.s.mod.delos as State | undefined; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): DelosConfig { return this.w.tuned(this.name, this.config); }
   private mut(): State { return (this.w.s.mod.delos ||= { g: {} }) as State; }
 
   attach(w: World): void {
@@ -175,8 +201,8 @@ export class Delos implements Module {
   // -------------------------------------------------------------------------
 
   private settings(kind: Kind, def: BlendDef): Required<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>> {
-    const d = DEFAULTS[kind];
-    return { founders: def.founders ?? d.founders, bounds: def.bounds ?? d.bounds, cross: def.cross ?? d.cross, noise: def.noise ?? d.noise };
+    const d = DEFAULTS[kind], g = this.c[BLEND[kind]];
+    return { founders: def.founders ?? g.founders ?? d.founders, bounds: def.bounds ?? g.bounds ?? d.bounds, cross: def.cross ?? g.cross ?? d.cross, noise: def.noise ?? g.noise ?? d.noise };
   }
 
   private fit(kind: Kind, def: BlendDef, v: number): number {
@@ -256,11 +282,12 @@ export class Delos implements Module {
     const r = new Stream(w.s.seed, 'delos', 'birth', child);
     const g: Genome = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
     const mut: Mutation[] = [];
+    const cfg = this.c;
     for (const gid of [...this.genes.keys()].sort()) {
       const def = this.genes.get(gid) as GeneDef;
       const from = (x: Genome) => { const c = x.genes[gid]; return c && c.length ? (r.pick(c) as string) : this.allele(def, r); };
       const copies = def.copies === 1 ? [from(r.chance(0.5) ? a : b)] : [from(a), from(b)];
-      if (def.mutate && r.chance(def.mutate)) {
+      if (def.mutate && r.chance(def.mutate * cfg.mutation)) {
         const i = r.int(copies.length);
         const to = this.allele(def, r);
         if (to !== copies[i]) { copies[i] = to; mut.push({ kind: 'gene', id: gid, to }); }
@@ -274,23 +301,24 @@ export class Delos implements Module {
         const va = a[kind][k] ?? r.range(founders[0], founders[1]);
         const vb = b[kind][k] ?? r.range(founders[0], founders[1]);
         const one = r.chance(0.5) ? va : vb;
-        g[kind][k] = this.fit(kind, def, one * cross + ((va + vb) / 2) * (1 - cross) + r.range(-noise, noise));
+        const n = noise * cfg.variation;
+        g[kind][k] = this.fit(kind, def, one * cross + ((va + vb) / 2) * (1 - cross) + r.range(-n, n));
       }
     }
     // a trait that jumps, a talent that turns out a gift
     const traits = [...this.blends.traits.keys()].sort();
-    if (traits.length && r.chance(this.config.jump.chance)) {
+    if (traits.length && r.chance(cfg.jump.chance * cfg.mutation)) {
       const k = traits[r.int(traits.length)];
-      const by = r.chance(0.5) ? this.config.jump.by : -this.config.jump.by;
+      const by = r.chance(0.5) ? cfg.jump.by : -cfg.jump.by;
       const before = g.traits[k];
       g.traits[k] = this.fit('traits', this.blends.traits.get(k) as BlendDef, before + by);
       mut.push({ kind: 'trait', id: k, by: round(g.traits[k] - before, 4) });
     }
     const talents = [...this.blends.talents.keys()].sort();
-    if (talents.length && r.chance(this.config.gift.chance)) {
+    if (talents.length && r.chance(cfg.gift.chance * cfg.mutation)) {
       const k = talents[r.int(talents.length)];
       const before = g.talents[k];
-      g.talents[k] = this.fit('talents', this.blends.talents.get(k) as BlendDef, before + this.config.gift.by);
+      g.talents[k] = this.fit('talents', this.blends.talents.get(k) as BlendDef, before + cfg.gift.by);
       mut.push({ kind: 'talent', id: k, by: round(g.talents[k] - before, 4) });
     }
     if (mut.length) g.mut = mut;

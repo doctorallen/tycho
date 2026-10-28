@@ -36,7 +36,7 @@ world.reverie.emotion('kofi');   // 'angry'
 | `weight` | required | How much it lifts (+) or sinks (-) the mood, -1..1 |
 | `minutes` | required | How long it lasts |
 | `stack` | 1 | How many can be held at once. A new one past the limit refreshes the oldest instead |
-| `stackMul` | 0.8 | Each extra stack weighs this much of the one before (the fifth insult stings less than the first) |
+| `stackMul` | `config.stackMul` (0.8) | Each extra stack weighs this much of the one before (the fifth insult stings less than the first) |
 | `emotion` | none | The emotion it feeds: 'happy', 'angry', 'sad', 'scared', 'tense', 'guilty'... |
 | `stress` | half the weight, if negative | Stress added each time it's felt |
 | `boost` | none | While felt, actions with these tags weigh this much more or less: `{ comfort: 1.5, social: 0.6 }` |
@@ -58,7 +58,7 @@ Ceres also declares `behind_on_rent` (-0.15, 7 days, tense) the first time someo
 
 **Mood** is `config.base` (0.6), plus the weight of every feeling held, minus the mean urgency of all needs times `2 × config.needWeight` (0.5), clamped to 0..1. Hungry, tired people are in a worse mood whatever they feel.
 
-**Emotion** is the one named emotion showing: the emotion with the largest total feeling weight (absolute), counting also each need with an `emotion` whose level is over 0.7 (by `(level - 0.7) × 0.8`). It shows only above `config.emotionFloor` (0.08); otherwise it's `'fine'`. Bodies carry it (`body.emotion`, `body.mood`).
+**Emotion** is the one named emotion showing: the emotion with the largest total feeling weight (absolute), counting also each need with an `emotion` whose level is over 0.7 (by `(level - 0.7) × 0.8`: `needEmotion` and `needEmotionWeight`). It shows only above `config.emotionFloor` (0.08); otherwise it's `'fine'`. Bodies carry it (`body.emotion`, `body.mood`).
 
 Actions give feelings when they end (`feels: ['good_meal']`), as do deeds (`feeling`, `witnessFeeling`), effects (`feel:tired`), and the game (`reverie.feel`).
 
@@ -86,15 +86,15 @@ world.reverie.breakdown({ id: 'bender', level: 'major', do: 'bender', label: 'a 
 | `after` | `'catharsis'` | The feeling once it's over |
 | `label` | the id | A readable name |
 
-Each time someone decides, Reverie checks their mood against the thresholds in config: below `extreme[0]` (0.08) it's an extreme break, below `major[0]` (0.2) major, below `minor[0]` (0.35) minor. The chance of a break since they last decided is `1 - exp(-elapsed / meanTime)`, where the mean time between breaks is `extreme[1]` (0.5 days), `major[1]` (0.8) or `minor[1]` (4); the elapsed time counts at most a day. The break is picked among the breaks of that level (or the nearest milder level that has any), weighted by their considerations. With no breaks declared, nobody breaks.
+Each time someone decides, Reverie checks their mood against the thresholds in config: below `extreme[0]` (0.08) it's an extreme break, below `major[0]` (0.2) major, below `minor[0]` (0.35) minor. The chance of a break since they last decided is `1 - exp(-elapsed × breaks / meanTime)`, where the mean time between breaks is `extreme[1]` (0.5 days), `major[1]` (0.8) or `minor[1]` (4), and `breaks` is the headline knob (1; 0 means no breaks, and a person's own `tune` multiplies it for them); the elapsed time counts at most a day. The break is picked among the breaks of that level (or the nearest milder level that has any), weighted by their considerations. With no breaks declared, nobody breaks.
 
 A break is an option at rank 4 and layer `'break'`, at the first place its spec resolves to. It isn't checked against hours, slots or conditions first; if the place turns out closed, it fails on arrival like any walk. When more than half of it is done, the person gets the `after` feeling, their short-term stress drops to 0 and their long-term stress by 30%.
 
 ## Stress and values
 
-Stress has two parts: short-term (half-life `stressShort`, 12 hours) and long-term (half-life `stressLong`, 7 days). `stress(id)` is `0.6 × short + 0.6 × long`, clamped to 0..1. Each addition goes in full to the short part and 15% to the long part (plus 0.02 more when short-term stress is over 0.6). Negative feelings add stress; breaks release it.
+Stress has two parts: short-term (half-life `stressShort`, 12 hours) and long-term (half-life `stressLong`, 7 days). `stress(id)` is `0.6 × short + 0.6 × long` (`stressShortWeight`, `stressLongWeight`), clamped to 0..1. Each addition goes in full to the short part and 15% (`stressCarry`) to the long part (plus `strain`, 0.02, more when short-term stress is over `strainAt`, 0.6). Negative feelings add stress (half their weight, `feelingStress`, unless they say their own); breaks release it (all the short part, and 30% of the long: `catharsisKeep` 0.7 is kept). The headline knob `stress` scales every addition.
 
-**Values** are held 0..1 (`PersonDef.values: { honesty: 0.9 }`). An action `against: ['honesty']` weighs `clamp(1 - held × 0.8, 0.05, 1)` for each value held, so an honest person hardly wants to. If they do it anyway (required by a job, a directive, desperation), starting it costs them stress (`0.3 ×` the sum of the values held) and a guilty `conscience`.
+**Values** are held 0..1 (`PersonDef.values: { honesty: 0.9 }`). An action `against: ['honesty']` weighs `clamp(1 - held × 0.8, 0.05, 1)` (`againstPull`, `againstFloor`) for each value held, so an honest person hardly wants to. If they do it anyway (required by a job, a directive, desperation), starting it costs them stress (`0.3 ×` the sum of the values held: `againstStress`) and a guilty `conscience`.
 
 Stress doesn't drive decisions by itself; read it with the `stress` term or as a consideration input.
 
@@ -115,11 +115,11 @@ world.reverie.memories('kofi');   // strongest first
 | `shifts` | none | Trait changes if a memory of this kind becomes a core memory: `{ courage: -0.1 }` |
 | `label` | none | For the game |
 
-A `Memory` is `{ k, t, imp, recalls, about?, place?, text?, core? }`: the kind, when, its importance (the memory's own `imp`, else the kind's, else 5), how often it's been recalled, who it's about, where, words for the game, and whether it's a core memory.
+A `Memory` is `{ k, t, imp, recalls, about?, place?, text?, core? }`: the kind, when, its importance (the memory's own `imp`, else the kind's, else `memoryImportance`, 5), how often it's been recalled, who it's about, where, words for the game, and whether it's a core memory.
 
 - **Strength** is importance faded by time: `imp × memoryDecay^hours` (0.995 an hour: an importance-5 memory is about half as strong after six days). Core memories don't fade.
-- **Forgetting.** At most `memoryCap` (24) memories that aren't core are kept; the weakest goes when there are more. Each midnight, memories weaker than 0.5 are dropped.
-- **Recall.** `recall(id, match, n)` returns the `n` strongest memories matching `{ about, k, place }` and counts a recall on each. A memory with importance 7 or more that's been recalled 3 times or more has a one-in-three chance, each recall, of becoming a **core memory** (up to `coreCap`, 8): it stops fading, its kind's `shifts` change the person's traits (clamped 0..1), and the change is kept with its reason (`shifts(id)`), logged and emitted as `changed`.
+- **Forgetting.** At most `memoryCap` (24) memories that aren't core are kept; the weakest goes when there are more. Each midnight, memories weaker than `memoryFloor` (0.5) are dropped. A memory's strength is its importance times `memoryDecay` (0.995) to the power of the hours since, times the headline knob `forgetting` (and the person's own): 2 forgets twice as fast, 0 never.
+- **Recall.** `recall(id, match, n)` returns the `n` strongest memories matching `{ about, k, place }` and counts a recall on each. A memory with importance 7 or more (`coreImportance`) that's been recalled 3 times or more (`coreRecalls`) has a one-in-three chance (`coreChance`), each recall, of becoming a **core memory** (up to `coreCap`, 8): it stops fading, its kind's `shifts` change the person's traits (clamped 0..1), and the change is kept with its reason (`shifts(id)`), logged and emitted as `changed`.
 
 Memories come from deeds (`memory` in a DeedDef), from witnessing (Wormtongue: kind `'saw:<kind>'`), from departures (Cradle: kind `'loss'`), from the `remember:<kind>` effect, and from the game (`reverie.remember`).
 
@@ -162,7 +162,7 @@ Rules when a belief arrives:
 - The same value: the strength becomes the stronger of the two, the time is refreshed, and seeing it upgrades the source to `'saw'`.
 - A different value: something seen isn't overturned by hearsay of equal or lower strength, and hearsay doesn't replace a stronger belief. Otherwise the new belief replaces the old.
 
-Each midnight, strength fades: by `beliefDecay` (0.97) a day, or its square root for things seen. Beliefs weaker than `beliefFloor` (0.05) are forgotten.
+Each midnight, strength fades: by `beliefDecay` (0.97) a day, or for things seen by `sawDecay` (by default its square root), each to the power of the headline knob `forgetting` (and the person's own). Beliefs weaker than `beliefFloor` (0.05) are forgotten.
 
 `thinks(id, key)` is what someone takes to be true: their belief; else the world's fact; else the key read as a term of the condition language (`thinks:open:workshop` falls back to whether the workshop is open). Keys starting with `@` are never gossiped: use them for private beliefs.
 
@@ -267,6 +267,13 @@ Log entries: `felt`, `broke`, `changed`.
 | `beliefDecay` | 0.97 | Belief strength kept per day (things seen: its square root) |
 | `stressShort` | 720 | Short-term stress half-life, minutes (12 hours) |
 | `stressLong` | 10080 | Long-term stress half-life, minutes (7 days) |
+| `breaks` | 1 | Headline knob: how often breaks come (0: never) |
+| `forgetting` | 1 | Headline knob: how fast memories and beliefs fade (0: never) |
+| `feelings` | 1 | Headline knob: how much feelings move the mood |
+| `stress` | 1 | Headline knob: how much stress everything adds |
+| `sawDecay` | null | Belief strength kept per day for what they saw: null is the square root of `beliefDecay` |
+
+A person's own `tune: { reverie: { breaks, forgetting, feelings, stress } }` multiplies the knobs for them. The finer numbers, each explained in [Tuning](../tuning.md#reverie): `stackMul` (0.8), `feelingStress` (0.5), `needEmotion` (0.7), `needEmotionWeight` (0.8), `stressShortWeight` and `stressLongWeight` (0.6), `stressCarry` (0.15), `strainAt` (0.6), `strain` (0.02), `memoryImportance` (5), `memoryFloor` (0.5), `coreRecalls` (3), `coreImportance` (7), `coreChance` (1/3), `breakRank` (4), `breakDone` (0.5), `catharsisKeep` (0.7), `againstPull` (0.8), `againstFloor` (0.05), `againstStress` (0.3). During play, `world.tune('reverie', { ... })` changes any of them as an input.
 
 ## With other modules
 

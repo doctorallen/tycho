@@ -2644,9 +2644,9 @@ function burst(x, y, c, n, draw, o = {}) {
   return out;
 }
 function rise(age2, i = 0, of = 1, o = {}) {
-  const life = o.life === void 0 ? 2.4 : o.life, fade = o.fade === void 0 ? 1.8 : o.fade, out = o.out === void 0 ? 0.6 : o.out;
+  const life = o.life === void 0 ? 2.4 : o.life, fade2 = o.fade === void 0 ? 1.8 : o.fade, out = o.out === void 0 ? 0.6 : o.out;
   if (age2 < 0 || !(age2 < life)) return null;
-  return { stack: (of - 1 - i) * (o.line === void 0 ? 21 : o.line), up: age2 * (o.speed === void 0 ? 12 : o.speed), alpha: age2 > fade ? Math.max(0, 1 - (age2 - fade) / out) : 1 };
+  return { stack: (of - 1 - i) * (o.line === void 0 ? 21 : o.line), up: age2 * (o.speed === void 0 ? 12 : o.speed), alpha: age2 > fade2 ? Math.max(0, 1 - (age2 - fade2) / out) : 1 };
 }
 
 // src/world/grid.ts
@@ -4191,6 +4191,771 @@ var Guide = class {
   }
 };
 
+// src/play/harm.ts
+var harm_exports = {};
+__export(harm_exports, {
+  Arsenal: () => Arsenal,
+  Hit: () => Hit,
+  Hitstop: () => Hitstop,
+  Knock: () => Knock,
+  Move: () => Move,
+  Pipeline: () => Pipeline,
+  Reactions: () => Reactions,
+  Shake: () => Shake,
+  Statuses: () => Statuses,
+  Traps: () => Traps,
+  Trigger: () => Trigger,
+  Wounds: () => Wounds,
+  afflict: () => afflict,
+  armor: () => armor,
+  armored: () => armored,
+  beat: () => beat,
+  coat: () => coat,
+  coatOf: () => coatOf,
+  cooldown: () => cooldown,
+  costOf: () => costOf,
+  fade: () => fade,
+  flash: () => flash,
+  gate: () => gate,
+  hold: () => hold,
+  inZone: () => inZone,
+  knock: () => knock,
+  means: () => means,
+  reaches: () => reaches,
+  react: () => react,
+  ready: () => ready,
+  resist: () => resist,
+  rise: () => rise2,
+  scale: () => scale,
+  segDist: () => segDist,
+  soak: () => soak,
+  spendCoat: () => spendCoat,
+  stagger: () => stagger,
+  use: () => use
+});
+var num = (v, d = 0) => v === void 0 ? d : typeof v === "function" ? v() : v;
+var Hit = class {
+  constructor(pipe, to, blow, rng, ctx) {
+    /** What `resist` made of it: 'W' weak, 'R' resisted, or null. */
+    this.verdict = null;
+    /** A flat amount reactions add as `react` ends. */
+    this.extra = 0;
+    /** Stopped: no stage after it ran. */
+    this.stopped = false;
+    /** Names to show: reactions fired, and anything a stage marks. */
+    this.marks = [];
+    /** The blows sent on from it (each a Hit, landed). */
+    this.follow = [];
+    /** The knock the body took (after its weight), if any. */
+    this.knock = null;
+    /** Staggered (a heavy blow), or flinched out of a wind-up. */
+    this.stagger = false;
+    this.flinch = false;
+    /** How long the body was held still (`hold`). */
+    this.hold = 0;
+    this.pipe = pipe;
+    this.to = to;
+    this.blow = blow;
+    this.amount = blow.amount;
+    this.kinds = blow.kinds || null;
+    this.rng = rng;
+    this.ctx = ctx;
+  }
+  /** No stage after this one runs (the blow turned, soaked whole, the body gone). */
+  stop() {
+    this.stopped = true;
+  }
+  /** A name to show over it. */
+  mark(name) {
+    this.marks.push(name);
+  }
+  /** A blow sent on to another body (a shock that arcs, a chain that shares the hit), landed now through this pipeline or another, with the same random source and context. */
+  send(to, blow, pipe) {
+    const h = (pipe || this.pipe).land(to, blow, { rng: this.rng, ctx: this.ctx });
+    this.follow.push(h);
+    return h;
+  }
+};
+var Pipeline = class {
+  constructor(stages, o = {}) {
+    this.stages = stages;
+    this.rng = o.rng || null;
+    this.ctx = o.ctx;
+  }
+  /** Lands a blow on a body: returns the hit, with what came of it. */
+  land(to, blow, o = {}) {
+    const h = new Hit(this, to, blow, o.rng || this.rng, o.ctx === void 0 ? this.ctx : o.ctx);
+    for (const s of this.stages) {
+      if (typeof s === "function") s(h);
+      else s.land(h);
+      if (h.stopped) break;
+    }
+    return h;
+  }
+};
+function gate(open) {
+  return { name: "gate", land(h) {
+    if (!open(h)) h.stop();
+  } };
+}
+function scale(by, name = "scale") {
+  return { name, land(h) {
+    h.amount *= by(h);
+  } };
+}
+function resist(o) {
+  const weak = o.weak === void 0 ? 1.01 : o.weak, strong = o.strong === void 0 ? 0.99 : o.strong;
+  const verdict = o.verdict || ((m) => m > weak ? "W" : m < strong ? "R" : null);
+  return {
+    name: "resist",
+    land(h) {
+      let m = 1;
+      if (h.kinds) {
+        m = o.of(h.to, h.kinds, h);
+        h.verdict = verdict(m);
+      }
+      if (o.shape) m = o.shape(h, m);
+      h.amount *= m;
+    }
+  };
+}
+function armor(o) {
+  return { name: "armor", land(h) {
+    const a = o.of(h.to, h), k = num(o.k);
+    h.amount *= k / (k + a);
+  } };
+}
+function armored(x, k, a) {
+  return x * k / (k + a);
+}
+function soak(field, o = {}) {
+  return {
+    name: "soak",
+    land(h) {
+      const b = h.to;
+      if (o.when ? !o.when(h) : !(b[field] > 0)) return;
+      if (o.first) o.first(h);
+      const s = Math.min(b[field], h.amount);
+      b[field] -= s;
+      h.amount -= s;
+      if (b[field] <= 0 && o.gone) o.gone(h.to, h);
+    }
+  };
+}
+var Reactions = class {
+  constructor(pairs) {
+    this.map = {};
+    for (const k in pairs) {
+      const [a, b] = k.split("|");
+      this.map[a < b ? a + "|" + b : b + "|" + a] = pairs[k];
+    }
+  }
+  /** What a and b make when they meet, or null. */
+  of(a, b) {
+    return this.map[a < b ? a + "|" + b : b + "|" + a] || null;
+  }
+};
+function react(o) {
+  const T = o.table, pair = typeof T === "function" ? T : (a, b) => T.of(a, b);
+  return {
+    name: "react",
+    land(h) {
+      const ks = h.kinds;
+      if (!ks || o.when && !o.when(h)) return;
+      const fired = [];
+      const add = (id) => {
+        if (id && !fired.includes(id)) fired.push(id);
+      };
+      if (ks.length > 1) add(pair(ks[0], ks[1]));
+      for (const k of ks) for (const c of o.kinds) if (c !== k && o.carries(h.to, c, h)) add(pair(k, c));
+      let mult = 1;
+      for (const id of fired) {
+        if (o.ready && !o.ready(h.to, id, h)) continue;
+        const fn = o.do[id];
+        if (!fn) continue;
+        const m = fn(h);
+        if (m === null) continue;
+        mult *= m;
+        h.mark(id);
+        if (o.fired) o.fired(h.to, id, h);
+      }
+      h.amount = h.amount * mult + h.extra;
+    }
+  };
+}
+function afflict(S, o = {}) {
+  return {
+    name: "afflict",
+    land(h) {
+      const ids = [];
+      for (const id of h.blow.statuses || []) if (!ids.includes(id)) ids.push(id);
+      if (o.of && h.kinds) for (const k of h.kinds) {
+        const id = o.of(k, h);
+        if (id && !ids.includes(id)) ids.push(id);
+      }
+      for (const id of ids) S.give(h.to, id, { amount: o.amount ? o.amount(id, h) : void 0, scale: o.scale ? o.scale(id, h) : 1 });
+    }
+  };
+}
+function knock(o = {}) {
+  const vx = o.vx || "kvx", vy = o.vy || "kvy";
+  return {
+    name: "knock",
+    land(h) {
+      const k = h.blow.knock;
+      if (!k) return;
+      const w = o.weight ? o.weight(h.to, h) : 1, b = h.to;
+      b[vx] += k.x * w;
+      b[vy] += k.y * w;
+      h.knock = { x: k.x * w, y: k.y * w };
+    }
+  };
+}
+function stagger(o) {
+  const S = o.state || "state", Tm = o.time || "t", into = o.into || "stagger", wind = o.windup || "windup", F2 = o.flinch;
+  const at = F2 && F2.at || "flinchAt", of = F2 && F2.of || "maxHp";
+  return {
+    name: "stagger",
+    land(h) {
+      const b = h.to, can = !o.can || o.can(h.to, h), steady = !!o.steady && o.steady(h.to, h);
+      if (h.blow.heavy && can && !steady && (!o.open || o.open(h.to, h))) {
+        b[S] = into;
+        b[Tm] = num(o.heavy) * ((o.scale ? h.blow[o.scale] : 0) || 1);
+        h.stagger = true;
+      } else if (F2 && b[S] === wind && can && !steady && h.amount >= b[of] * num(F2.share) && F2.clock() - (b[at] || -9) > num(F2.gap)) {
+        b[S] = into;
+        b[Tm] = num(F2.time);
+        b[at] = F2.clock();
+        h.flinch = true;
+      }
+    }
+  };
+}
+function hold(o) {
+  const f = o.field || "hitT";
+  return {
+    name: "hold",
+    land(h) {
+      if (o.can && !o.can(h.to, h)) return;
+      const b = h.to, t = h.blow.heavy && o.heavy !== void 0 ? num(o.heavy) : num(o.time);
+      b[f] = Math.max(b[f] || 0, t);
+      h.hold = t;
+    }
+  };
+}
+var Statuses = class {
+  constructor(defs) {
+    this.byId = /* @__PURE__ */ new Map();
+    this.defs = defs.slice();
+    for (const d of this.defs) this.byId.set(d.id, d);
+  }
+  def(id) {
+    const d = this.byId.get(id);
+    if (!d) throw new Error(`Tycho.harm: no status ${id}`);
+    return d;
+  }
+  slot(body, d, make) {
+    const at = d.at || d.id;
+    if (typeof at === "string") return [body, at];
+    let m = body[at[0]];
+    if (!m) {
+      if (!make) return null;
+      m = body[at[0]] = {};
+    }
+    return [m, at[1]];
+  }
+  /** Its time left (a timer), its dose (or null), or undefined if the body keeps nothing for it. */
+  get(body, id) {
+    const s = this.slot(body, this.def(id), false);
+    return s ? s[0][s[1]] : void 0;
+  }
+  /** Carried: a timer above 0, a dose there. */
+  has(body, id) {
+    const d = this.def(id), v = this.get(body, id);
+    return d.dose ? !!v : v > 0;
+  }
+  /** Puts it there as given (a time, a dose), whatever was there. */
+  put(body, id, v) {
+    const s = this.slot(body, this.def(id), true);
+    s[0][s[1]] = v;
+  }
+  /** Gone: a timer to 0, a dose to null. */
+  clear(body, id) {
+    const d = this.def(id), s = this.slot(body, d, false);
+    if (s) s[0][s[1]] = d.dose ? null : 0;
+  }
+  /**
+   * Gives it, by its stacking: `time` (its own, else the def's) times
+   * `scale`; a dose's `amount` a second; `n` for a count. Returns what it did.
+   */
+  give(body, id, o = {}) {
+    const d = this.def(id), s = this.slot(body, d, true), box = s[0], key = s[1], cur = box[key];
+    const time = (o.time === void 0 ? num(d.time) : o.time) * (o.scale === void 0 ? 1 : o.scale);
+    const stack2 = d.stack || (d.dose ? "refresh" : "max");
+    if (!d.dose) {
+      if (stack2 === "count") {
+        const most = num(d.most, Infinity), v = (cur || 0) + (o.n === void 0 ? 1 : o.n);
+        if (v >= most) {
+          box[key] = 0;
+          return "full";
+        }
+        box[key] = v;
+        return cur ? "again" : "new";
+      }
+      if (stack2 === "keep" && cur > 0) return "kept";
+      box[key] = stack2 === "set" || stack2 === "keep" ? time : Math.max(cur || 0, time);
+      return cur > 0 ? "again" : "new";
+    }
+    const f = d.dose, a = o.amount === void 0 ? 0 : o.amount;
+    if (stack2 === "keep" && cur) return "kept";
+    if (stack2 === "add") {
+      if (cur) {
+        const most = num(d.most, Infinity);
+        cur.n = Math.min(most, (cur.n || 1) + 1);
+        cur[f] = Math.min(cur[f] + a, a * most);
+        cur.t = Math.max(cur.t, time);
+        return cur.n >= most ? "most" : "again";
+      }
+      box[key] = { t: time, [f]: a, n: 1 };
+      return "new";
+    }
+    box[key] = { t: time, [f]: stack2 === "set" ? a : Math.max(a, cur ? cur[f] : 0) };
+    return cur ? "again" : "new";
+  }
+  /** Timers worn down by dt, each by its `wear` (doses wear in `tick`). */
+  wear(body, dt) {
+    for (const d of this.defs) {
+      if (d.dose || !d.wear) continue;
+      const s = this.slot(body, d, false);
+      if (!s) continue;
+      const box = s[0], key = s[1];
+      if (d.wear === "clamp") {
+        if (box[key] !== void 0) box[key] = Math.max(0, box[key] - dt);
+      } else if (d.wear === "down") {
+        if (box[key] > 0) box[key] -= dt;
+      } else if (box[key] > 0 && (box[key] -= dt) <= 0) {
+        box[key] = 0;
+        if (d.ends) d.ends(body);
+      }
+    }
+  }
+  /**
+   * Doses, each step: its time down by dt; while it `bites`, its bite and
+   * its beat (every `every` s: `show`); gone once its time is out; then
+   * `after`, which may stop the tick (the body fell).
+   */
+  tick(body, dt, o = {}) {
+    for (const d of this.defs) {
+      if (!d.dose) continue;
+      const s = this.slot(body, d, false);
+      const dose = s && s[0][s[1]];
+      if (!dose) continue;
+      dose.t -= dt;
+      if (!o.bites || o.bites(body, d.id)) {
+        const beat2 = d.bite === "beat";
+        if (!beat2 && o.bite) o.bite(body, d.id, dose[d.dose] * dt, dose);
+        dose.tick = (dose.tick || 0) - dt;
+        if (dose.tick <= 0) {
+          const every = num(d.every, 1);
+          dose.tick = every;
+          if (beat2 && o.bite) o.bite(body, d.id, dose[d.dose] * every, dose);
+          if (o.show) o.show(body, d.id, dose);
+        }
+      }
+      if (dose.t <= 0) s[0][s[1]] = null;
+      if (o.after && o.after(body, d.id)) break;
+    }
+  }
+  /**
+   * Spreads what one body carries to others near (`to`): each that `who`
+   * lets catch it, within `r` (the def's) of it, to its edge or middle, that
+   * `take` agrees to (a weaker one, or none), gets `as(s, q)` (else a copy).
+   * Returns how many caught it.
+   */
+  spread(from, id, to, o = {}) {
+    const d = this.def(id), sp = d.spread, s = this.get(from, id);
+    const r = o.r === void 0 ? num(sp && sp.r) : o.r, edge = (o.reach || sp && sp.reach || "edge") === "edge";
+    let n = 0;
+    for (const q of to) {
+      if (q === from || o.who && !o.who(q)) continue;
+      if (!(dist(q.x, q.y, from.x, from.y) < (edge ? r + q.r : r))) continue;
+      if (o.take && !o.take(q, s)) continue;
+      this.put(q, id, o.as ? o.as(s, q) : d.dose ? Object.assign({}, s) : s);
+      n++;
+    }
+    return n;
+  }
+  /** A body fell: everything it carries that spreads on a death, spread (`o` as for spread). */
+  died(body, to, o = {}) {
+    for (const d of this.defs) if (d.spread && d.spread.on === "death" && this.has(body, d.id)) this.spread(body, d.id, to, o);
+  }
+};
+var Arsenal = class {
+  constructor(list) {
+    this.byId = /* @__PURE__ */ new Map();
+    this.list = list.slice();
+    for (const m of this.list) this.byId.set(m.id, m);
+  }
+  get(id) {
+    return this.byId.get(id);
+  }
+  has(id) {
+    return this.byId.has(id);
+  }
+  /** The means used one way. */
+  of(use2) {
+    return this.list.filter((m) => m.use === use2);
+  }
+};
+function means(list) {
+  return new Arsenal(list);
+}
+function cooldown(m, step = 0) {
+  const c = m && m.cost && m.cost.cooldown;
+  if (c === void 0) return 0;
+  return typeof c === "number" ? c : c[step % c.length];
+}
+function costOf(m) {
+  const c = m && m.cost;
+  return c ? c.charge !== void 0 ? c.charge : c.amount || 0 : 0;
+}
+function ready(h) {
+  return !(h.cd !== void 0 && h.cd > 0);
+}
+function use(m, h, o = {}) {
+  if (!ready(h)) return false;
+  const c = m.cost || {};
+  if (c.charge !== void 0 && (h.charge || 0) < c.charge) return false;
+  if (c.pool && (!o.pools || (o.pools[c.pool] || 0) < (c.amount || 0))) return false;
+  if (c.charge !== void 0) h.charge = (h.charge || 0) - c.charge;
+  if (c.pool && o.pools) o.pools[c.pool] = (o.pools[c.pool] || 0) - (c.amount || 0);
+  h.cd = cooldown(m, o.step) * (o.scale === void 0 ? 1 : o.scale);
+  return true;
+}
+function coat(h, m, uses) {
+  h.coat = { id: m.id, uses: uses === void 0 ? m.uses || 1 : uses };
+}
+function coatOf(h) {
+  return h.coat && h.coat.uses > 0 ? h.coat : null;
+}
+function spendCoat(h) {
+  const c = coatOf(h);
+  if (!c) return null;
+  c.uses--;
+  if (c.uses <= 0) h.coat = null;
+  return c.id;
+}
+function segDist(px, py, x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0, L = dx * dx + dy * dy || 1, k = clamp(((px - x0) * dx + (py - y0) * dy) / L, 0, 1);
+  return Math.hypot(px - x0 - dx * k, py - y0 - dy * k);
+}
+function reaches(a, x, y, br, dx, dy, tx, ty, tr) {
+  if ("touch" in a) return dist(x, y, tx, ty) < br + tr + a.touch;
+  if ("ahead" in a) return segDist(tx, ty, x, y, x + dx * a.ahead, y + dy * a.ahead) < a.w + tr;
+  const m = dist(x, y, tx, ty);
+  if (a.cos === void 0) return m < a.r + tr;
+  if (a.close !== void 0 && m <= br + tr + a.close) return true;
+  if (m > a.r + tr) return false;
+  return m <= 2 || ((tx - x) * dx + (ty - y) * dy) / m >= a.cos;
+}
+var Move = class {
+  constructor(def) {
+    this.def = def;
+    this.S = def.state || "state";
+    this.Tm = def.time || "t";
+    this.order = ["windup", "active", "recover"].filter((p) => def[p] !== void 0);
+  }
+  name(p) {
+    const n = this.def.names || {};
+    return n[p] || (p === "active" ? "strike" : p);
+  }
+  /** The phase the body is in, or null. */
+  phase(body) {
+    for (const p of this.order) if (body[this.S] === this.name(p)) return p;
+    return null;
+  }
+  enter(body, p) {
+    body[this.S] = this.name(p);
+    body[this.Tm] = num(this.def[p]);
+    if (p === "active") {
+      if (this.def.once) body[this.def.once] = false;
+      else body.struck = [];
+    }
+  }
+  /** Into its first phase. */
+  start(body) {
+    this.enter(body, this.order[0]);
+  }
+  /** On to the next phase; null when the move is over (and nothing is written: what it does next is the game's). */
+  next(body) {
+    const now = this.phase(body);
+    if (!now) return null;
+    const p = this.order[this.order.indexOf(now) + 1];
+    if (!p) return null;
+    this.enter(body, p);
+    return p;
+  }
+  /** Struck yet this swing (a target, or its one)? */
+  struck(body, target) {
+    return this.def.once ? !!body[this.def.once] : !!body.struck && body.struck.includes(target);
+  }
+  /** Marks a target struck this swing. */
+  mark(body, target) {
+    if (this.def.once) body[this.def.once] = true;
+    else (body.struck || (body.struck = [])).push(target);
+  }
+  /** In its area and not struck yet this swing: marks it struck and says true. */
+  hits(body, target, tx, ty, tr, dx = 0, dy = 0) {
+    if (this.struck(body, target) || !this.def.area || !reaches(this.def.area, body.x, body.y, body.r || 0, dx, dy, tx, ty, tr)) return false;
+    this.mark(body, target);
+    return true;
+  }
+};
+function inZone(z, cx, cy, x, y, r) {
+  if ("tiles" in z) return z.tiles(x, y);
+  if ("r" in z) return dist(cx, cy, x, y) < z.r + r;
+  let b;
+  if ("x0" in z) {
+    if (z.w !== void 0) return segDist(x, y, z.x0, z.y0, z.x1, z.y1) < z.w + r;
+    b = z;
+  } else b = { x0: cx - z.w / 2, y0: cy - z.h / 2, x1: cx + z.w / 2, y1: cy + z.h / 2 };
+  return new Space().boxes([b]).circleHits(x, y, r);
+}
+function beat(s, dt, every) {
+  s.tick = (s.tick || 0) - dt;
+  if (s.tick > 0) return false;
+  s.tick = every === void 0 ? s.every : every;
+  return true;
+}
+var Trigger = class {
+  constructor(def) {
+    this.def = def;
+  }
+  every(e) {
+    return e === void 0 ? num(this.def.cycle && this.def.cycle.every, 1) : e;
+  }
+  /** Seconds into its cycle at `clock`, from its offset `ph` (a share of the cycle). */
+  at(clock, ph = 0, every) {
+    const E = this.every(every);
+    return (clock / E + ph) % 1 * E;
+  }
+  /** How far into its cycle, 0..1. */
+  share(clock, ph = 0, every) {
+    return (clock / this.every(every) + ph) % 1;
+  }
+  /** Its phase s seconds into the cycle: resting, telling (it shows), or biting. */
+  phase(s, every) {
+    const c = this.def.cycle || { every: 1 }, E = this.every(every), b = num(c.bite), tl = num(c.tell);
+    return s >= E - b ? "bite" : s >= E - b - tl ? "tell" : "rest";
+  }
+  /** On the step its bite begins: true, once a cycle (kept as `fired`). */
+  fires(p, clock, every) {
+    const E = this.every(every), biting = this.at(clock, p.ph || 0, E) >= E - num(this.def.cycle && this.def.cycle.bite);
+    if (biting && !p.fired) {
+      p.fired = true;
+      return true;
+    }
+    if (!biting) p.fired = false;
+    return false;
+  }
+  /** On the step its cycle begins again: true (its last share kept as `last`). */
+  wraps(p, clock, every) {
+    const s = this.share(clock, p.ph || 0, every), w = p.last !== void 0 && s < p.last;
+    p.last = s;
+    return w;
+  }
+  /** A mark's tell counted down by dt: true once it's run out (that step and after). */
+  down(p, dt) {
+    p.t = p.t - dt;
+    return p.t <= 0;
+  }
+  /** True once, the first time its tell has run out (kept as `done`). */
+  goes(p) {
+    if (!(p.t <= 0) || p.done) return false;
+    p.done = true;
+    return true;
+  }
+  /** Is a round body in its zone (at the placed one's x, y)? */
+  inside(p, x, y, r) {
+    return !!this.def.zone && inZone(this.def.zone, p.x || 0, p.y || 0, x, y, r);
+  }
+  /** Set off, by whoever: false if it's disarmed, or sprung already and set off only once; else it's sprung. */
+  spring(p, by) {
+    if (p.armed === false || this.def.once && p.sprung) return false;
+    p.sprung = true;
+    if (by !== void 0) p.sprungBy = by;
+    if (this.def.once) p.armed = false;
+    return true;
+  }
+};
+var Traps = class {
+  constructor(box) {
+    this.box = box;
+    this.list = [];
+    this.boxOf = /* @__PURE__ */ new Map();
+    this.space = new Space().boxes(() => this.list, (p) => {
+      if (p.armed === false) return null;
+      const b = this.box(p);
+      if (b) this.boxOf.set(b, p);
+      return b;
+    });
+  }
+  add(p) {
+    if (p.armed === void 0) p.armed = true;
+    this.list.push(p);
+    return p;
+  }
+  remove(p) {
+    const i = this.list.indexOf(p);
+    if (i >= 0) this.list.splice(i, 1);
+  }
+  /** The first armed one a body's box overlaps, or null. */
+  entered(x0, y0, x1, y1) {
+    this.boxOf.clear();
+    const b = this.space.hits(x0, y0, x1, y1);
+    return b ? this.boxOf.get(b) || null : null;
+  }
+};
+var Hitstop = class {
+  constructor(o) {
+    this.state = o.state;
+    this.gap = o.gap === void 0 ? 0 : o.gap;
+    this.clock = o.clock;
+  }
+  freeze(t, heavy = false) {
+    const s = this.state;
+    if (!heavy && this.clock() - (s.frozeAt || -1) < num(this.gap)) return;
+    s.hitstop = Math.max(s.hitstop, t);
+    s.frozeAt = this.clock();
+  }
+  hold(dt) {
+    const s = this.state;
+    if (s.hitstop > 0) {
+      s.hitstop -= dt;
+      return true;
+    }
+    return false;
+  }
+};
+var Knock = class {
+  constructor(o) {
+    this.decay = o.decay;
+    this.vx = o.vx || "kvx";
+    this.vy = o.vy || "kvy";
+    this.min = o.min === void 0 ? 1 : o.min;
+  }
+  /** The fade a step of dt. */
+  fade(dt) {
+    return Math.exp(-num(this.decay) * dt);
+  }
+  /** Moves the body by its knock (`move(body, dx, dy)`) and fades it, if it's knocked; true if it was. `fade` from fade(dt), if worked out already. */
+  step(body, dt, move2, fade2 = this.fade(dt)) {
+    if (!(Math.abs(body[this.vx]) + Math.abs(body[this.vy]) > this.min)) return false;
+    move2(body, body[this.vx] * dt, body[this.vy] * dt);
+    body[this.vx] *= fade2;
+    body[this.vy] *= fade2;
+    return true;
+  }
+  stop(body) {
+    body[this.vx] = body[this.vy] = 0;
+  }
+};
+function flash(body, t, o = {}) {
+  body[o.field || "flash"] = t;
+  if ("col" in o) body[o.colField || "flashCol"] = o.col;
+}
+function fade(body, dt, field = "flash") {
+  body[field] = Math.max(0, body[field] - dt);
+}
+function rise2(list, dt, speed) {
+  for (const n of list) n.y -= speed * dt;
+  return tick(list, dt);
+}
+var Shake = class {
+  constructor(state, decay = 14) {
+    this.state = state;
+    this.decay = decay;
+  }
+  kick(n) {
+    this.state.shake = Math.max(this.state.shake || 0, n);
+  }
+  step(dt) {
+    this.state.shake = (this.state.shake || 0) * Math.exp(-this.decay * dt);
+  }
+};
+var Wounds = class {
+  constructor(defs) {
+    this.defs = new Map(defs.map((d) => [d.id, d]));
+  }
+  fresh(now = 0) {
+    return { now, on: {} };
+  }
+  def(id) {
+    const d = this.defs.get(id);
+    if (!d) throw new Error(`Tycho.harm: no wound ${id}`);
+    return d;
+  }
+  minutes(ph, rng) {
+    const m = ph.minutes;
+    if (typeof m === "number") return m;
+    if (!rng) throw new Error("Tycho.harm: a wound with a range of minutes needs an rng");
+    return rng.f(m[0], m[1]);
+  }
+  /** Opens a wound now; false if it's open already and given again is `ignore`. */
+  give(s, id, rng) {
+    const d = this.def(id), w = s.on[id];
+    if (w) {
+      const again = d.again || "ignore";
+      if (again === "ignore") return false;
+      if (again === "extend") {
+        w.until += w.until - w.since;
+        return true;
+      }
+    }
+    s.on[id] = { p: 0, since: s.now, until: s.now + this.minutes(d.phases[0], rng) };
+    return true;
+  }
+  /** Moves the clock on by minutes: phases end in the order they're due, the last of a wound heals it. Returns what changed. */
+  step(s, minutes, rng) {
+    const out = [], to = s.now + minutes;
+    for (; ; ) {
+      let next = null;
+      for (const id of Object.keys(s.on).sort()) if (s.on[id].until <= to && (next === null || s.on[id].until < s.on[next].until)) next = id;
+      if (next === null) break;
+      const d = this.def(next), w = s.on[next], at = w.until;
+      if (w.p + 1 >= d.phases.length) {
+        delete s.on[next];
+        out.push({ id: next, phase: null, healed: true, at });
+        continue;
+      }
+      w.p++;
+      w.since = at;
+      w.until = at + this.minutes(d.phases[w.p], rng);
+      out.push({ id: next, phase: d.phases[w.p].id, healed: false, at });
+    }
+    s.now = to;
+    return out;
+  }
+  /** Has a wound open (by its id), is in a phase (by its id), or carries a mark (a phase's or the wound's `has`)? */
+  has(s, what) {
+    for (const id in s.on) {
+      if (id === what) return true;
+      const d = this.def(id), ph = d.phases[s.on[id].p];
+      if (ph.id === what || ph.has && ph.has.includes(what) || d.has && d.has.includes(what)) return true;
+    }
+    return false;
+  }
+  /** The wounds open: each one's phase and minutes left. */
+  of(s) {
+    return Object.keys(s.on).sort().map((id) => ({ id, phase: this.def(id).phases[s.on[id].p].id, left: s.on[id].until - s.now }));
+  }
+  /** Heals one wound, or all. */
+  heal(s, id) {
+    if (id === void 0) s.on = {};
+    else delete s.on[id];
+  }
+};
+
 // src/shell/save.ts
 var save_exports = {};
 __export(save_exports, {
@@ -4700,12 +5465,12 @@ function waves(c, recipes = {}) {
   }
   return out;
 }
-function env(p, t, a, g, d, hold) {
+function env(p, t, a, g, d, hold2) {
   p.setValueAtTime(0, t);
   p.linearRampToValueAtTime(g, t + a);
-  if (hold) p.setValueAtTime(g, t + a + hold);
-  p.setTargetAtTime(0, t + a + (hold || 0), d);
-  return t + a + (hold || 0) + d * 6;
+  if (hold2) p.setValueAtTime(g, t + a + hold2);
+  p.setTargetAtTime(0, t + a + (hold2 || 0), d);
+  return t + a + (hold2 || 0) + d * 6;
 }
 function voiceOut(S, o, v, g) {
   g.connect(o.node);
@@ -5192,10 +5957,10 @@ function trim(c, buf, floor = 5e-3, fadeSecs = 0.03) {
     last = i;
     break;
   }
-  const n = Math.min(buf.length, last + 1), fade = Math.floor(buf.sampleRate * fadeSecs), out = c.createBuffer(chs.length, n, buf.sampleRate);
+  const n = Math.min(buf.length, last + 1), fade2 = Math.floor(buf.sampleRate * fadeSecs), out = c.createBuffer(chs.length, n, buf.sampleRate);
   chs.forEach((d, k) => {
     const a = new Float32Array(n);
-    for (let i = 0; i < n; i++) a[i] = d[i] / peak * Math.min(1, (n - i) / fade);
+    for (let i = 0; i < n; i++) a[i] = d[i] / peak * Math.min(1, (n - i) / fade2);
     out.copyToChannel(a, k);
   });
   return out;
@@ -5485,12 +6250,12 @@ var Music = class {
     for (const kind of Object.keys(this.nextEv)) if (!list.some((e) => e[0] === kind)) delete this.nextEv[kind];
   }
   /** The music dips a moment: to k at t, back after hold. */
-  duck(t, k, hold) {
+  duck(t, k, hold2) {
     const p = this.master && this.master.gain;
     if (!p) return;
     p.cancelScheduledValues(t);
     p.setTargetAtTime(k, t, 0.04);
-    p.setTargetAtTime(1, t + hold, 0.6);
+    p.setTargetAtTime(1, t + hold2, 0.6);
   }
 };
 
@@ -6025,6 +6790,7 @@ export {
   gpu_exports as gpu,
   grid_exports as grid,
   guide_exports as guide,
+  harm_exports as harm,
   input_exports as input,
   inspect_exports as inspect,
   items_exports as items,

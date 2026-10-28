@@ -9,6 +9,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 - [fx.md](fx.md): `Tycho.fx`: particles thrown and falling, effects that run out, words rising.
 - [world.md](world.md): `Tycho.grid`, `Tycho.collide`, `Tycho.move`, `Tycho.path`: tiles, the collision query, movers and paths.
 - [play.md](play.md): `Tycho.input` (the controls and map gestures), `Tycho.items` (bags, things, slots, gear and counted views), `Tycho.guide` (a tutorial's steps).
+- [harm.md](harm.md#tycho-the-moment): `Tycho.harm`, the moment of a hit: a pipeline of stages (resist, armor, soak, react, knock, stagger, hold and the game's own), statuses and their reactions, means, moves, triggers, the feel and the player's wounds.
 - [shell.md](shell.md): `Tycho.save`, `Tycho.pwa`, `Tycho.dev`, `Tycho.loader`.
 - [audio.md](audio.md): `Tycho.audio`: sound made in code (the engine, the voices, the bank rendered ahead, the music's machinery).
 - [inspect.md](inspect.md): `Tycho.inspect`: the minds inspector for a game whose people are Tyrell's.
@@ -21,4 +22,4 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 
 Proposed, and not built yet:
 
-- [harm.md](harm.md): people and creatures hurting each other (fights, weapons, spells, traps, poison, accidents): the moment in `Tycho.harm`, what follows in Morgul, a Tyrell module, what's decided and the order to build it.
+- [harm.md](harm.md): people and creatures hurting each other (fights, weapons, spells, traps, poison, accidents): what follows in Morgul, a Tyrell module, what's decided and the order to build it (the moment, `Tycho.harm`, is built: above).

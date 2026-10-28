@@ -15,6 +15,7 @@ import * as path from './world/path';
 import * as input from './play/input';
 import * as items from './play/items';
 import * as guide from './play/guide';
+import * as harm from './play/harm';
 import * as save from './shell/save';
 import * as pwa from './shell/pwa';
 import * as dev from './shell/dev';
@@ -24,4 +25,4 @@ import * as inspect from './shell/inspect';
 import * as ui from './shell/ui';
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export declare const VERSION: string;
-export { seed, math, color, loop, gpu, light, post, sprite, paint, fx, grid, collide, move, path, input, items, guide, save, pwa, dev, loader, audio, inspect, ui };
+export { seed, math, color, loop, gpu, light, post, sprite, paint, fx, grid, collide, move, path, input, items, guide, harm, save, pwa, dev, loader, audio, inspect, ui };

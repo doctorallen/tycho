@@ -363,6 +363,11 @@
         tomas: { line: 'radio.tomas', end: true },
       },
     });
+    // once you know about her radio, you can ask after it: it recalls what she told you, and lands better
+    vo.thread({
+      id: 'radio.again', label: 'How\'s the radio?', recalls: 'radio', approach: 'warm',
+      beats: { start: { text: 'Still {learned.radio}. Thanks for asking, though.', end: true } },
+    });
     vo.promise({ id: 'fix_radio', label: 'You said you\'d fix my radio', days: 2, kept: ['has:radio'], onKept: ['regard+=0.1', 'feel:helped'], onBroken: ['regard-=0.15'], lapse: 'broken' });
   }
 

@@ -20,6 +20,13 @@
 // (world.s.mod.voice), every choice is an input that Esper records, and the
 // draws come from streams of the talk itself, so a replay says the same.
 // The state is made with the first talk.
+//
+// What a pair keeps is a bond: their talks and what the speaker has learned
+// about them, which make them familiar. A game can have that count: someone
+// who knows the speaker takes what's said better (familiarLand), an answer
+// or a subject can recall something learned (`recalls`: offered only once
+// it's known, and landing better), and the words can say it
+// ({learned.<key>}).
 import type { Module } from '../core/module';
 import type { Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
 import type { World } from '../core/world';
@@ -35,6 +42,8 @@ export interface ApproachDef {
   lands?: LandRules;
   /** Added to every landing. Default 0. */
   base?: number;
+  /** How much the listener's familiarity with the speaker counts for this approach (times config.familiarLand). Default 1; 0 for none. */
+  familiar?: number;
 }
 
 /** Something that can be said back at a beat. */
@@ -46,7 +55,9 @@ export interface AnswerDef {
   approach?: Id;
   /** Offered only when these hold (ctx: the listener as person, the speaker as target). */
   if?: Cond[];
-  /** Offered but not yet choosable when `if` or `warmth` fails ("not yet"), instead of hidden. */
+  /** Something learned about them that it recalls: offered only once the speaker has learned it, and it lands better (config.recallLand). */
+  recalls?: string;
+  /** Offered but not yet choosable when `if`, `recalls` or `warmth` fails ("not yet"), instead of hidden. */
   soft?: boolean;
   /** Needs at least this much warmth in the talk. */
   warmth?: number;
@@ -90,6 +101,8 @@ export interface ThreadDef {
   theirs?: boolean;
   /** A key it's for learning: it's more wanted until the speaker has learned it. */
   reveals?: string;
+  /** Something learned about them that it recalls: it comes up only once the speaker has learned it, and its opener lands better (config.recallLand). */
+  recalls?: string;
   /** What the speaker says to open it: words or a line topic, or by approach. Default: the label. */
   open?: string | Record<Id, string>;
   /** The approach the opening takes. */
@@ -158,6 +171,16 @@ export interface VoiceConfig {
   /** familiarity(): this much for each talk, and for each thing learned about them. Defaults 0.5 and 1. */
   familiarTalk: number;
   familiarLearned: number;
+  /**
+   * Familiarity as trust: every approach lands this much better for each
+   * point of the listener's familiarity with the speaker (times the
+   * approach's own `familiar`), up to familiarLandMax. Defaults 0 (it
+   * doesn't count) and 1.
+   */
+  familiarLand: number;
+  familiarLandMax: number;
+  /** An answer or a subject that recalls something learned about them lands this much better. Default 1. */
+  recallLand: number;
   /** Minutes a subject takes to come round fresh again, for a thread with no `cooldown`. Default 3 days. */
   cooldown: number;
   /** Days a subject stays sore after `sore` with no number. Default 2. */
@@ -180,7 +203,7 @@ export const DEFAULT_VOICE: VoiceConfig = {
   offers: 3, choices: 3, theirs: 0.3, patience: 8, fresh: 7 * DAY, strong: 2, onWell: [], onBadly: [],
   greet: 'greet', bye: 'bye', close: 'close', react: 'react', deed: null,
   chatter: 1,
-  warmthRegard: 3, warmthMin: -1, warmthMax: 3, familiarTalk: 0.5, familiarLearned: 1, cooldown: 3 * DAY, soreDays: 2, soreWeight: 0.1,
+  warmthRegard: 3, warmthMin: -1, warmthMax: 3, familiarTalk: 0.5, familiarLearned: 1, familiarLand: 0, familiarLandMax: 1, recallLand: 1, cooldown: 3 * DAY, soreDays: 2, soreWeight: 0.1,
   revealPull: 1.5, salientFloor: 0.05, variety: 0.2, promiseDays: 3, promiseKeep: 30,
 };
 
@@ -204,6 +227,20 @@ export interface TalkOption {
   label?: string;
   say?: string;
   approach?: Id;
+  /** What learned about them it recalls, if anything. */
+  recalls?: string;
+}
+
+/** Someone the speaker has talked with, as acquaintances() lists them. */
+export interface Acquaintance {
+  who: Id;
+  /** Talks they've had (counted at the end of each). */
+  talks: number;
+  /** When the last talk ended (null: the first is still going). */
+  last: number | null;
+  familiarity: number;
+  /** What the speaker has learned about them (a copy). */
+  learned: Record<string, Value>;
 }
 
 /** A talk as the game shows it. */
@@ -266,6 +303,13 @@ export class Voice implements Module {
   };
   /** How many beats they'll talk for (a definition), before `chatter`. Default config.patience. */
   patience: (ctx: Ctx) => number = () => this.c.patience;
+  /**
+   * How something learned about them is put in words, where a line or an
+   * answer says {learned.<key>} or {learned.<key>:<form>} (a definition: set
+   * it on every start). ctx: the one talked to, the speaker as target.
+   * Default: a word or a number as it is, anything else nothing.
+   */
+  remembered: (ctx: Ctx, key: string, value: Value, form: string | null) => string = (_ctx, _key, value) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '');
   private w!: World;
   /** The talk being worked on inside an input (effects add their notes to it). */
   private live: Talk | null = null;
@@ -380,6 +424,23 @@ export class Voice implements Module {
     return { talks: b?.talks ?? 0, last: b?.last ?? null, lastThread: b?.lastThread ?? null, seen: { ...(b?.seen || {}) } };
   }
 
+  /**
+   * Everyone the speaker has talked with: talks, when the last ended,
+   * familiarity and what's been learned, the latest first (one still talking
+   * for the first time first of all), then by id. A look: it changes nothing.
+   */
+  acquaintances(by: Id = 'player'): Acquaintance[] {
+    const st = this.st;
+    if (!st) return [];
+    const tail = '>' + by, now = this.w.s.now, out: Acquaintance[] = [];
+    for (const k of Object.keys(st.bonds)) {
+      if (!k.endsWith(tail) || k.length === tail.length) continue;
+      const who = k.slice(0, k.length - tail.length), b = st.bonds[k];
+      out.push({ who, talks: b.talks, last: b.last ?? null, familiarity: this.familiarity(who, by), learned: { ...(b.known || {}) } });
+    }
+    return out.sort((x, y) => (y.last ?? now) - (x.last ?? now) || (x.who < y.who ? -1 : x.who > y.who ? 1 : 0));
+  }
+
   /** Promises made to someone (or everyone), newest last. */
   promises(who?: Id): Promised[] { return (this.st?.promises || []).filter((p) => !who || p.who === who).map((p) => ({ ...p })); }
 
@@ -447,7 +508,7 @@ export class Voice implements Module {
     const a = beat?.answers?.[Number(opt.id.slice(1))];
     if (!def || !a) { this.finishThread(talk, false); return 'end'; }
     this.say(talk, 'you', a.say, true);
-    if (a.approach) this.land(talk, a.approach);
+    if (a.approach || a.recalls) this.land(talk, a.approach, !!a.recalls);
     const ctx = this.ctx(talk);
     if (a.then) this.w.lang.applyAll(a.then, ctx);
     let to = 'end';
@@ -472,14 +533,14 @@ export class Voice implements Module {
   /** Starts on a subject: the speaker opens it (unless it's theirs, or the answer before was the way in), then its first beat. */
   private enter(talk: Talk, def: ThreadDef, theirs: boolean, door = false): void {
     const ctx = this.ctx(talk);
-    const label = typeof def.label === 'function' ? def.label(ctx) : def.label ?? def.id;
+    const label = this.fill(talk, typeof def.label === 'function' ? def.label(ctx) : def.label ?? def.id);
     talk.thread = { id: def.id, beat: def.start ?? 'start', label };
     if (theirs) talk.thread.theirs = true;
     if (!talk.done.includes(def.id)) talk.done.push(def.id);
     if (!theirs && !door) {
       const open = typeof def.open === 'string' ? def.open : def.open ? (def.approach && def.open[def.approach]) || def.open[Object.keys(def.open)[0]] : label;
       if (open) this.say(talk, 'you', open, true);
-      if (def.approach) this.land(talk, def.approach);
+      if (def.approach || def.recalls) this.land(talk, def.approach, !!def.recalls);
     }
     this.runBeat(talk, def.start ?? 'start');
   }
@@ -513,22 +574,41 @@ export class Voice implements Module {
     }
   }
 
-  /** How an approach lands: added to the warmth, and remembered for the lines and answers that follow. */
-  private land(talk: Talk, id: Id): number {
-    const def = this.approaches.get(id);
-    if (!def) return 0;
+  /**
+   * How an approach lands (and something recalled, with or without one):
+   * added to the warmth, and remembered for the lines and answers that
+   * follow. Someone who knows the speaker takes it better (familiarLand),
+   * and something they've told you, remembered, better still (recallLand).
+   */
+  private land(talk: Talk, id: Id | undefined, recall = false): number {
+    const def = id !== undefined ? this.approaches.get(id) : undefined;
+    if (!def && !recall) return 0;
     const ctx = this.ctx(talk);
-    const d = landing(this.w.lang, def.base ?? 0, def.lands, ctx);
+    const c = this.c;
+    let d = def ? landing(this.w.lang, def.base ?? 0, def.lands, ctx) : 0;
+    const trust = (def?.familiar ?? 1) * c.familiarLand;
+    if (trust) d = round(d + Math.min(c.familiarLandMax, this.familiarity(talk.who, talk.by) * trust), 4);
+    if (recall) d = round(d + c.recallLand, 4);
     talk.warmth = round(talk.warmth + d, 4);
     talk.landed = d > 0 ? 'well' : d < 0 ? 'badly' : 'even';
-    const c = this.c;
     if (Math.abs(d) >= c.strong) {
       this.w.lang.applyAll(d > 0 ? c.onWell : c.onBadly, ctx);
       // a word on how it landed, if they have one
       const how = d > 0 ? 'well' : 'badly';
-      if (!this.say(talk, 'them', `${c.react}.${id}.${how}`, false, undefined, true)) this.say(talk, 'them', `${c.react}.${how}`, false, undefined, true);
+      if (!this.say(talk, 'them', `${c.react}.${def ? id : 'recall'}.${how}`, false, undefined, true)) this.say(talk, 'them', `${c.react}.${how}`, false, undefined, true);
     }
     return d;
+  }
+
+  /** Has the speaker learned this about them? */
+  private knows(talk: { who: Id; by: Id }, key: string): boolean { return this.peekBond(talk.who, talk.by)?.known?.[key] !== undefined; }
+
+  /** Words with what's been learned filled in: {learned.<key>} and {learned.<key>:<form>}, by `remembered` (an unlearned key is left as it is). */
+  private fill(talk: { who: Id; by: Id }, s: string): string {
+    if (s.indexOf('{learned.') < 0) return s;
+    const known = this.peekBond(talk.who, talk.by)?.known || {};
+    const ctx = this.ctx(talk);
+    return s.replace(/\{learned\.([^}:]+)(?::([^}]*))?\}/g, (m, key: string, form?: string) => (known[key] === undefined ? m : String(this.w.peek(() => this.remembered(ctx, key, known[key], form ?? null)) ?? '')));
   }
 
   /** Now and then they raise something of their own. Returns whether they did. */
@@ -540,6 +620,7 @@ export class Voice implements Module {
     const c = this.c;
     const cands = [...this.threads.values()].filter((def) => {
       if (!def.theirs || talk.done.includes(def.id)) return false;
+      if (def.recalls && b?.known?.[def.recalls] === undefined) return false;
       const seen = b?.seen[def.id];
       if (seen !== undefined && now - seen < (def.cooldown ?? c.cooldown)) return false;
       return !def.if || w.peek(() => w.lang.all(def.if, ctx));
@@ -568,6 +649,7 @@ export class Voice implements Module {
     const scored: Array<[number, ThreadDef]> = [];
     for (const def of this.threads.values()) {
       if (def.theirs || talk.done.includes(def.id)) continue;
+      if (def.recalls && b?.known?.[def.recalls] === undefined) continue;
       if (def.if && !w.lang.all(def.if, ctx)) continue;
       const seen = b?.seen[def.id];
       const fresh = seen === undefined ? 1 : 1 - Math.exp(-(now - seen) / Math.max(1, def.cooldown ?? c.cooldown));
@@ -594,20 +676,22 @@ export class Voice implements Module {
         const choices = this.c.choices;
         (beat?.answers || []).forEach((a, i) => {
           if (out.length >= choices) return;
-          const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === undefined || talk.warmth >= a.warmth);
+          const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === undefined || talk.warmth >= a.warmth) && (!a.recalls || this.knows(talk, a.recalls));
           if (!ok && !a.soft) return;
           // a beat come round again doesn't offer what's been said already
           if (ok && !this.isTopic(talk.by, a.say) && talk.said.includes(a.say)) return;
-          const o: TalkOption = { kind: 'answer', id: 'a' + i, ok, say: a.say };
-          if (a.label) o.label = a.label;
+          const o: TalkOption = { kind: 'answer', id: 'a' + i, ok, say: this.fill(talk, a.say) };
+          if (a.label) o.label = this.fill(talk, a.label);
           if (a.approach) o.approach = a.approach;
+          if (a.recalls) o.recalls = a.recalls;
           out.push(o);
         });
         out.push({ kind: 'drop', id: 'drop', ok: true });
       } else {
         for (const def of this.salient(talk)) {
-          const o: TalkOption = { kind: 'thread', id: def.id, ok: true, label: typeof def.label === 'function' ? def.label(ctx) : def.label ?? def.id };
+          const o: TalkOption = { kind: 'thread', id: def.id, ok: true, label: this.fill(talk, typeof def.label === 'function' ? def.label(ctx) : def.label ?? def.id) };
           if (def.approach) o.approach = def.approach;
+          if (def.recalls) o.recalls = def.recalls;
           out.push(o);
         }
       }
@@ -674,7 +758,7 @@ export class Voice implements Module {
       });
       if (said) {
         const line: TalkLine = { who, key: said.key };
-        if (said.text !== undefined) line.text = said.text;
+        if (said.text !== undefined) line.text = this.fill(talk, said.text);
         talk.lines.push(line);
         talk.said.push(said.key);
         if (who === 'them') (this.bond(talk.who, talk.by).said ||= {})[said.key] = now;
@@ -683,7 +767,7 @@ export class Voice implements Module {
     }
     if (onlyLine) return false;
     if (fallback !== undefined) return this.sayText(talk, who, fallback);
-    if (words) { talk.lines.push({ who, text: topicOrWords }); talk.said.push(topicOrWords); return true; }
+    if (words) { talk.lines.push({ who, text: this.fill(talk, topicOrWords) }); talk.said.push(topicOrWords); return true; }
     // a topic with no line for it: the game looks the words up itself
     if (topicOrWords) { talk.lines.push({ who, key: topicOrWords }); return true; }
     return false;
@@ -694,7 +778,7 @@ export class Voice implements Module {
     if (!list.length) return false;
     const fresh = list.filter((t) => !talk.said.includes(t));
     const t = this.stream(talk).pick(fresh.length ? fresh : list) as string;
-    talk.lines.push({ who, text: t });
+    talk.lines.push({ who, text: this.fill(talk, t) });
     talk.said.push(t);
     return true;
   }

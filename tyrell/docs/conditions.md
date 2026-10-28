@@ -240,7 +240,7 @@ The person talked to is the person, and the speaker (`'player'`) the target.
 | Term | Value |
 |---|---|
 | `talks` | How many talks they've had with the target (counted as each ends) |
-| `familiar` | Half a point a talk, a point for each thing learned |
+| `familiar` | Their familiarity with the target: half a point a talk, a point for each thing learned (`familiar>=3`: someone who knows you) |
 | `talking`, `talking:<by>` | The person is in a talk (with anyone, or with that speaker) |
 | `warmth`, `patience`, `landed` | The talk in progress with the target: its warmth, patience left, how the last approach landed (`'well'`, `'badly'`, `'even'`, or `null`) |
 | `learned:<key>` | What the target has learned about them (`false` if nothing) |

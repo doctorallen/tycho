@@ -53,7 +53,7 @@ export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken, JoiConfig } from './modules/joi';
 export type { CourseDef, CoursePhase, CourseBranch, CourseSeverity, CourseView, AthelasConfig } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
-export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
+export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView, Acquaintance } from './modules/voice';
 export type { LandRules } from './modules/landing';
 export type { Outcome, OutcomeKey, OutcomeDo, KindDef, TopicDef, TopicSource, MannerDef, BreeConfig, Exchange, ExchangeView, Turn, Feud, Finished, StarterOptions } from './modules/bree';
 export type { Intent, MeansUse, MeansDef, WoundDef, TrapDef, TaintDef, Harm, HarmView, Blow, Response, MorgulConfig } from './modules/morgul';

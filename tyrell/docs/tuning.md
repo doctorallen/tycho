@@ -301,6 +301,8 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `plainMemory` | 3 | The importance of a memory of seeing anything else |
 | `fearWeight` | 0.3 | How much fear (1 - courage) puts a witness off reporting |
 | `loyalty` | 0.8 | How much liking the actor keeps a witness quiet |
+| `familiarReport` | 0 | How much knowing the actor keeps a witness quiet: the chance they report is cut this much a point of their familiarity with the actor (Voice's), up to `familiarReportMax`. 0: it doesn't count |
+| `familiarReportMax` | 1 | The most knowing the actor can take off the chance |
 | `crimeSeen` | 0.8 | How clearly bystanders see a crime someone commits (an action's `crime`) |
 | `infamyAuthority` | 0.2 | Infamy a report adds per point of severity, with the group it went to |
 | `infamyGroups` | 0.1 | ...and with the witness's own groups |
@@ -368,6 +370,9 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `warmthMax` | 3 | ...at most this |
 | `familiarTalk` | 0.5 | `familiarity`: this much for each talk... |
 | `familiarLearned` | 1 | ...and this for each thing learned about them |
+| `familiarLand` | 0 | Familiarity as trust: every approach lands this much better a point of the listener's familiarity with the speaker (times the approach's `familiar`). 0: it doesn't count |
+| `familiarLandMax` | 1 | ...at most this much better |
+| `recallLand` | 1 | An answer or subject that `recalls` something learned about them lands this much better |
 | `cooldown` | 4320 | Minutes a subject takes to come round fresh again, for a thread with no `cooldown` |
 | `soreDays` | 2 | Days a subject stays sore after `sore` with no number |
 | `soreWeight` | 0.1 | A sore subject is worth this share of its weight |

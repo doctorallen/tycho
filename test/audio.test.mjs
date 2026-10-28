@@ -4,7 +4,7 @@
 // reverb's impulse, bit for bit; and the music's machinery (targets set
 // once, events now and then, the dip) against a stand-in for Web Audio.
 // The rest (every call made on Web Audio, and what renders) is held to the
-// original in a browser: test/browser.js.
+// original in a browser: test/audio.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Tycho from '../dist/tycho.mjs';

@@ -50,7 +50,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Layer | Parts | State |
 |---|---|---|
 | Core | `seed` (hashes, value noise, seeded streams), `math`, `color` (mixing, shading, painter's ramps), `loop` (fixed steps, frame samples, the quality governor) | In |
-| Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade); then sprite, figure, paint, fx, life, sky | Partly in |
+| Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade), `sprite` (canvases, letter-row sprites, outlines, copies, letter grids enlarged by rule, sprites painted from shapes), `paint` (the chunked lazy painter: a pixel buffer, flat or stroked, operations with their own seeds, the chunk cache), `fx` (particles, effects that run out, rising words); then figure, life, sky | Partly in |
 | World | `grid` (tile layers in chunks, changes from the seed), `collide` (one query over shapes and tiles), `move` (a platform runner, a top-down body), `path` (flow fields, A*, routes over places); then gen, liquid, tilelight | Partly in |
 | Play | input, interact, items, craft, trade, build, mine, guide | Planned |
 | Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell), `ui` (toasts, lines rising over the world, buttons wired by data attributes, a screen's acts); then hud, map | Partly in |
@@ -72,8 +72,8 @@ Tyrell lives in [tyrell/](tyrell/) with its history, its docs, its sample town (
 npm install            # TypeScript and esbuild (pinned), for building only
 npm run build          # every output into dist/ (commit dist/ with any change to the sources)
 npm test               # builds, then the engine's and Tyrell's suites
-npm run test:browser   # what needs a browser page (the sound against Lodestar's), on the test kit
 npm run typecheck
+npm run test:browser   # the pixels' canvas work and the sound in Chromium, against the games' originals (needs Playwright or puppeteer-core)
 npm run vk             # Voight-Kampff: a week of Rocinante
 ```
 

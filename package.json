@@ -48,7 +48,7 @@
     "test": "node scripts/build.mjs && node --test test/*.test.mjs tyrell/test/*.test.mjs",
     "test:engine": "node scripts/build.mjs && node --test test/*.test.mjs",
     "test:tyrell": "node scripts/build.mjs && node --test tyrell/test/*.test.mjs",
-    "test:browser": "node test/browser.js",
+    "test:browser": "node test/browser.js && node test/audio.js",
     "vk": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 7",
     "check-dist": "node scripts/build.mjs && git diff --exit-code -- dist"
   },

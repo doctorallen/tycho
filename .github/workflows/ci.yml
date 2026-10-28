@@ -29,8 +29,8 @@ jobs:
           git diff --exit-code -- dist || { echo "dist/ is stale: run npm run build and commit it"; exit 1; }
       - uses: browser-actions/setup-chrome@v1
         id: chrome
-      - name: The parts that need a browser (the sound, against Lodestar's)
-        run: npm install --no-save --no-audit --no-fund puppeteer-core@25 && npm run test:browser
+      - name: The sound, against Lodestar's, in a browser
+        run: npm install --no-save --no-audit --no-fund puppeteer-core@25 && node test/audio.js
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
       - name: Voight-Kampff on Rocinante, a week

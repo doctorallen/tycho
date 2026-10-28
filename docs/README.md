@@ -4,6 +4,9 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 
 - [core.md](core.md): `Tycho.seed`, `Tycho.math`, `Tycho.color`, `Tycho.loop`.
 - [renderer.md](renderer.md): `Tycho.gpu`, `Tycho.light`, `Tycho.post`: the frame on the GPU.
+- [sprite.md](sprite.md): `Tycho.sprite`: canvases, letter-row sprites, outlines and copies, letter grids enlarged by rule, and the shape painter (`Shapes`).
+- [paint.md](paint.md): `Tycho.paint`: the chunked lazy painter: a pixel buffer, flat or stroked, operations with their own seeds, the chunk cache.
+- [fx.md](fx.md): `Tycho.fx`: particles thrown and falling, effects that run out, words rising.
 - [world.md](world.md): `Tycho.grid`, `Tycho.collide`, `Tycho.move`, `Tycho.path`: tiles, the collision query, movers and paths.
 - [shell.md](shell.md): `Tycho.save`, `Tycho.pwa`, `Tycho.dev`, `Tycho.loader`.
 - [audio.md](audio.md): `Tycho.audio`: sound made in code (the engine, the voices, the bank rendered ahead, the music's machinery).

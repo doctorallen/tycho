@@ -216,6 +216,13 @@ export interface ActionDef {
   cost?: number;
   /** Skills it trains: hours of practice per hour spent doing it ({ cooking: 1 }). */
   trains?: Record<Id, number>;
+  /**
+   * A pastime that palls: each go adds to a tolerance that wears off by the
+   * hour, and the more of it they've had lately, the less it appeals. A kind
+   * shared with other actions ('drink' for the ale and the wine), or true for
+   * this action alone.
+   */
+  palls?: string | boolean;
   /** Anything the game wants to attach. */
   data?: Record<string, unknown>;
 }
@@ -251,6 +258,75 @@ export interface SkillDef {
   /** More factors on how fast someone learns it (schooling, wit): considerations on the learner, multiplied. */
   learn?: Consideration[];
 }
+
+/** A kind of pastime that palls (actions' `palls`): its label and how fast it palls and recovers. */
+export interface PastimeDef {
+  id: Id;
+  /** What they've had enough of, for the inspector: 'the ale'. */
+  label?: string;
+  /** Tolerance one go adds (0..1). Default config.pallGain. */
+  gain?: number;
+  /** Tolerance lost per hour. Default config.pallDecay. */
+  decay?: number;
+  /** The share of appeal lost at full tolerance. Default config.pallPenalty. */
+  penalty?: number;
+}
+
+/**
+ * A wish: a standing goal that pulls someone toward what would grant it
+ * until it comes true (or fades). A dream is a life's wish: one at a time,
+ * and it never fades.
+ */
+export interface WishDef {
+  id: Id;
+  label?: string;
+  /** Who may wish it, and when: conditions on the person. */
+  if?: Cond[];
+  /** How likely it is to be wished, against the others that fit: a number, or considerations multiplied. Default 1. */
+  weight?: number | Consideration[];
+  /**
+   * What it's about, worked out when it's wished (a favorite dish, a friend
+   * to see): a term, or a function. Undefined or null means it can't be
+   * wished now. Kept with the wish; when it's a person, the wish is aimed at
+   * them.
+   */
+  about?: string | ((ctx: Ctx) => Value | undefined);
+  /** What it pulls them toward while they hold it: action or task ids, or 'tag:<tag>'. */
+  toward?: string[];
+  /** How much more those weigh. Default config.wishPull (1.35). */
+  pull?: number;
+  /** What grants it: finishing one of these (ids or 'tag:<tag>'); aimed at its person, if it's about one. */
+  by?: string[];
+  /** Or these conditions coming true (checked each hour and whenever they finish something). */
+  when?: Cond[];
+  /** Or progress reaching 1: a term or a function, read each hour (a dream's progress). */
+  progress?: string | ((ctx: Ctx) => number);
+  /** A dream: a life's wish, held one at a time, and it never fades. */
+  dream?: boolean;
+  /** Minutes before it fades if it isn't granted. Default config.wishMinutes (1.5 days); 0 never fades. */
+  minutes?: number;
+  /** Wished at most once in a life (default: dreams yes, wishes no). */
+  once?: boolean;
+  /** Effects when it's granted, and when it fades. ctx.data.x is what it was about (and ctx.target, if a person). */
+  then?: Effect[];
+  fades?: Effect[];
+  /** A wish given at once when this one is granted (the next step of a dream). */
+  next?: Id;
+}
+
+/** A wish someone holds. */
+export interface HeldWish {
+  id: Id;
+  /** When it was wished. */
+  t: Minutes;
+  /** When it fades (none: never). */
+  until?: Minutes;
+  /** What it's about. */
+  x?: Value;
+  dream?: boolean;
+}
+
+/** A step in a task's method. */
 export type Step =
   | Id // an action or task id
   | `go:${string}` // walk to a place: a place spec ('go:home', 'go:tag:food', 'go:park')
@@ -424,6 +500,12 @@ export interface PersonState {
   fails?: [Minutes, number];
   /** Skill levels: [level, when last practiced]. Made on first practice. */
   skills?: Record<Id, [number, Minutes]>;
+  /** Tolerance of pastimes that pall: [tolerance, when it was set]. */
+  tol?: Record<string, [number, Minutes]>;
+  /** Wishes and a dream held now. */
+  wishes?: HeldWish[];
+  /** How many times each wish has come true. */
+  granted?: Record<Id, number>;
 }
 
 /** An order from the story layer: overrides job and routine. */
@@ -568,6 +650,19 @@ export interface Config {
   habitMax: number;
   /** Compensate for the number of considerations (IAUS). Default true. */
   compensate: boolean;
+  /** Pastimes that pall: tolerance one go adds, tolerance lost per hour, and the share of appeal lost at full tolerance. */
+  pallGain: number;
+  pallDecay: number;
+  pallPenalty: number;
+  /** Wishes held at once (not counting a dream). Default 2. */
+  wishMax: number;
+  /** The hours new wishes (and dreams) may come, each with config.wishChance. Default [8, 13, 17]. */
+  wishHours: number[];
+  wishChance: number;
+  /** Minutes before an unmet wish fades. Default 2160 (a day and a half). */
+  wishMinutes: number;
+  /** How much more a wish's `toward` actions weigh. Default 1.35. */
+  wishPull: number;
 }
 
 export interface Options {

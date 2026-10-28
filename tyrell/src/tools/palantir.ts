@@ -91,6 +91,10 @@ export class Palantir {
       return `${w.skills.defs.get(k)?.label ?? k} ${round(v, 2)}${named ? ` (${named})` : ''}`;
     }).join(', ');
     if (skills) lines.push(`skills: ${skills}`);
+    const wishes = w.mind.wishesOf(p).map((h) => `${h.dream ? 'dream: ' : ''}${h.label}${h.x !== undefined && h.x !== null ? ` (${String(h.x)})` : ''}${h.progress !== undefined ? ` ${Math.round(h.progress * 100)}%` : ''}`).join(', ');
+    if (wishes) lines.push(`wishes: ${wishes}`);
+    const tol = Object.keys(p.tol || {}).sort().map((k) => [k, w.mind.tolerance(p, k)] as const).filter(([, v]) => v > 0.05).map(([k, v]) => `${w.pastimes.get(k)?.label ?? k} ${round(v, 2)}`).join(', ');
+    if (tol) lines.push(`had enough of: ${tol}`);
     const rv = w.reverie;
     if (rv) {
       lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);

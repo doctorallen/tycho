@@ -70,6 +70,10 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `inertia` | 1.15 | | `habitSlow` | 0.05 |
 | `repeat` | 0.75 | | `habitMin` | 0.25 |
 | `compensate` | true | | `habitMax` | 4 |
+| `pallGain` | 0.35 | | `wishMax` | 2 |
+| `pallDecay` | 0.08 | | `wishHours` | `[8, 13, 17]` |
+| `pallPenalty` | 0.6 | | `wishChance` | 0.5 |
+| `wishMinutes` | 2160 | | `wishPull` | 1.35 |
 
 `EsperConfig` (see [Time](time.md#esperconfig-and-memory)):
 
@@ -93,10 +97,10 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `day` | number | Day number |
 | `weekday` | number | `day % config.week` |
 | `speed` | number | Get or set: 1 normal, 0 paused, negative plays backward |
-| `needs`, `actions`, `tasks`, `deeds` | Map | The declared definitions |
+| `needs`, `actions`, `tasks`, `deeds`, `pastimes`, `wishes` | Map | The declared definitions |
 | `lang` | Lang | The condition language: `test(cond, ctx)`, `all(conds, ctx)`, `failing(conds, ctx)`, `value(term, ctx)`, `compile(cond)`, `apply(effect, ctx)` (engine), `applyAll(effects, ctx)` (engine), `term`, `effect`, `hasTerm(name)` |
 | `ring` | Ring | Places, travel, slots, hours: see [Places](places.md#the-ring-api) |
-| `mind` | Bicameral | Needs and decisions: `level(p, need, t?)`, `urgency(p, need)`, `habit(p, action)`, `routineAt(p, t?)`, `routineFor(p, t?)`, `shiftAt(p, t?)`, `required(p)`, `options(p)`, `explain(p, id)`, `blockedReason(p, candidate)`, `consider(consideration, ctx, travel?)`, `offeredAt(action, place, p)`; engine: `setLevel`, `settle`, `relieve`, `learn`, `nudge`, `decide`, `weigh`, `pick` |
+| `mind` | Bicameral | Needs and decisions: `level(p, need, t?)`, `urgency(p, need)`, `habit(p, action)`, `routineAt(p, t?)`, `routineFor(p, t?)`, `shiftAt(p, t?)`, `required(p)`, `options(p)`, `explain(p, id)`, `blockedReason(p, candidate)`, `consider(consideration, ctx, travel?)`, `offeredAt(action, place, p)`, `pallKind(action)`, `tolerance(p, kind, t?)`, `wishesOf(p)`, `progressOf(p, held)`; engine: `setLevel`, `settle`, `relieve`, `learn`, `nudge`, `decide`, `weigh`, `pick`, `applyPall`, `applyWish`, `applyGrant` |
 | `clock` | Entmoot | The clock: `body(id)`, `bodies()`, `isNear(p)`, `embodied(id)`, `regionsInFocus()`; engine: `schedule(item)`, `think`, `rethink`, `reconsider`, `begin`, `interrupt`, `fail`, `finishNow`, `sendAway`, `removePerson`, `refreshBodies` |
 | `esper` | Esper | Time walk: `on`, `config`, `earliest()`, `latest()`, `span()`, `size()`, `mark(name)`, `seekMark(name)`, `export()`, `import(h)` |
 | `westmarch` | Westmarch | The log: `find(filter)`, `since(t, k?)`, `chronicle(id, since)` |
@@ -136,6 +140,8 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `task(def)` | A task: [TaskDef](modules/mentat.md#tasks-and-methods) |
 | `deed(verb, def)` | What a deed means: [DeedDef](integration.md#sensing-and-deeds) |
 | `skill(def)` | A skill: [SkillDef](deciding.md#skills-and-talents) |
+| `pastime(def)` | A kind of pastime that palls: [PastimeDef](deciding.md#pastimes-that-pall) |
+| `wish(def)` | A wish or a dream: [WishDef](deciding.md#wishes-and-dreams) |
 | `term(name, fn)` | A condition term: [Extending](conditions.md#extending-the-language) |
 | `effect(name, fn)` | An effect |
 | `defineInput(name, fn)` | A custom input: [Integration](integration.md#custom-inputs) |
@@ -161,6 +167,8 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `give(id, item, count = 1)` | void | **Input.** Gives goods (negative takes, not below 0) |
 | `train(id, skill, hours)` | void | **Input.** Practice at the person's own pace (a lesson, a book): [Skills](deciding.md#skills-and-talents) |
 | `setSkill(id, skill, level)` | void | **Input.** Sets a skill's level outright |
+| `wishFor(id, wish, about?)` | void | **Input.** Gives someone a wish (or a dream), about something if given: [Wishes](deciding.md#wishes-and-dreams) |
+| `grant(id, wish)` | void | **Input.** A wish they hold comes true |
 | `away(id, until, summary = '', place?)` | void | **Input.** Sends someone away until a time |
 | `follow(id, leader or null)` | void | **Input.** Following |
 | `remove(id, why = 'left')` | void | **Input.** Gone for good |
@@ -176,6 +184,7 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `have(person, item)` | number | Their goods plus their household's pantry |
 | `needOf(id, need)` | number | A need's level now |
 | `skillOf(id, skill)` | number | A skill's level now (0 if they've none) |
+| `wishesOf(id)` | array | The wishes and dream they hold: `{ id, label, t, until?, x?, dream?, progress? }` |
 | `bodies()` | Body[] | Everyone near |
 | `body(id)` | Body or null | Anyone's body as it would be shown now (null if not active) |
 | `why(id)` | Decision or null | The latest decision |
@@ -256,6 +265,9 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `paired` | `{ a, b }` | Cradle |
 | `born` | `{ id, parents }` | Cradle |
 | `skill` | `{ id, skill, level, value }` | Someone reached a named level of a skill |
+| `wished` | `{ id, wish, x, label, dream }` | Someone came to wish something (or dream it) |
+| `granted` | `{ id, wish, x, label, dream }` | A wish came true |
+| `faded` | `{ id, wish, x, label }` | A wish faded unmet |
 | `stage` | `{ id, from, to }` | Cradle: a new life stage |
 
 Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
@@ -268,7 +280,7 @@ The names Esper records, for tools that read a history. Each is made by the meth
 |---|---|
 | `person` | `world.person` |
 | `fact`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at` | The `world` method of the same name |
-| `train`, `skill` (`setSkill`) | The `world` methods |
+| `train`, `skill` (`setSkill`), `wish` (`wishFor`), `grant` | The `world` methods |
 | `promote` | `strangers.promote` |
 | `log` | `world.log`, called from the game |
 | `feel`, `believe`, `remember`, `forget`, `recollect` (`recall`), `hush` (`silence`) | Reverie |
@@ -376,6 +388,9 @@ A person in the state (`world.get(id)`):
 | `follow` | Who they follow |
 | `born` | Born at (Cradle) |
 | `skills` | By skill: `[level, when last practiced]` (made on first practice) |
+| `tol` | By pastime kind: `[tolerance, when it was set]` |
+| `wishes` | The wishes and dream held: `{ id, t, until?, x?, dream? }` |
+| `granted` | By wish: how many times it came true |
 
 ### Other definitions
 
@@ -383,6 +398,9 @@ A person in the state (`world.get(id)`):
 |---|---|---|
 | `NeedDef` | `id, rise, start?, curve?, urgent?, label?, emotion?` | [Deciding](deciding.md#needs) |
 | `SkillDef` | `id, label?, max?, rate?, diminish?, decay?, grace?, floor?, start?, levels?, then?, learn?` | [Deciding](deciding.md#skills-and-talents) |
+| `PastimeDef` | `id, label?, gain?, decay?, penalty?` | [Deciding](deciding.md#pastimes-that-pall) |
+| `WishDef` | `id, label?, if?, weight?, about?, toward?, pull?, by?, when?, progress?, dream?, minutes?, once?, then?, fades?, next?` | [Deciding](deciding.md#wishes-and-dreams) |
+| `HeldWish` | `{ id, t, until?, x?, dream? }` | |
 | `ActionDef` | every field | [Deciding](deciding.md#actions) |
 | `TaskDef`, `MethodDef`, `Step` | | [Mentat](modules/mentat.md) |
 | `PlaceDef`, `SlotDef` | | [Places](places.md) |

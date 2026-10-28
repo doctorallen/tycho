@@ -129,6 +129,7 @@ export class Entmoot {
       }
       case 'hour': {
         const t = ev.t;
+        w.mind.hour(t);
         for (const m of w.hooks) m.hour?.(t);
         if (Math.round(hourOf(t) * 60) % (24 * 60) === 0) {
           const day = Math.round(t / DAY);
@@ -362,6 +363,7 @@ export class Entmoot {
     }
     if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
     if (a?.trains) w.skills.practiced(p, a.trains, d.start);
+    w.mind.finished(p, d, frac, interrupted);
     if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
     p.last = d.action;
     p.lastEnd = w.s.now;

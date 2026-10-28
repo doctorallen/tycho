@@ -1,4 +1,4 @@
-import type { ActionDef, Candidate, Consideration, Ctx, Curve, Decision, Doing, Id, PersonState, PlaceSpec, RoutineEntry } from './types';
+import type { ActionDef, Candidate, Consideration, Ctx, Curve, Decision, Doing, HeldWish, Id, PersonState, PlaceSpec, RoutineEntry, Value } from './types';
 import type { World } from './world';
 /** What a layer of the stack requires right now. */
 export interface Requirement {
@@ -80,6 +80,47 @@ export declare class Bicameral {
     weigh(p: PersonState, c: Candidate, required: boolean): void;
     /** Evaluates one consideration to a factor. */
     consider(k: Consideration, ctx: Ctx, travel?: number): number;
+    /** The kind of pastime an action is (its `palls`), or null. */
+    pallKind(a: {
+        id: Id;
+        palls?: string | boolean;
+    } | undefined): string | null;
+    /** How much of a pastime someone has had lately, 0..1 (it wears off by the hour). */
+    tolerance(p: PersonState, kind: string, t?: number): number;
+    /** One more go at a pastime (inside the simulation). */
+    applyPall(p: PersonState, kind: string): void;
+    private matches;
+    private isPerson;
+    /** The context a held wish's conditions and effects see: what it's about in data.x (and as the target, if a person). */
+    wishCtx(p: PersonState, h: HeldWish): Ctx;
+    private aboutOf;
+    /** How far along a wish with `progress` is (0..1). */
+    progressOf(p: PersonState, h: HeldWish): number | null;
+    /** The wishes (and the dream) someone holds now, with what they're about. */
+    wishesOf(p: PersonState): Array<HeldWish & {
+        label: string;
+        progress?: number;
+    }>;
+    /** The pull of the wishes someone holds on an option: at most one wish and one dream count. */
+    private wishPull;
+    /** Gives someone a wish (inside the simulation). Returns false if they can't wish it now. */
+    applyWish(p: PersonState, id: Id, about?: Value): boolean;
+    private dropWish;
+    /** A wish comes true (inside the simulation). */
+    applyGrant(p: PersonState, h: HeldWish): void;
+    private fade;
+    /** Grants any wish whose `by` the doing was, or whose `when` holds now. */
+    private checkWishes;
+    /** The wishes someone could wish now, each with its weight and what it would be about. */
+    private wishable;
+    /** Now and then, a new wish (and a dream, for someone without one). */
+    private rollWishes;
+    /** An action ended (Entmoot calls this): a pastime palls, and wishes it grants come true. */
+    finished(p: PersonState, d: Doing, frac: number, interrupted: boolean): void;
+    /** Every hour (Entmoot calls this): wishes are checked, fade, and new ones come at the wish hours. */
+    hour(t: number): void;
+    /** The terms, effects and inputs for pastimes and wishes (World calls this once). */
+    register(): void;
     /** Picks from options: top rank, cut the weak, a weighted draw. */
     pick(p: PersonState, options: Candidate[]): {
         picked: Candidate | null;

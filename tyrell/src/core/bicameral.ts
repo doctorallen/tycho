@@ -4,6 +4,12 @@
 // bicameral mind, the voice that tells a host what to do until it becomes
 // their own.
 //
+// Two more things sway a choice: pastimes pall (each go at a pastime adds to
+// a tolerance that wears off by the hour, and the more of it they've had,
+// the less it appeals), and wishes pull (a standing goal leans them toward
+// what would grant it, until it comes true or fades; a dream is a life's
+// wish). Both are Merryfolk's, generalized.
+//
 // A decision runs in four steps:
 //   1. what's required: a directive from the story, the job's hours, the
 //      routine (the first variant that fits the day), each with a rank
@@ -15,8 +21,8 @@
 //   4. the pick: the top rank only, the weak cut, a weighted draw from the
 //      person's own seeded stream
 import type {
-  ActionDef, Candidate, Consideration, Ctx, Curve, Decision, Doing, Id, PersonState, PlaceSpec,
-  RoutineEntry, RoutineVariant, TaskDef,
+  ActionDef, Candidate, Consideration, Ctx, Curve, Decision, Doing, HeldWish, Id, PersonState, PlaceSpec,
+  RoutineEntry, RoutineVariant, TaskDef, Value, WishDef,
 } from './types';
 import type { World } from './world';
 import { DAY, HOUR, clamp, dayOf, hourOf, inHours, lerp, round } from './util';
@@ -507,9 +513,21 @@ export class Bicameral {
     // an inborn taste (Delos fills these in from a genome)
     const instinct = p.def.instincts?.[c.id];
     if (instinct !== undefined) mul('instinct', instinct);
+    // a pastime palls: the more of it lately, the less it appeals
+    const kind = isTask ? null : this.pallKind(def);
+    if (kind) {
+      const tol = this.tolerance(p, kind);
+      if (tol > 0.05) {
+        const pd = w.pastimes.get(kind);
+        mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? w.config.pallPenalty) * tol, 4));
+      }
+    }
+    // a wish (and a dream) leans them toward what would grant it
+    if (p.wishes?.length) for (const [name, f] of this.wishPull(p, c, def.tags)) mul(name, f);
     if (travel > 0) mul('travel', 1 / (1 + travel / w.config.travelScale));
     const sleepy = def.tags?.includes('sleep');
-    if (!required && p.last === c.id && !sleepy && p.lastEnd !== undefined && w.s.now - p.lastEnd < 90) mul('did it last', w.config.repeat);
+    // (a pastime that palls has its own, finer sense of having had enough)
+    if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== undefined && w.s.now - p.lastEnd < 90) mul('did it last', w.config.repeat);
     if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul('carrying on', w.config.inertia);
     for (const m of w.hooks) {
       const parts = m.consider?.(p, c);
@@ -532,6 +550,243 @@ export class Bicameral {
     const y = curveAt(k.curve, nx);
     const [o0, o1] = k.out || [0, 1];
     return lerp(o0, o1, y);
+  }
+
+  // -------------------------------------------------------------------------
+  // Pastimes that pall
+  // -------------------------------------------------------------------------
+
+  /** The kind of pastime an action is (its `palls`), or null. */
+  pallKind(a: { id: Id; palls?: string | boolean } | undefined): string | null {
+    if (!a?.palls) return null;
+    return a.palls === true ? a.id : a.palls;
+  }
+
+  /** How much of a pastime someone has had lately, 0..1 (it wears off by the hour). */
+  tolerance(p: PersonState, kind: string, t = this.w.s.now): number {
+    const rec = p.tol?.[kind];
+    if (!rec) return 0;
+    const decay = this.w.pastimes.get(kind)?.decay ?? this.w.config.pallDecay;
+    return round(Math.max(0, rec[0] - (decay * Math.max(0, t - rec[1])) / HOUR), 4);
+  }
+
+  /** One more go at a pastime (inside the simulation). */
+  applyPall(p: PersonState, kind: string): void {
+    const now = this.w.s.now;
+    const tol = (p.tol ||= {});
+    const before = this.tolerance(p, kind);
+    for (const k of Object.keys(tol)) if (this.tolerance(p, k) <= 0) delete tol[k];
+    tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.config.pallGain)), 4), now];
+  }
+
+  // -------------------------------------------------------------------------
+  // Wishes and dreams
+  // -------------------------------------------------------------------------
+
+  private matches(list: readonly string[], id: Id, tags: readonly string[] | undefined): boolean {
+    for (const x of list) {
+      if (x === id) return true;
+      if (x.startsWith('tag:') && tags?.includes(x.slice(4))) return true;
+    }
+    return false;
+  }
+
+  private isPerson(x: Value | undefined): x is string { return typeof x === 'string' && !!this.w.s.people[x]; }
+
+  /** The context a held wish's conditions and effects see: what it's about in data.x (and as the target, if a person). */
+  wishCtx(p: PersonState, h: HeldWish): Ctx {
+    return this.w.ctx(p, { target: this.isPerson(h.x) ? h.x : null, data: { x: h.x ?? null, wish: h.id } });
+  }
+
+  private aboutOf(def: WishDef, ctx: Ctx): Value | undefined {
+    if (def.about === undefined) return undefined;
+    const v = typeof def.about === 'function' ? def.about(ctx) : this.w.lang.value(def.about, ctx);
+    return v === undefined ? undefined : v;
+  }
+
+  /** How far along a wish with `progress` is (0..1). */
+  progressOf(p: PersonState, h: HeldWish): number | null {
+    const def = this.w.wishes.get(h.id);
+    if (!def || def.progress === undefined) return null;
+    const ctx = this.wishCtx(p, h);
+    const v = typeof def.progress === 'function' ? def.progress(ctx) : Number(this.w.lang.value(def.progress, ctx) ?? 0);
+    return round(clamp(Number(v) || 0), 4);
+  }
+
+  /** The wishes (and the dream) someone holds now, with what they're about. */
+  wishesOf(p: PersonState): Array<HeldWish & { label: string; progress?: number }> {
+    const now = this.w.s.now;
+    const out: Array<HeldWish & { label: string; progress?: number }> = [];
+    for (const h of p.wishes || []) {
+      if (h.until !== undefined && h.until <= now) continue;
+      const def = this.w.wishes.get(h.id);
+      const e: HeldWish & { label: string; progress?: number } = { ...h, label: def?.label ?? h.id };
+      const pr = this.progressOf(p, h);
+      if (pr !== null) e.progress = pr;
+      out.push(e);
+    }
+    return out;
+  }
+
+  /** The pull of the wishes someone holds on an option: at most one wish and one dream count. */
+  private wishPull(p: PersonState, c: Candidate, tags: readonly string[] | undefined): Array<[string, number]> {
+    const out: Array<[string, number]> = [];
+    const now = this.w.s.now;
+    let wish = false, dream = false;
+    for (const h of p.wishes || []) {
+      if (h.until !== undefined && h.until <= now) continue;
+      if (h.dream ? dream : wish) continue;
+      const def = this.w.wishes.get(h.id);
+      if (!def?.toward || !this.matches(def.toward, c.id, tags)) continue;
+      // a wish about someone pulls toward them, not toward anyone
+      if (this.isPerson(h.x) && c.target && c.target !== h.x) continue;
+      out.push([`${h.dream ? 'dream' : 'wish'}: ${def.label ?? def.id}`, def.pull ?? this.w.config.wishPull]);
+      if (h.dream) dream = true; else wish = true;
+    }
+    return out;
+  }
+
+  /** Gives someone a wish (inside the simulation). Returns false if they can't wish it now. */
+  applyWish(p: PersonState, id: Id, about?: Value): boolean {
+    const w = this.w;
+    const def = w.wishes.get(id);
+    if (!def) return false;
+    const held = p.wishes || [];
+    if (held.some((h) => h.id === id)) return false;
+    let x: Value | undefined = about === null ? undefined : about;
+    if (x === undefined && def.about !== undefined) {
+      x = this.aboutOf(def, w.ctx(p));
+      if (x === undefined || x === null) return false;
+    }
+    const now = w.s.now;
+    const h: HeldWish = { id, t: now };
+    const minutes = def.dream ? 0 : def.minutes ?? w.config.wishMinutes;
+    if (minutes > 0) h.until = now + minutes;
+    if (x !== undefined) h.x = x;
+    if (def.dream) h.dream = true;
+    // one dream at a time: a new one takes the old one's place
+    p.wishes = [...held.filter((o) => !(def.dream && o.dream)), h];
+    w.log('wished', p.id, { wish: id, ...(x !== undefined ? { x } : {}) });
+    w.emit('wished', { id: p.id, wish: id, x: x ?? null, label: def.label ?? id, dream: !!def.dream });
+    return true;
+  }
+
+  private dropWish(p: PersonState, h: HeldWish): void {
+    p.wishes = (p.wishes || []).filter((o) => o !== h);
+    if (!p.wishes.length) delete p.wishes;
+  }
+
+  /** A wish comes true (inside the simulation). */
+  applyGrant(p: PersonState, h: HeldWish): void {
+    const w = this.w;
+    const def = w.wishes.get(h.id);
+    this.dropWish(p, h);
+    (p.granted ||= {})[h.id] = (p.granted[h.id] || 0) + 1;
+    w.log('granted', p.id, { wish: h.id, ...(h.x !== undefined ? { x: h.x } : {}) });
+    w.emit('granted', { id: p.id, wish: h.id, x: h.x ?? null, label: def?.label ?? h.id, dream: !!h.dream });
+    if (def?.then) w.lang.applyAll(def.then, this.wishCtx(p, h));
+    if (def?.next) this.applyWish(p, def.next);
+  }
+
+  private fade(p: PersonState, h: HeldWish): void {
+    const w = this.w;
+    const def = w.wishes.get(h.id);
+    this.dropWish(p, h);
+    w.log('faded', p.id, { wish: h.id });
+    w.emit('faded', { id: p.id, wish: h.id, x: h.x ?? null, label: def?.label ?? h.id });
+    if (def?.fades) w.lang.applyAll(def.fades, this.wishCtx(p, h));
+  }
+
+  /** Grants any wish whose `by` the doing was, or whose `when` holds now. */
+  private checkWishes(p: PersonState, d: Doing | null, hourly: boolean): void {
+    const w = this.w, now = w.s.now;
+    for (const h of (p.wishes || []).slice()) {
+      const def = w.wishes.get(h.id);
+      if (!def) continue;
+      if (h.until !== undefined && h.until <= now) { if (hourly) this.fade(p, h); continue; }
+      if (d && d.kind === 'act' && def.by && this.matches(def.by, d.action, w.actions.get(d.action)?.tags) && (!this.isPerson(h.x) || d.target === h.x)) {
+        this.applyGrant(p, h);
+        continue;
+      }
+      if (def.when?.length && w.lang.all(def.when, this.wishCtx(p, h))) { this.applyGrant(p, h); continue; }
+      if (hourly && def.progress !== undefined && (this.progressOf(p, h) ?? 0) >= 1) this.applyGrant(p, h);
+    }
+  }
+
+  /** The wishes someone could wish now, each with its weight and what it would be about. */
+  private wishable(p: PersonState, dream: boolean): Array<{ id: Id; x: Value | undefined; w: number }> {
+    const w = this.w;
+    const held = p.wishes || [];
+    const ctx = w.ctx(p);
+    const out: Array<{ id: Id; x: Value | undefined; w: number }> = [];
+    for (const id of [...w.wishes.keys()].sort()) {
+      const def = w.wishes.get(id) as WishDef;
+      if (!!def.dream !== dream || held.some((h) => h.id === id)) continue;
+      if ((def.once ?? !!def.dream) && p.granted?.[id]) continue;
+      if (def.if && !w.lang.all(def.if, ctx)) continue;
+      const x = this.aboutOf(def, ctx);
+      if (def.about !== undefined && (x === undefined || x === null)) continue;
+      let weight = 1;
+      if (typeof def.weight === 'number') weight = def.weight;
+      else if (def.weight) for (const k of def.weight) weight *= this.consider(k, ctx);
+      if (weight > 0) out.push({ id, x, w: weight });
+    }
+    return out;
+  }
+
+  /** Now and then, a new wish (and a dream, for someone without one). */
+  private rollWishes(p: PersonState): void {
+    const w = this.w, c = w.config;
+    const held = p.wishes || [];
+    for (const dream of [false, true]) {
+      if (dream ? held.some((h) => h.dream) : held.filter((h) => !h.dream).length >= c.wishMax) continue;
+      const pool = this.wishable(p, dream);
+      if (!pool.length) continue;
+      const r = w.stream(p);
+      if (!r.chance(c.wishChance)) continue;
+      const pick = r.weighted(pool, (o) => o.w);
+      if (pick) this.applyWish(p, pick.id, pick.x === undefined ? undefined : pick.x);
+    }
+  }
+
+  /** An action ended (Entmoot calls this): a pastime palls, and wishes it grants come true. */
+  finished(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
+    const kind = this.pallKind(this.w.actions.get(d.action));
+    if (kind && frac > 0.2) this.applyPall(p, kind);
+    if (!interrupted && p.wishes?.length) this.checkWishes(p, d, false);
+  }
+
+  /** Every hour (Entmoot calls this): wishes are checked, fade, and new ones come at the wish hours. */
+  hour(t: number): void {
+    const w = this.w;
+    if (!w.wishes.size) return;
+    const h = hourOf(t);
+    const rolling = w.config.wishHours.some((x) => Math.abs(x - h) < 1e-6);
+    for (const id in w.s.people) {
+      const p = w.s.people[id];
+      if (p.status !== 'active') continue;
+      if (p.wishes?.length) this.checkWishes(p, null, true);
+      if (rolling) this.rollWishes(p);
+    }
+  }
+
+  /** The terms, effects and inputs for pastimes and wishes (World calls this once). */
+  register(): void {
+    const w = this.w, L = w.lang;
+    const held = (p: PersonState | undefined, id: Id): HeldWish | undefined => p?.wishes?.find((h) => h.id === id && (h.until === undefined || h.until > w.s.now));
+    L.term('wish', (c, a) => { const h = held(c.person, a); return h ? h.x ?? true : false; });
+    L.term('wishes', (c) => (c.person ? this.wishesOf(c.person).filter((h) => !h.dream).length : 0));
+    L.term('dream', (c) => (c.person ? this.wishesOf(c.person).find((h) => h.dream)?.id ?? null : null));
+    L.term('granted', (c, a) => c.person?.granted?.[a] ?? 0);
+    L.term('tolerance', (c, a) => (c.person ? this.tolerance(c.person, a) : 0));
+    L.effect('wish', (c, a) => { if (c.person) this.applyWish(c.person, a); });
+    L.effect('grant', (c, a) => { const h = held(c.person, a); if (c.person && h) this.applyGrant(c.person, h); });
+    w.defineInput('wish', (id: Id, wish: Id, x: Value) => { const p = w.s.people[id]; return p ? this.applyWish(p, wish, x === null ? undefined : x) : false; });
+    w.defineInput('grant', (id: Id, wish: Id) => {
+      const p = w.s.people[id];
+      const h = held(p, wish);
+      if (p && h) this.applyGrant(p, h);
+    });
   }
 
   // -------------------------------------------------------------------------

@@ -17,7 +17,7 @@ import type { Gaff } from '../modules/gaff';
 import type { Ceres } from '../modules/ceres';
 import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
-import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WorldState } from './types';
+import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState, PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState } from './types';
 import { DAY, HOUR, Stream } from './util';
 export declare const SCHEMA = 2;
 export declare const DEFAULT_CONFIG: Config;
@@ -39,6 +39,8 @@ export declare class World {
     readonly actions: Map<string, ActionDef>;
     readonly tasks: Map<string, TaskDef>;
     readonly deeds: Map<string, DeedDef>;
+    readonly pastimes: Map<string, PastimeDef>;
+    readonly wishes: Map<string, WishDef>;
     readonly ring: Ring;
     readonly mind: Bicameral;
     readonly clock: Entmoot;
@@ -113,6 +115,10 @@ export declare class World {
     deed(verb: string, def: DeedDef): this;
     /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
     skill(def: SkillDef): this;
+    /** A kind of pastime that palls (actions' `palls`): its label, and how fast it palls and recovers. */
+    pastime(def: PastimeDef): this;
+    /** A wish (or, with `dream`, a dream) people may come to hold. */
+    wish(def: WishDef): this;
     /**
      * Adds a person, or returns them if they already exist (after a load the
      * saved person wins, so declaring everyone on every start is safe).
@@ -168,6 +174,15 @@ export declare class World {
     train(id: Id, skill: Id, hours: number): void;
     /** Sets a skill's level outright. */
     setSkill(id: Id, skill: Id, level: number): void;
+    /** Gives someone a wish (or a dream), about something if it's given (a dish, a friend's id). */
+    wishFor(id: Id, wish: Id, about?: Value): void;
+    /** Makes a wish someone holds come true. */
+    grant(id: Id, wish: Id): void;
+    /** The wishes (and the dream) someone holds now. */
+    wishesOf(id: Id): Array<HeldWish & {
+        label: string;
+        progress?: number;
+    }>;
     /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
     skillOf(id: Id, skill: Id): number;
     /** Sends someone away until a time (dormant): they come back with a summary of what they did. */

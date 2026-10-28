@@ -49,15 +49,15 @@
   w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
   w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
-  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 } });
+  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
   w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'] });
   w.action({ id: 'eat_home', label: 'eating at home', at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
   w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
   w.action({ id: 'steal_food', label: 'pocketing food', at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
   w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'] });
-  w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight] });
-  w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight] });
+  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink' });
+  w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
   w.action({ id: 'chat', label: 'chatting', target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
   w.action({ id: 'help_out', label: 'helping out', target: 'person', at: 'here', minutes: 30, base: 0.04, relieves: { company: 0.2 }, deed: 'helped', tags: ['social'], targetIf: ['regard>0.2'], cooldown: DAY });
   w.action({ id: 'sulk', label: 'sulking', at: 'home', minutes: 120, pose: 'sit', rank: -1 });
@@ -79,6 +79,18 @@
   w.skill({ id: 'baking', label: 'Baking', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']] });
   w.skill({ id: 'repair', label: 'Repair', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']], decay: 0.004, floor: 0.2 });
   w.skill({ id: 'lore', label: 'Lore', rate: 0.03, diminish: 2 });
+
+  // ---- pastimes that pall, and wishes and dreams ------------------------------
+  w.pastime({ id: 'drink', label: 'the Belt' });
+  w.pastime({ id: 'park', label: 'the park' });
+  w.wish({ id: 'night_out', label: 'A night at the Belt', if: ['!is:child'], weight: [{ input: 'trait.talkative', out: [0.3, 1.2] }], toward: ['drink'], by: ['drink'] });
+  w.wish({ id: 'fresh_air', label: 'Some fresh air', toward: ['tag:outdoors'], by: ['walk', 'sit_park'] });
+  w.wish({
+    id: 'catch_up', label: 'A good talk with a friend', minutes: 2 * DAY, toward: ['chat', 'help_out'], by: ['chat', 'help_out'],
+    about: (ctx) => (ctx.world.fellowship ? ctx.world.fellowship.friends(ctx.person.id, 1)[0] : undefined),
+  });
+  w.wish({ id: 'master_baker', label: 'Become an expert baker', dream: true, if: ['job:baker'], toward: ['bake'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8 });
+  w.wish({ id: 'master_mechanic', label: 'Become a master mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({

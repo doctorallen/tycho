@@ -68,6 +68,9 @@ Conditions are compiled once and cached, so using them is cheap.
 | `RoutineVariant.when` (strings only) | The person |
 | `SlotDef.who` | The person deciding or claiming, the place |
 | `LineDef.who`, `when`, `to` (Cityspeak) | The speaker; `target` is the listener; `topic`; `place` is the speaker's place |
+| `WishDef.if`, `weight`, `about` | The person |
+| `WishDef.when`, `progress`, `then`, `fades` | The person; `target` is who it's about, if a person; `data.x` is what it's about |
+| `SkillDef.then` (effects) | The person; `data.skill`, `data.level` |
 | `LineDef.then` (effects) | The speaker; `target` is the listener; `topic` |
 | `PracticeDef` role `who` | The person, their place |
 | `SocialActDef.acceptIf`, `accept` | The target of the act as `person`; the asker as `target` |
@@ -112,6 +115,11 @@ Always available. "The person" is the context's person.
 | `skill.<id>` | The person's level in a skill now, forgetting included (their starting level, or the skill's `start`, if they've never practiced) |
 | `talent.<id>` | How fast they learn the skill: their `talents` entry, 1 if unset |
 | `instinct.<action>` | Their inborn taste for an action or task: their `instincts` entry, 1 if unset (the context's action with no name) |
+| `tolerance:<kind>` | How much of a pastime that palls they've had lately, 0..1 |
+| `wish:<id>` | While they hold the wish: what it's about, or `true`; else `false` |
+| `wishes` | How many wishes they hold (not counting a dream) |
+| `dream` | The id of their dream, or `null` |
+| `granted:<id>` | How many times the wish has come true for them |
 | any other word | The world fact of that name |
 
 ## Module terms
@@ -217,6 +225,8 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `log:<kind>` | Writes a log entry of that kind about the person |
 | `skill.<id>=v`, `+=`, `-=`, `*=` | Sets or changes the person's level in a skill (kept within 0 and its `max`) |
 | `train:<id>=hours`, `train:<id>` | Practice: that many hours (1 if none given) at the person's own pace |
+| `wish:<id>` | Gives the person a wish (or dream), if they can wish it now |
+| `grant:<id>` | Makes a wish they hold come true |
 
 ### Module effects
 

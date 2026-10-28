@@ -553,7 +553,7 @@ export class World {
    * so the entry is recorded for time walk.
    */
   log(k: string, who?: Id, d?: Record<string, unknown>): void {
-    const engine = !this.fromListener() && (this.depth > 0 || this.clock.handling !== null || this.replaying);
+    const engine = !this.fromListener() && (this.depth > 0 || this.clock.handling !== null || this.replaying || this.moving > 0);
     if (engine) this.westmarch.write(k, who, d);
     else this.input('log', [k, who ?? null, d === undefined ? null : JSON.parse(JSON.stringify(d))]);
   }

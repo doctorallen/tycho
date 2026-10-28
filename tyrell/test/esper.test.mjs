@@ -280,6 +280,30 @@ test('recall, silence, resolve, attract, draw and log from the game are inputs: 
   assert.equal(w.hash(), h);
 });
 
+test('a listener\'s own calls are recorded; the engine work they set off isn\'t', () => {
+  const run = () => {
+    const w = rocinante();
+    w.focus(['main', 'blocks', 'river']);
+    let n = 0;
+    w.on('step', (b) => {
+      if (n >= 2) return;
+      n++;
+      w.person('visitor' + n, { home: 'flat_5' }); // applies at once; its 'joined' entry is the engine's
+      w.log('noticed', b.id); // the game's own: recorded
+    });
+    w.advance(6 * HOUR);
+    return w;
+  };
+  const w = run();
+  const h = w.hash();
+  assert.equal(w.westmarch.find({ k: 'joined' }).filter((e) => e.who.startsWith('visitor')).length, 2);
+  assert.equal(w.westmarch.find({ k: 'noticed' }).length, 2);
+  w.rewind(6 * HOUR);
+  w.advance(6 * HOUR);
+  assert.equal(w.hash(), h);
+  assert.equal(run().hash(), h);
+});
+
 test('reading changes nothing: relationships, intensity, strangers', () => {
   const w = rocinante();
   w.strangers.define('main', { perHour: 4, errands: [{ from: 'park', to: 'market', minutes: 10 }] });

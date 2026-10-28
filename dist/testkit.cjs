@@ -112,7 +112,13 @@ async function launch(o = {}) {
     driver,
     browser,
     page: async (vp = DESKTOP) => {
-      const p = await browser.newPage();
+      const make = browser.createBrowserContext || browser.createIncognitoBrowserContext;
+      const ctx = make ? await make.call(browser) : null;
+      const p = await (ctx || browser).newPage();
+      if (ctx) p.once("close", () => {
+        ctx.close().catch(() => {
+        });
+      });
       await p.setViewport(vp.mobile ? { width: vp.width, height: vp.height, isMobile: true, hasTouch: true, deviceScaleFactor: vp.scale || 1 } : { width: vp.width, height: vp.height, deviceScaleFactor: vp.scale || 1 });
       return p;
     },

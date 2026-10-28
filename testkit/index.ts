@@ -97,7 +97,12 @@ export async function launch(o: { gl?: boolean; args?: string[]; driver?: 'playw
   return {
     driver, browser,
     page: async (vp = DESKTOP) => {
-      const p = await browser.newPage();
+      // (each page in a context of its own, as Playwright's are: a page closed
+      // can't leave its storage, a save written as it went, to the next)
+      const make = browser.createBrowserContext || browser.createIncognitoBrowserContext;
+      const ctx = make ? await make.call(browser) : null;
+      const p = await (ctx || browser).newPage();
+      if (ctx) p.once('close', () => { ctx.close().catch(() => { /* the browser is closing */ }); });
       await p.setViewport(vp.mobile ? { width: vp.width, height: vp.height, isMobile: true, hasTouch: true, deviceScaleFactor: vp.scale || 1 } : { width: vp.width, height: vp.height, deviceScaleFactor: vp.scale || 1 });
       return p;
     },

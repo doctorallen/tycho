@@ -53,6 +53,12 @@ export interface ClockOptions {
      * over from that moment. Without it the world is only ever run forward.
      */
     remake?: (t: number) => void;
+    /**
+     * Whether a game time behind the world's walks the world back (true, the
+     * default: Esper's time walk). False for a game with time walk off: a time
+     * behind the world's is left, and the world waits for the game to catch up.
+     */
+    back?: boolean;
     /** How close counts as the same moment (minutes; 1e-6). */
     eps?: number;
 }
@@ -84,6 +90,8 @@ export interface RestoreOptions {
     accept?: (saved: Stash) => boolean;
     /** Where to run a world that wasn't restored to (a new world runs to now). */
     now?: number;
+    /** Told when a saved world couldn't be read (it's started over all the same). */
+    onError?: (e: unknown) => void;
 }
 /**
  * Reads the minds back from the save into a world just made: true if they

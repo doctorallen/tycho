@@ -25,11 +25,11 @@ const minds = Tycho.minds.clock({
 minds.sync(); // 'off' (no world), 'same', 'ran' (forward, or back through time walk), 'remade'
 ```
 
-Back is Tyrell's `advanceTo`, which seeks through Esper. Without `remake` the world is only ever run forward (a game with time walk off).
+Back is Tyrell's `advanceTo`, which seeks through Esper. A game with time walk off passes `back: false`: a game time behind the world's is left, and the world waits for the game to catch up.
 
 ## Saving
 
-`stash(world, extra)` is what goes in the game's save: `{ tyrell: 'world', v, ...extra, s }`, the state itself (the save writes it out), with the game's own fields beside it. `restore(world, saved, { accept, now })` reads it back into a world just made, and returns whether it did: a save `accept` turns down (another population, say) or one Tyrell can't read leaves the new world, run to `now` if given.
+`stash(world, extra)` is what goes in the game's save: `{ tyrell: 'world', v, ...extra, s }`, the state itself (the save writes it out), with the game's own fields beside it. `restore(world, saved, { accept, now })` reads it back into a world just made, and returns whether it did: a save `accept` turns down (another population, say) or one Tyrell can't read (`onError` is told) leaves the new world, run to `now` if given.
 
 ```js
 Game.s.city = Tycho.minds.stash(w, { pop: CITY.pop });

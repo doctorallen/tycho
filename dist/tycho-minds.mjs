@@ -19,6 +19,7 @@ function clock(o) {
       const w = o.world();
       if (!w) return "off";
       const t = o.minutes();
+      if (o.back === false && t < w.now) return "same";
       if (o.remake && t < w.esper.earliest() - eps) {
         o.remake(t);
         return "remade";
@@ -42,6 +43,7 @@ function restore(world, saved, o = {}) {
       world.load(sv);
       loaded = true;
     } catch (e) {
+      if (o.onError) o.onError(e);
     }
   }
   if (!loaded && o.now !== void 0) world.advanceTo(o.now);

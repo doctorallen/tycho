@@ -72,6 +72,12 @@ export interface ClockOptions {
    * over from that moment. Without it the world is only ever run forward.
    */
   remake?: (t: number) => void;
+  /**
+   * Whether a game time behind the world's walks the world back (true, the
+   * default: Esper's time walk). False for a game with time walk off: a time
+   * behind the world's is left, and the world waits for the game to catch up.
+   */
+  back?: boolean;
   /** How close counts as the same moment (minutes; 1e-6). */
   eps?: number;
 }
@@ -90,6 +96,7 @@ export function clock(o: ClockOptions): { sync(): Synced } {
       const w = o.world();
       if (!w) return 'off';
       const t = o.minutes();
+      if (o.back === false && t < w.now) return 'same';
       if (o.remake && t < w.esper.earliest() - eps) { o.remake(t); return 'remade'; }
       if (Math.abs(t - w.now) > eps) { w.advanceTo(t); return 'ran'; }
       return 'same';
@@ -116,6 +123,8 @@ export interface RestoreOptions {
   accept?: (saved: Stash) => boolean;
   /** Where to run a world that wasn't restored to (a new world runs to now). */
   now?: number;
+  /** Told when a saved world couldn't be read (it's started over all the same). */
+  onError?: (e: unknown) => void;
 }
 /**
  * Reads the minds back from the save into a world just made: true if they
@@ -126,7 +135,7 @@ export function restore(world: WorldLike, saved: unknown, o: RestoreOptions = {}
   const sv = saved as Stash | null | undefined;
   let loaded = false;
   if (sv && typeof sv === 'object' && sv.s && (!o.accept || o.accept(sv))) {
-    try { world.load(sv); loaded = true; } catch (e) { /* an unreadable world: start it over */ }
+    try { world.load(sv); loaded = true; } catch (e) { if (o.onError) o.onError(e); /* an unreadable world: start it over */ }
   }
   if (!loaded && o.now !== undefined) world.advanceTo(o.now);
   return loaded;

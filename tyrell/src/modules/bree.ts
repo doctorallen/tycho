@@ -38,7 +38,7 @@
 // State is made with the first exchange or grudge (world.s.mod.bree), so a
 // world that declares nothing for it is exactly the world it was.
 import type { Module } from '../core/module';
-import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
+import type { ActionDef, Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, HOUR, Stream, clamp, hash01, round } from '../core/util';
 import { landing } from './landing';
@@ -191,6 +191,14 @@ export interface BreeConfig {
   // Striking up.
   /** The chance a meeting (two people doing something together) starts an exchange, before talk. Default 0.3. */
   strike: number;
+  /**
+   * Two people still together after an exchange between them is done (both
+   * free, at the same place) may strike up another this many minutes later,
+   * by the same chance, and every as many after while they stay together
+   * and nothing strikes: people sitting side by side talk on and off. 0:
+   * only when they meet. Default 0.
+   */
+  again: number;
   /** Nobody strikes up an exchange, joins one, or keeps one going while doing an action with one of these tags. Default ['sleep']. */
   quiet: string[];
   /** A kind that relieves a pressing need is more appealing: weight × (1 + relief × urgency × needPull), summed over its needs. Default 2. */
@@ -389,7 +397,7 @@ export interface BreeConfig {
 
 export const DEFAULT_BREE: BreeConfig = {
   warmth: 1, quarrels: 1, escalation: 1, grudges: 1, forgiveness: 1, talk: 1,
-  strike: 0.3, quiet: ['sleep'], needPull: 2,
+  strike: 0.3, again: 0, quiet: ['sleep'], needPull: 2,
   traits: { temper: 'trait.temper', warmth: 'trait.warmth', humor: 'trait.humor', patience: 'trait.patience', courage: 'trait.courage', forgiveness: 'trait.forgiveness', talkative: 'trait.talkative' },
   scale: [2, 0.75, -0.75, -1.75, -3], spread: 1.5,
   regardWeight: 2, compatWeight: 1, moodWeight: 1, stressWeight: 1, needWeight: 2, attractWeight: 3, grudgeWeight: 3,
@@ -501,6 +509,8 @@ interface Pair {
   /** When they last made up. */
   mended?: number;
   outcome?: Outcome;
+  /** When they may strike up again, if they're still together (config.again). */
+  again?: number;
 }
 
 /** A feud: between two people, or two groups (households, families, factions), both ways. */
@@ -560,6 +570,8 @@ interface State {
 }
 
 const pairKey = (a: Id, b: Id): string => (a < b ? a + '|' + b : b + '|' + a);
+/** Has an object any keys (without making a list of them)? */
+const hasKeys = (o: object): boolean => { for (const _ in o) return true; return false; };
 
 // ---------------------------------------------------------------------------
 // The starter set
@@ -664,7 +676,7 @@ export class Bree implements Module {
   witnesses: ((ex: ExchangeView, world: World) => Id[]) | null = null;
   private w!: World;
   /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
-  private foeCache: { st: State; key: string; list: Array<{ id: Id; a: number }> } | null = null;
+  private foeCache: { st: State; id: Id; now: number; seq: number; v: number; list: Array<{ id: Id; a: number }> } | null = null;
 
   constructor(cfg: Partial<BreeConfig> = {}) { this.config = { ...DEFAULT_BREE, ...cfg }; }
 
@@ -1342,7 +1354,7 @@ export class Bree implements Module {
     const row = this.st?.pairs[pairKey(l.id, s.id)]?.row;
     if (row !== undefined) add('row', -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
     const cs = w.cityspeak;
-    if (cs && place) add('room', c.roomWeight * (cs.room(place) - 0.5) * 2);
+    if (cs && place && c.roomWeight) add('room', c.roomWeight * (cs.room(place) - 0.5) * 2);
     const t = topic ? this.topics.get(topic) : undefined;
     if (t) add('topic', c.topicWeight * this.fitOf(t, l, s, subject));
     const m = manner ? this.manners.get(manner) : undefined;
@@ -1696,6 +1708,8 @@ export class Bree implements Module {
     if (ex.mediator) done.mediator = ex.mediator;
     st.recent.push(done);
     while (st.recent.length > Math.max(0, c.recent)) st.recent.shift();
+    // two still together may talk again later
+    if (c.again > 0 && why === 'done' && ex.who.length === 2 && ex.place) this.later(a, b, w.ring.root(ex.place));
     w.log('exchanged', a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
     w.emit('bree:end', { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
   }
@@ -1795,9 +1809,8 @@ export class Bree implements Module {
   /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
   private foes(p: PersonState): Array<{ id: Id; a: number }> {
     const st = this.st as State, w = this.w;
-    const key = `${p.id}@${w.s.now}@${w.s.seq}@${st.v}`;
     const hit = this.foeCache;
-    if (hit && hit.st === st && hit.key === key) return hit.list;
+    if (hit && hit.st === st && hit.id === p.id && hit.now === w.s.now && hit.seq === w.s.seq && hit.v === st.v) return hit.list;
     const ids = new Set<Id>(Object.keys(st.g[p.id] || {}));
     const fs = w.fellowship;
     for (const k of Object.keys(st.feuds)) {
@@ -1812,7 +1825,7 @@ export class Bree implements Module {
     const list: Array<{ id: Id; a: number }> = [];
     for (const id of [...ids].sort()) { if (id === p.id) continue; const a = this.animosity(p.id, id); if (a >= from) list.push({ id, a }); }
     list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
-    this.foeCache = { st, key, list };
+    this.foeCache = { st, id: p.id, now: w.s.now, seq: w.s.seq, v: st.v, list };
     return list;
   }
 
@@ -1823,7 +1836,7 @@ export class Bree implements Module {
    */
   consider(p: PersonState, cand: Candidate): Array<[string, number]> | void {
     const st = this.st;
-    if (!st || (!st.g[p.id] && !Object.keys(st.feuds).length)) return;
+    if (!st || (!st.g[p.id] && !hasKeys(st.feuds))) return;
     const foes = this.foes(p);
     if (!foes.length) return;
     const w = this.w, c = this.c;
@@ -1878,18 +1891,66 @@ export class Bree implements Module {
     if (pick) this.begin(pick.def.id, [s.id, o.id], 'meet', minutes);
   }
 
-  /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+  /**
+   * An action that interacts (its `interact`) begins its exchange with its
+   * target, over its length; with no target, with whoever there its
+   * `interactWith` finds (who leaves any exchange they're in for it).
+   */
   started(p: PersonState, d: Doing): void {
-    if (d.kind !== 'act' || !d.target) return;
-    const kind = this.w.actions.get(d.action)?.interact;
-    if (!kind || !this.kinds.has(kind) || this.exOf(p.id) || this.exOf(d.target)) return;
-    const o = this.w.s.people[d.target];
+    if (d.kind !== 'act') return;
+    const a = this.w.actions.get(d.action);
+    const found = !d.target && a?.interactWith && a.interact ? this.partner(p, a) : undefined;
+    const target = d.target ?? found;
+    if (!target) return;
+    const kind = a?.interact;
+    if (!kind || !this.kinds.has(kind) || this.exOf(p.id)) return;
+    // (whoever's serving breaks off to serve; someone aimed at already talking is left be)
+    const busy = this.exOf(target);
+    if (busy && !found) return;
+    const o = this.w.s.people[target];
     if (!this.free(o) || !p.place || this.w.ring.root(o.place as Id) !== this.w.ring.root(p.place)) return;
+    if (busy) this.finish(busy, 'interrupted');
     this.begin(kind, [p.id, o.id], 'action', d.end - this.w.s.now);
   }
 
-  /** The next turn of an exchange comes due. */
+  /** Who an action with no target interacts with: the first one at the place (by id) who is free and for whom its interactWith holds, someone not in an exchange before someone in one. */
+  private partner(p: PersonState, a: ActionDef): Id | undefined {
+    const w = this.w;
+    if (!p.place || !this.kinds.has(a.interact as Id)) return undefined;
+    const root = w.ring.root(p.place);
+    const fit = w.peek(() => w.ring.present(root).filter((id) => id !== p.id).sort().filter((id) =>
+      this.free(w.s.people[id]) && w.lang.all(a.interactWith, w.ctx(p, { target: id, place: p.place, action: a.id }))));
+    return fit.find((id) => !this.exOf(id)) ?? fit[0];
+  }
+
+  /** Two people who've talked may strike up again in config.again minutes, if they're still together then. */
+  private later(a: Id, b: Id, place: Id): void {
+    const pair = this.mut().pairs[pairKey(a, b)];
+    if (!pair) return;
+    // (one wait a pair: a later one supersedes it)
+    const t = (pair.again = round(this.w.s.now + Math.max(0.5, this.c.again), 4));
+    this.w.clock.schedule({ t, k: 'module', ref: this.name, data: { again: [a, b], place, t } });
+  }
+
+  /** Still together (free, at the same place, neither in an exchange) for a few minutes more: a meeting of Bree's own, or another wait. */
+  private again(a: Id, b: Id, place: Id, t: number): void {
+    const w = this.w, pa = w.s.people[a], pb = w.s.people[b];
+    const pair = this.st?.pairs[pairKey(a, b)];
+    if (!pair || pair.again !== t) return;
+    delete pair.again;
+    if (!this.free(pa) || !this.free(pb) || this.exOf(a) || this.exOf(b)) return;
+    if (w.ring.root(pa.place as Id) !== place || w.ring.root(pb.place as Id) !== place) return;
+    const minutes = Math.min(pa.doing?.end ?? Infinity, pb.doing?.end ?? Infinity) - w.s.now;
+    if (!(minutes >= w.cfg.meetMinutes)) return;
+    const before = this.mut().ids;
+    this.met(pa, pb, place, minutes);
+    if (this.mut().ids === before) this.later(a, b, place);
+  }
+
+  /** The next turn of an exchange comes due, or two who talked may talk again. */
   timer(item: QueueItem): void {
+    const again = item.data?.again;
+    if (Array.isArray(again)) { this.again(String(again[0]), String(again[1]), String(item.data?.place), Number(item.data?.t)); return; }
     const id = Number(item.data?.ex);
     const ex = this.st?.ex[id];
     if (!ex || ex.n !== Number(item.data?.n)) return;

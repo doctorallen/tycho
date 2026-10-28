@@ -91,6 +91,7 @@ Every field of `ActionDef`:
 | `wage` | number | none | Pay per hour, paid at the end by the place's owner (Ceres) |
 | `social` | string | none | A social act resolved with the target when it ends (Cityspeak) |
 | `interact` | string | none | An interaction (a Bree kind) begun with the target as it starts, its turns over the action's length |
+| `interactWith` | Cond[] | none | With no target, who `interact` begins with: the first one at the place (by id), free, for whom these hold (the candidate as the target), someone not in an exchange before someone in one, who breaks off from it |
 | `feels` | string[] | none | Feelings the person gets when it ends (Reverie) |
 | `deed` | string | none | A deed done to the target when it ends: the same path as `world.did` (Reverie, Fellowship) |
 | `crime` | string | none | Doing it is this crime: everyone at the place may witness it (Wormtongue) |

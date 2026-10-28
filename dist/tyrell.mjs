@@ -4974,6 +4974,8 @@ var Cityspeak = class {
     this.acts = /* @__PURE__ */ new Map();
     /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
     this.barkSaid = /* @__PURE__ */ new Map();
+    /** The lines by topic (indices, in the order declared), so choosing looks only at those that could fit; made again when lines are added. */
+    this.index = null;
     this.config = { ...DEFAULT_CITYSPEAK, ...cfg };
   }
   /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
@@ -5057,6 +5059,30 @@ var Cityspeak = class {
   choose(who, opts = {}) {
     return this.pick(who, opts)?.said ?? null;
   }
+  /** The indices of the lines that could answer a topic, in the order declared: its own, and (unless exact) those with no topic. */
+  linesFor(topic, exact) {
+    let ix = this.index;
+    if (!ix || ix.n !== this.lines.length) {
+      const by = /* @__PURE__ */ new Map(), none = [];
+      this.lines.forEach((l, i) => {
+        if (l.topic === void 0) {
+          none.push(i);
+          return;
+        }
+        const list = by.get(l.topic);
+        if (list) list.push(i);
+        else by.set(l.topic, [i]);
+      });
+      ix = this.index = { n: this.lines.length, by, none };
+    }
+    if (topic === void 0) return ix.none;
+    const own = ix.by.get(topic) ?? [];
+    if (exact || !ix.none.length) return own;
+    if (!own.length) return ix.none;
+    const out = [];
+    for (let a = 0, b = 0; a < own.length || b < ix.none.length; ) out.push(b >= ix.none.length || a < own.length && own[a] < ix.none[b] ? own[a++] : ix.none[b++]);
+    return out;
+  }
   /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
   pick(who, opts) {
     return this.w.peek(() => this.pickNow(who, opts));
@@ -5070,7 +5096,8 @@ var Cityspeak = class {
     let best = [];
     let bestSpec = -1;
     const all = opts.avoid ? [] : null;
-    this.lines.forEach((l, i) => {
+    const lines = this.lines;
+    const fits = (l, i) => {
       if (opts.topic !== void 0 && l.topic !== void 0 && l.topic !== opts.topic) return;
       if (opts.topic === void 0 && l.topic !== void 0) return;
       if (opts.exact && l.topic === void 0) return;
@@ -5104,7 +5131,8 @@ var Cityspeak = class {
         bestSpec = spec;
         best = [{ l, i }];
       } else if (spec === bestSpec) best.push({ l, i });
-    });
+    };
+    for (const i of this.linesFor(opts.topic, opts.exact)) fits(lines[i], i);
     if (!best.length) return null;
     if (all && opts.avoid) {
       const avoid = opts.avoid;
@@ -7781,6 +7809,7 @@ var DEFAULT_BREE = {
   forgiveness: 1,
   talk: 1,
   strike: 0.3,
+  again: 0,
   quiet: ["sleep"],
   needPull: 2,
   traits: { temper: "trait.temper", warmth: "trait.warmth", humor: "trait.humor", patience: "trait.patience", courage: "trait.courage", forgiveness: "trait.forgiveness", talkative: "trait.talkative" },
@@ -7891,6 +7920,10 @@ var BREE_FEELINGS = [
   { id: "comforted", label: "Someone was kind", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
 ];
 var pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+var hasKeys = (o) => {
+  for (const _ in o) return true;
+  return false;
+};
 function breeStarter(opts = {}) {
   const co = opts.company ?? "company", fun = opts.fun ?? "fun";
   const nature = (role, lo, hi) => ({ name: role, input: "nature." + role, out: [lo, hi] });
@@ -8830,7 +8863,7 @@ var Bree = class {
     const row = this.st?.pairs[pairKey(l.id, s.id)]?.row;
     if (row !== void 0) add("row", -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
     const cs = w.cityspeak;
-    if (cs && place) add("room", c.roomWeight * (cs.room(place) - 0.5) * 2);
+    if (cs && place && c.roomWeight) add("room", c.roomWeight * (cs.room(place) - 0.5) * 2);
     const t = topic ? this.topics.get(topic) : void 0;
     if (t) add("topic", c.topicWeight * this.fitOf(t, l, s, subject));
     const m = manner ? this.manners.get(manner) : void 0;
@@ -9219,6 +9252,7 @@ var Bree = class {
     if (ex.mediator) done.mediator = ex.mediator;
     st.recent.push(done);
     while (st.recent.length > Math.max(0, c.recent)) st.recent.shift();
+    if (c.again > 0 && why === "done" && ex.who.length === 2 && ex.place) this.later(a, b, w.ring.root(ex.place));
     w.log("exchanged", a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
     w.emit("bree:end", { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
   }
@@ -9313,9 +9347,8 @@ var Bree = class {
   /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
   foes(p) {
     const st = this.st, w = this.w;
-    const key2 = `${p.id}@${w.s.now}@${w.s.seq}@${st.v}`;
     const hit = this.foeCache;
-    if (hit && hit.st === st && hit.key === key2) return hit.list;
+    if (hit && hit.st === st && hit.id === p.id && hit.now === w.s.now && hit.seq === w.s.seq && hit.v === st.v) return hit.list;
     const ids = new Set(Object.keys(st.g[p.id] || {}));
     const fs = w.fellowship;
     for (const k of Object.keys(st.feuds)) {
@@ -9334,7 +9367,7 @@ var Bree = class {
       if (a >= from) list.push({ id, a });
     }
     list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
-    this.foeCache = { st, key: key2, list };
+    this.foeCache = { st, id: p.id, now: w.s.now, seq: w.s.seq, v: st.v, list };
     return list;
   }
   /**
@@ -9344,7 +9377,7 @@ var Bree = class {
    */
   consider(p, cand) {
     const st = this.st;
-    if (!st || !st.g[p.id] && !Object.keys(st.feuds).length) return;
+    if (!st || !st.g[p.id] && !hasKeys(st.feuds)) return;
     const foes = this.foes(p);
     if (!foes.length) return;
     const w = this.w, c = this.c;
@@ -9394,17 +9427,62 @@ var Bree = class {
     const pick = r.weighted(this.choices(s, o), (x) => x.weight);
     if (pick) this.begin(pick.def.id, [s.id, o.id], "meet", minutes);
   }
-  /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+  /**
+   * An action that interacts (its `interact`) begins its exchange with its
+   * target, over its length; with no target, with whoever there its
+   * `interactWith` finds (who leaves any exchange they're in for it).
+   */
   started(p, d) {
-    if (d.kind !== "act" || !d.target) return;
-    const kind = this.w.actions.get(d.action)?.interact;
-    if (!kind || !this.kinds.has(kind) || this.exOf(p.id) || this.exOf(d.target)) return;
-    const o = this.w.s.people[d.target];
+    if (d.kind !== "act") return;
+    const a = this.w.actions.get(d.action);
+    const found = !d.target && a?.interactWith && a.interact ? this.partner(p, a) : void 0;
+    const target = d.target ?? found;
+    if (!target) return;
+    const kind = a?.interact;
+    if (!kind || !this.kinds.has(kind) || this.exOf(p.id)) return;
+    const busy = this.exOf(target);
+    if (busy && !found) return;
+    const o = this.w.s.people[target];
     if (!this.free(o) || !p.place || this.w.ring.root(o.place) !== this.w.ring.root(p.place)) return;
+    if (busy) this.finish(busy, "interrupted");
     this.begin(kind, [p.id, o.id], "action", d.end - this.w.s.now);
   }
-  /** The next turn of an exchange comes due. */
+  /** Who an action with no target interacts with: the first one at the place (by id) who is free and for whom its interactWith holds, someone not in an exchange before someone in one. */
+  partner(p, a) {
+    const w = this.w;
+    if (!p.place || !this.kinds.has(a.interact)) return void 0;
+    const root = w.ring.root(p.place);
+    const fit = w.peek(() => w.ring.present(root).filter((id) => id !== p.id).sort().filter((id) => this.free(w.s.people[id]) && w.lang.all(a.interactWith, w.ctx(p, { target: id, place: p.place, action: a.id }))));
+    return fit.find((id) => !this.exOf(id)) ?? fit[0];
+  }
+  /** Two people who've talked may strike up again in config.again minutes, if they're still together then. */
+  later(a, b, place) {
+    const pair = this.mut().pairs[pairKey(a, b)];
+    if (!pair) return;
+    const t = pair.again = round(this.w.s.now + Math.max(0.5, this.c.again), 4);
+    this.w.clock.schedule({ t, k: "module", ref: this.name, data: { again: [a, b], place, t } });
+  }
+  /** Still together (free, at the same place, neither in an exchange) for a few minutes more: a meeting of Bree's own, or another wait. */
+  again(a, b, place, t) {
+    const w = this.w, pa = w.s.people[a], pb = w.s.people[b];
+    const pair = this.st?.pairs[pairKey(a, b)];
+    if (!pair || pair.again !== t) return;
+    delete pair.again;
+    if (!this.free(pa) || !this.free(pb) || this.exOf(a) || this.exOf(b)) return;
+    if (w.ring.root(pa.place) !== place || w.ring.root(pb.place) !== place) return;
+    const minutes = Math.min(pa.doing?.end ?? Infinity, pb.doing?.end ?? Infinity) - w.s.now;
+    if (!(minutes >= w.cfg.meetMinutes)) return;
+    const before = this.mut().ids;
+    this.met(pa, pb, place, minutes);
+    if (this.mut().ids === before) this.later(a, b, place);
+  }
+  /** The next turn of an exchange comes due, or two who talked may talk again. */
   timer(item) {
+    const again = item.data?.again;
+    if (Array.isArray(again)) {
+      this.again(String(again[0]), String(again[1]), String(item.data?.place), Number(item.data?.t));
+      return;
+    }
     const id = Number(item.data?.ex);
     const ex = this.st?.ex[id];
     if (!ex || ex.n !== Number(item.data?.n)) return;

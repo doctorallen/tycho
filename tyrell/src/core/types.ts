@@ -223,6 +223,14 @@ export interface ActionDef {
   social?: Id;
   /** An interaction (a Bree kind) begun with the target as it starts: a conversation over its length. */
   interact?: Id;
+  /**
+   * With no target, who an interaction is begun with: the first one at the
+   * place (by id) who is free and for whom these hold (the person, with the
+   * candidate as target), someone not in an exchange before someone in one,
+   * who leaves it: the clerk at a till breaks off to serve. Without it, an
+   * action with no target begins nothing.
+   */
+  interactWith?: Cond[];
   /** Feelings the person gets at the end (Reverie). */
   feels?: Id[];
   /** A deed recorded in the target's file on the person (Reverie, Fellowship): see world.deed(). */

@@ -384,6 +384,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `forgiveness` | 1 | **knob** How fast grudges fade, and how much an apology or making up takes off them |
 | `talk` | 1 | **knob** How often people strike up exchanges when they meet, and how many turns they talk for |
 | `strike` | 0.3 | The chance a meeting starts an exchange, before `talk`. Higher: a chattier town |
+| `again` | 0 | Two still together after an exchange between them is done may strike up another this many minutes later (by the same chance), and every as many after while they stay together: people sitting side by side talk on and off. 0: only when they meet |
 | `quiet` | `['sleep']` | Action tags during which nobody strikes up an exchange, joins one or keeps one going |
 | `needPull` | 2 | A kind that relieves a pressing need is more appealing: weight × (1 + relief × urgency × `needPull`) |
 | `traits` | each role's `trait.<role>` | The term each trait role is read from (`temper`, `warmth`, `humor`, `patience`, `courage`, `forgiveness`, `talkative`): map them to the game's own traits |

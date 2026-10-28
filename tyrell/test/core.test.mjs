@@ -368,7 +368,7 @@ test('timers call the game back', () => {
 
 test('strangers: the same passers-by from the seed, and one can be promoted', () => {
   const w = tiny({ start: 12 * HOUR });
-  w.strangers.define('main', { perHour: 6, errands: [{ from: 'park', to: 'cafe', action: 'eat', minutes: [10, 30] }], data: (r) => ({ coat: r.pick(['red', 'grey']) }) });
+  w.strangers.define('main', { perHour: 6, errands: [{ from: 'park', to: 'cafe', action: 'eat', minutes: [10, 30] }], data: (r) => ({ coat: r.pick(['red', 'gray']) }) });
   const a = w.strangers.at('main');
   const b = w.strangers.at('main');
   assert.ok(a.length > 0);

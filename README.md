@@ -8,7 +8,7 @@ It's TypeScript, built into plain JavaScript that a game loads with script tags:
 
 | File | Global | What it is |
 |---|---|---|
-| `dist/tycho.js` | `Tycho` | The engine: seeds, colors, the loop, and (as they move in) the renderer, the world, play systems and the shell |
+| `dist/tycho.js` | `Tycho` | The engine: seeds, colors and the loop; the renderer, sprites, painting and effects; grids, collision, movers and paths; controls, items and guides; saving, the installable app, dev flags, loading, sound, the minds inspector and the interface kit |
 | `dist/tyrell.js` | `Tyrell` | The minds engine: people with needs, routines, plans, feelings, memories and relationships, with time walk. See [tyrell/README.md](tyrell/README.md) |
 | `dist/tycho-minds.js` | `TychoMinds` (and `Tycho.minds`) | The bridge between them: Tyrell's clock from the game's, the minds in the save, seats, travel times, who might be on screen, who saw what. See [docs/minds.md](docs/minds.md) |
 
@@ -55,7 +55,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Play | `input` (the controls: a stick, buttons and keys holding actions, presses taken once, edges, a test's bot, blocking and the tap guard; drag, pinch and tap for maps), `items` (bags by count, things of their own, slots, gear, counted views), `guide` (a tutorial's steps); then interact, craft, trade, build, mine | Partly in |
 | Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell), `ui` (toasts, lines rising over the world, buttons wired by data attributes, a screen's acts); then hud, map | Partly in |
 
-The move is planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and recorded in [docs/move.md](docs/move.md). [docs/](docs/README.md) has a page for each part that's in.
+The move of the three games onto Tycho was planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and is recorded in [docs/move.md](docs/move.md), with what's next. [docs/](docs/README.md) has a page for each part that's in.
 
 Two rules hold everywhere:
 

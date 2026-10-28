@@ -1,6 +1,6 @@
 # Moving the games onto Tycho
 
-The record of the move planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu): what moved in each phase, what changed in each game, and what's left. Each game does the work on a branch named `tycho` and keeps passing its own tests; the branches merge into `main` together when the move is done.
+The record of the move planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu): what moved in each phase, what changed in each game, and what's left. Each game did the work on a branch named `tycho`, kept passing its own tests, and the branches merged into `main` together when the move was done (October 2026). What's left for later is at the end.
 
 | Phase | What moves | State |
 |---|---|---|
@@ -13,8 +13,8 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 | 6 | Play: input, interact, items, craft, trade, build, mine, guide | input, items and guide in, the White Dragon and Lodestar on them, Merryfolk on its controls and bag; interact, craft, trade, build, mine to come |
 | 7 | The rest of the shell: ui, hud, map, audio, inspect | audio, inspect and ui in, the games on them; hud and map stay the games' |
 | 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production; every number a setting | Done; the White Dragon talks on Voice |
-| 9 | Merryfolk's minds onto Tyrell | |
-| 10 | The bridge | In: the White Dragon uses it |
+| 9 | Merryfolk's minds onto Tyrell | Done, compared before and after (Merryfolk's `test/minds.md`) |
+| 10 | The bridge | Done: the White Dragon and Merryfolk on it |
 
 ## Phase 0: the repository
 
@@ -97,7 +97,19 @@ Left in the games, for now: the figures (the White Dragon's `person`, whose mach
 - The White Dragon's talk moved onto Voice (`js/talk.js`): what's theirs raised first (what they saw, what they heard, a job, a hand-back, a lead), then subjects, each answer with an approach that lands well or badly by the listener. The smoke test takes Ozzy's job through it.
 - Every number that shapes the minds is a setting the game can change (175 of them, [tuning.md](../tyrell/docs/tuning.md)): each module's config, and the core's, with plain headline knobs that scale a whole behavior (`friendship`, `romance`, `breaks`, `forgetting`, `gossip`, `reporting`, `chatter`, `courtship`, `births`, `contagion`...), each 1 by default and exact at 1, so a world that sets nothing is byte for byte what it was (Rocinante's week, Voight-Kampff, Merryfolk's minds and the White Dragon's smoke run all unchanged). A person's definition can carry their own headline knobs (`tune`), and `world.tune(module, values, person?)` changes settings in play as a recorded input, kept in the state, so time walk replays it and a save keeps it.
 
+## Phase 9: Merryfolk's minds
+
+- Merryfolk's villagers run on Tyrell (`js/shell.js`, its shell): needs (Bicameral, each villager's rates from genes, age, trade, illness, ale and the season), the choice (every reason the old score gave reaches it through the game's module), genes (Delos), births, couples and parents (Cradle), skills, work rounds (Mentat), the Common Store (Ceres), feelings and memories (Reverie), regard and friendships (Fellowship), chance (Tyrell's streams), the wizard's talks (Voice). The game's old fields are views over Tyrell's state. Space stays the game's, and so do imitation, the body (ale, germs, toxins), breaks, wishes and pastimes; time walk is off.
+- Compared before and after (`node test/season.js`, `test/minds.md`): folk are hardly ever famished now (an urgent need breaks in), happier, break far less and make more in about the same hours. The first move had friendships form more slowly; a second look found most of the gap was seed-to-seed noise and the rest habits learned by Tyrell's rule rather than the game's: the game's rule is back (through `reward`, Tyrell's own learning off by its `habits` setting), and a year's friendships, weddings and births are at or above the old village's again. Over six seeds without the wizard there's still about a fifth less time in company, because needs sit lower all day.
+- About twice as slow at first; a fifth of that back (the shell's views cached, and each moment thought over once, `checksOnce`).
+
 ## Phase 10: the bridge
 
 - `dist/tycho-minds.js` (`Tycho.minds`, [minds.md](minds.md)): the clock (the game's time driving Tyrell's, back through time walk, remade past what Esper remembers), the minds in the save, seats, presence (who might be in a level, once per doing), travel times, witnesses and reports. It takes only shapes from Tyrell, so it builds and tests on its own.
 - The White Dragon's `city.js` uses all of it; what stayed in the game is its own: the census, routines, the route on screen, the reactions' words.
+
+## After the move
+
+- Interactions between people as a Tyrell module, next: exchanges that land from warm to a row, words that turn into arguments and fights, grudges and feuds that last and fade, making up, and conversations over turns on topics from what's true for both; Merryfolk's natters and quarrels and the White Dragon's greetings and small talk move onto it.
+- Parts planned for the games to come (a Terraria-like crafting game): gen, liquid and tilelight in the world; interact, craft, trade, build and mine in play; a big world's chunks let go of and made again, and its changes saved.
+- What stays in each game by design: figures, ambient life and skylines; Lodestar's painted rock; the HUDs and maps; Merryfolk's pointer gestures, particles and the villagers' outline; the White Dragon's routes for its residents.

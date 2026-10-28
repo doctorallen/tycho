@@ -78,7 +78,7 @@ A pipeline of stages the game lists in order. A stage takes the blow and the bod
 
 ```js
 const hit = new Tycho.harm.Pipeline([
-  Tycho.harm.resist({ of: natureMult }),        // weak, resistant or neither, by kind
+  Tycho.harm.resist({ of: elementMult }),       // weak, resistant or neither, by kind
   Tycho.harm.armor({ k: T.items.armorK }),      // k / (k + armor)
   Tycho.harm.soak('ward', { gone: wardGone }),  // a shield takes it first
   affixStage,                                   // the game's own: a shell, thorns, a chain

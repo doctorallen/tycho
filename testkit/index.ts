@@ -41,6 +41,25 @@ export function chromePath(): string | null {
   return null;
 }
 
+// A Playwright page that also takes the puppeteer-style calls the games'
+// tests were written with: evaluate with several arguments,
+// waitForFunction(fn, options, ...args), evaluateOnNewDocument, and
+// setViewport for the size alone.
+function puppeteerish(p: Page): Page {
+  const evaluate = p.evaluate.bind(p), waitForFunction = p.waitForFunction.bind(p);
+  const pack = (fn: unknown, args: unknown[]) => (args.length <= 1 || typeof fn !== 'function'
+    ? [fn, ...args]
+    : [({ s, a }: { s: string; a: unknown[] }) => (0, eval)('(' + s + ')')(...a), { s: (fn as () => unknown).toString(), a: args }]);
+  p.evaluate = (fn: unknown, ...args: unknown[]) => evaluate(...pack(fn, args));
+  p.waitForFunction = (fn: unknown, o?: { timeout?: number; polling?: number | string }, ...args: unknown[]) => {
+    const [f, a] = pack(fn, args);
+    return waitForFunction(f, a, { timeout: o && o.timeout, polling: o && typeof o.polling === 'number' ? o.polling : undefined });
+  };
+  if (!p.evaluateOnNewDocument) p.evaluateOnNewDocument = (fn: unknown, ...args: unknown[]) => p.addInitScript(...pack(fn, args));
+  if (!p.setViewport) p.setViewport = (vp: { width: number; height: number }) => p.setViewportSize({ width: vp.width, height: vp.height });
+  return p;
+}
+
 export interface Kit {
   driver: 'playwright' | 'puppeteer';
   browser: Browser;
@@ -66,7 +85,7 @@ export async function launch(o: { gl?: boolean; args?: string[]; driver?: 'playw
     const browser = await chromium.launch({ args, executablePath: process.env.CHROME || undefined });
     return {
       driver, browser,
-      page: async (vp = DESKTOP) => browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale || 1, isMobile: !!vp.mobile, hasTouch: !!vp.mobile }),
+      page: async (vp = DESKTOP) => puppeteerish(await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale || 1, isMobile: !!vp.mobile, hasTouch: !!vp.mobile })),
       close: () => browser.close(),
     };
   }

@@ -73,6 +73,18 @@ function chromePath() {
   for (const p of ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"]) if (fs.existsSync(p)) return p;
   return null;
 }
+function puppeteerish(p) {
+  const evaluate = p.evaluate.bind(p), waitForFunction = p.waitForFunction.bind(p);
+  const pack = (fn, args) => args.length <= 1 || typeof fn !== "function" ? [fn, ...args] : [({ s, a }) => (0, eval)("(" + s + ")")(...a), { s: fn.toString(), a: args }];
+  p.evaluate = (fn, ...args) => evaluate(...pack(fn, args));
+  p.waitForFunction = (fn, o, ...args) => {
+    const [f, a] = pack(fn, args);
+    return waitForFunction(f, a, { timeout: o && o.timeout, polling: o && typeof o.polling === "number" ? o.polling : void 0 });
+  };
+  if (!p.evaluateOnNewDocument) p.evaluateOnNewDocument = (fn, ...args) => p.addInitScript(...pack(fn, args));
+  if (!p.setViewport) p.setViewport = (vp) => p.setViewportSize({ width: vp.width, height: vp.height });
+  return p;
+}
 async function launch(o = {}) {
   const args = ["--allow-file-access-from-files", "--no-sandbox", "--autoplay-policy=no-user-gesture-required"].concat(o.gl ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] : ["--disable-gpu"], o.args || []);
   const pp = find("puppeteer-core"), pw = find("playwright");
@@ -85,7 +97,7 @@ async function launch(o = {}) {
     return {
       driver,
       browser: browser2,
-      page: async (vp = DESKTOP) => browser2.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale || 1, isMobile: !!vp.mobile, hasTouch: !!vp.mobile }),
+      page: async (vp = DESKTOP) => puppeteerish(await browser2.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale || 1, isMobile: !!vp.mobile, hasTouch: !!vp.mobile })),
       close: () => browser2.close()
     };
   }

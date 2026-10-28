@@ -144,6 +144,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `habitFast` | 0.25 | How fast the fast habit weight learns from how a go turned out |
 | `habitSlow` | 0.05 | How fast the slow weight follows the fast one |
+| `habitDrift` | 0.02 | How far the fast weight is pulled back toward 1 each time it learns. Higher: habits fade sooner; 0 with `habitFast` and `habitSlow` 0 leaves only the game's rewards to move them |
 | `habitMin` | 0.25 | Lowest habit weight |
 | `habitMax` | 4 | Highest habit weight |
 | `compensate` | true | Compensate considerations for their number (IAUS) |
@@ -167,7 +168,6 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `liftRelief` | 0.3 | An urgent need lifts an option's rank only if it relieves at least this much. Lower: smaller things break routines |
 | `desperate` | 0.97 | A need this high (or its `urgent`, if higher) is desperate: it lifts options above work |
 | `desperateSlope` | 10 | Rank added per point of level past `desperate`, so the starving wake the exhausted |
-| `habitDrift` | 0.02 | Each go pulls a habit back toward neutral by this share. Higher: habits fade sooner |
 | `habitBest` | 2 | A go counts as at most this many times as good as expected when habits learn |
 | `habitDone` | 0.2 | The share of a go that must be done for habits to learn from it |
 | `nudgeSlow` | 0.25 | The share of a reward (`world.reward`) that reaches the slow habit |

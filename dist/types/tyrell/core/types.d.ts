@@ -624,6 +624,8 @@ export interface Config {
     /** Habit learning rates and bounds. */
     habitFast: number;
     habitSlow: number;
+    /** How far the fast habit weight is pulled back toward 1 each time it learns. Default 0.02. */
+    habitDrift: number;
     habitMin: number;
     habitMax: number;
     /** Compensate for the number of considerations (IAUS). Default true. */
@@ -665,8 +667,6 @@ export interface Config {
     desperate: number;
     /** Rank added per point of level past desperate (so starving wakes the exhausted). Default 10. */
     desperateSlope: number;
-    /** Each go pulls a habit back toward neutral by this share of the way. Higher: habits fade sooner. Default 0.02. */
-    habitDrift: number;
     /** A go counts as at most this many times as good as expected when habits learn. Default 2. */
     habitBest: number;
     /** The share of a go that must be done for habits to learn from it. Default 0.2. */

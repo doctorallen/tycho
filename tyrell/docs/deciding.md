@@ -343,9 +343,9 @@ A plan that was set aside for something urgent is picked up again at the next de
 
 ## Habits and rewards
 
-Each person keeps a habit weight per action, two numbers (fast and slow) whose average multiplies the action's weight. Everyone starts at 1.
+Each person keeps a habit weight per action, two numbers (fast and slow) whose average multiplies the action's weight. Everyone starts at 1. How fast they move is config (below, and [Tuning](tuning.md#core)): `habitFast`, `habitSlow` and `habitDrift`, all three scaled by the headline knob `habits` (0 freezes habits; a person's `tune` has their own), with `habitDone` (the share of a go that must be done, 20%), `habitBest` (the most a go counts as, twice as good as expected) and `nudgeSlow` (a reward's share for the slow weight, a quarter).
 
-After an action ends with more than `config.habitDone` (20%) of it done, the habit learns from how it went: the relief actually got (each need weighted by its urgency) against the relief expected (counted as at most `habitBest`, twice as good). Better than expected nudges the fast weight up (by `habitFast`), worse nudges it down; the fast weight is pulled slowly back toward 1 (`habitDrift`), and the slow weight follows the fast one (`habitSlow`). Both stay between `habitMin` (0.25) and `habitMax` (4). The headline knob `config.habits` scales all three paces (0 freezes habits), for everyone or, in a person's `tune`, for them.
+After an action ends with more than 20% of it done, the habit learns from how it went: the relief actually got (each need weighted by its urgency) against the relief expected. Better than expected nudges the fast weight up, worse nudges it down; the fast weight is pulled slowly back toward 1 (`habitDrift`), and the slow weight follows the fast one. Both stay between `habitMin` (0.25) and `habitMax` (4).
 
 The game can reward or discourage a choice directly. This is an input, so it's recorded:
 
@@ -354,7 +354,7 @@ world.reward('kofi', 'chat', 0.3);    // he enjoyed that: more likely to chat
 world.reward('sam', 'steal_food', -0.5);
 ```
 
-`reward` adds the amount to the fast weight and a quarter of it to the slow one. With Fellowship, people also pick up a little of the habits of people they like when they spend time together.
+`reward` adds the amount to the fast weight and a quarter of it to the slow one. With Fellowship, people also pick up a little of the habits of people they like when they spend time together. A game that learns in its own way (Merryfolk's folk learn to love what relieved a lot) sets `habitFast`, `habitSlow` and `habitDrift` to 0, and its rewards are then the only thing that moves a habit.
 
 ### Instincts
 
@@ -471,6 +471,7 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `habitFast` | 0.25 | Learning rate of the fast habit weight |
 | `habitSlow` | 0.05 | How fast the slow weight follows the fast one |
+| `habitDrift` | 0.02 | How far the fast weight is pulled back toward 1 each time it learns |
 | `habitMin` | 0.25 | Lowest habit weight |
 | `habitMax` | 4 | Highest habit weight |
 | `compensate` | true | Compensate considerations for their number (IAUS) |
@@ -493,7 +494,7 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `reliefFloor` | 0.05 | Relief counts as at most the need's level, but at least this |
 | `liftRelief` | 0.3 | Relief an option needs to give for an urgent need to lift it |
 | `desperate`, `desperateSlope` | 0.97, 10 | Where a need turns desperate, and the rank a point past it adds |
-| `habitDrift`, `habitBest`, `habitDone`, `nudgeSlow` | 0.02, 2, 0.2, 0.25 | Habits: the pull back to neutral, the best a go counts as, the share done to learn, a reward's share to the slow weight |
+| `habitBest`, `habitDone`, `nudgeSlow` | 2, 0.2, 0.25 | Habits: the best a go counts as, the share done to learn, a reward's share to the slow weight |
 | `pallFrom`, `pallDone` | 0.05, 0.2 | Pastimes: the tolerance they start to pall at, the share done to count |
 | `repeatWindow` | 90 | Minutes `did it last` lasts |
 | `targets` | 6 | Most people an aimed action is weighed against |

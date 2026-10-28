@@ -57,7 +57,26 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `moduleConfig` | | Settings by module name: `{ reverie: {...}, fellowship: {...}, cityspeak: {...}, ... }`. Every module takes some: each one's are in [Tuning](tuning.md#every-setting) |
 | `extra` | | Your own modules, added after the built-in ones |
 
-`Config` (all optional; see [Deciding: config](deciding.md#config) for what each does, and [Tuning](tuning.md#core) for every field with its meaning):
+`Config` (all optional; see [Deciding: config](deciding.md#config) for what each does, and [Tuning](tuning.md#core) for every field with its meaning). The headline knobs (plain multipliers, 1 changing nothing) and the finer numbers of the minds:
+
+| Field | Default | | Field | Default |
+|---|---|---|---|---|
+| `needs` | 1 (knob) | | `traitDefault` | 0.5 |
+| `habits` | 1 (knob) | | `needStart` | 0.2 |
+| `learning` | 1 (knob) | | `needCurve` | `'pow1.5'` |
+| `wishes` | 1 (knob) | | `reliefFloor` | 0.05 |
+| `crowds` | 1 (knob) | | `liftRelief` | 0.3 |
+| `storyRank` | 3 | | `desperate` | 0.97 |
+| `jobRank` | 2 | | `desperateSlope` | 10 |
+| `routineRank` | 1 | | `habitBest` | 2 |
+| `habitDone` | 0.2 | | `nudgeSlow` | 0.25 |
+| `pallFrom` | 0.05 | | `pallDone` | 0.2 |
+| `repeatWindow` | 90 | | `targets` | 6 |
+| `meetMax` | 3 | | `meetMinutes` | 3 |
+| `awayNeeds` | 0.4 | | `skillRate` | 0.02 |
+| `skillGrace` | 3 | | | |
+
+The decision settings, habits, pastimes and wishes:
 
 | Field | Default | | Field | Default |
 |---|---|---|---|---|
@@ -66,30 +85,17 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `urgent` | 0.85 | | `idle` | 20 |
 | `urgentRank` | 1.5 | | `backoff` | 15 |
 | `desperateRank` | 2.5 | | `budgetMs` | 4 |
-| `storyRank` | 3 | | `jobRank` | 2 |
-| `routineRank` | 1 | | `logSize` | 1000 |
-| `cut` | 0.25 | | `decisions` | 12 |
-| `top` | 3 | | `habitFast` | 0.25 |
-| `power` | 2 | | `habitSlow` | 0.05 |
-| `inertia` | 1.15 | | `habitMin` | 0.25 |
-| `repeat` | 0.75 | | `habitMax` | 4 |
-| `compensate` | true | | `wishMax` | 2 |
-| `pallGain` | 0.35 | | `wishHours` | `[8, 13, 17]` |
-| `pallDecay` | 0.08 | | `wishChance` | 0.5 |
-| `pallPenalty` | 0.6 | | `wishMinutes` | 2160 |
-| `wishPull` | 1.35 | | `traitDefault` | 0.5 |
-| `needs` | 1 (knob) | | `needStart` | 0.2 |
-| `habits` | 1 (knob) | | `needCurve` | `'pow1.5'` |
-| `learning` | 1 (knob) | | `reliefFloor` | 0.05 |
-| `wishes` | 1 (knob) | | `liftRelief` | 0.3 |
-| `crowds` | 1 (knob) | | `desperate` | 0.97 |
-| `desperateSlope` | 10 | | `habitDrift` | 0.02 |
-| `habitBest` | 2 | | `habitDone` | 0.2 |
-| `nudgeSlow` | 0.25 | | `pallFrom` | 0.05 |
-| `pallDone` | 0.2 | | `repeatWindow` | 90 |
-| `targets` | 6 | | `meetMax` | 3 |
-| `meetMinutes` | 3 | | `awayNeeds` | 0.4 |
-| `skillRate` | 0.02 | | `skillGrace` | 3 |
+| `cut` | 0.25 | | `logSize` | 1000 |
+| `top` | 3 | | `decisions` | 12 |
+| `power` | 2 | | `habitFast` | 0.25 |
+| `inertia` | 1.15 | | `habitSlow` | 0.05 |
+| `repeat` | 0.75 | | `habitMin` | 0.25 |
+| `compensate` | true | | `habitMax` | 4 |
+| `pallGain` | 0.35 | | `wishMax` | 2 |
+| `pallDecay` | 0.08 | | `wishHours` | `[8, 13, 17]` |
+| `pallPenalty` | 0.6 | | `wishChance` | 0.5 |
+| `wishMinutes` | 2160 | | `wishPull` | 1.35 |
+| `habitDrift` | 0.02 | | | |
 
 `EsperConfig` (see [Time](time.md#esperconfig-and-memory)):
 

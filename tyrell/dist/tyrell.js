@@ -3623,13 +3623,11 @@ var Tyrell = (() => {
       });
       L.effect("fame", (c, a, op, v) => {
         const [g, s] = a.split(".");
-        this.applyStanding(g, s || "player", (op === "-=" ? -1 : 1) * Number(v), 0);
-        void c;
+        this.applyStanding(g, s || c.person?.id || "player", (op === "-=" ? -1 : 1) * Number(v), 0);
       });
       L.effect("infamy", (c, a, op, v) => {
         const [g, s] = a.split(".");
-        this.applyStanding(g, s || "player", 0, (op === "-=" ? -1 : 1) * Number(v));
-        void c;
+        this.applyStanding(g, s || c.person?.id || "player", 0, (op === "-=" ? -1 : 1) * Number(v));
       });
       w.defineInput("regard", (a, b, by, why) => this.applyRegard(a, b, by, why ?? void 0));
       w.defineInput("attraction", (a, b, by) => this.applyAttraction(a, b, by));

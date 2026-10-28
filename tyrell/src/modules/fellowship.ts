@@ -96,8 +96,9 @@ export class Fellowship implements Module {
       const cur = this.record(c.person.id, o);
       cur.r = round(clamp(op === '=' ? Number(v) : cur.r + (op === '-=' ? -1 : 1) * Number(v), -1, 1), 4);
     });
-    L.effect('fame', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || 'player', (op === '-=' ? -1 : 1) * Number(v), 0); void c; });
-    L.effect('infamy', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || 'player', 0, (op === '-=' ? -1 : 1) * Number(v)); void c; });
+    // without a subject, standing is the person's (the player's with nobody), in effects as in terms
+    L.effect('fame', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || c.person?.id || 'player', (op === '-=' ? -1 : 1) * Number(v), 0); });
+    L.effect('infamy', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || c.person?.id || 'player', 0, (op === '-=' ? -1 : 1) * Number(v)); });
     w.defineInput('regard', (a: Id, b: Id, by: number, why: string | null) => this.applyRegard(a, b, by, why ?? undefined));
     w.defineInput('attraction', (a: Id, b: Id, by: number) => this.applyAttraction(a, b, by));
     w.defineInput('sentiment', (a: Id, b: Id, label: string, by: number, minutes: number | null) => this.applySentiment(a, b, label, by, minutes ?? undefined));

@@ -222,7 +222,7 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `forget:<key>` | Reverie | Drops a belief |
 | `remember:<kind>` | Reverie | A memory of that kind, at the context's place, about the target |
 | `regard+=n`, `regard-=n`, `regard=n` | Fellowship | The person's regard for the target (or `regard:<id>`), clamped to -1..1 |
-| `fame:<group>.<subject>+=n` | Fellowship | Standing; `-=` lowers it, any other operator adds. Without `.subject` it's `'player'` (unlike the term, which defaults to the person) |
+| `fame:<group>.<subject>+=n` | Fellowship | Standing; `-=` lowers it, any other operator adds. Without `.subject`, the person (or `'player'` with no person), as for the term |
 | `infamy:<group>.<subject>+=n` | Fellowship | The same for infamy |
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
 

@@ -136,7 +136,7 @@ In `world.s.mod.fellowship`:
 
 Terms: `regard`, `attraction`, `compat`, `friend`, `foe` (each toward the target, or `:<id>`), `member:<group>`, `partner` / `partner:<id>`, `fame:<group>.<subject>`, `infamy:<group>.<subject>`.
 
-Effects: `regard+=n` / `regard:<id>+=n` / `regard=n`, `fame:<group>.<subject>+=n`, `infamy:<group>.<subject>+=n`. In effects, `fame` and `infamy` without a subject change the player's standing; in conditions, they read the person's own.
+Effects: `regard+=n` / `regard:<id>+=n` / `regard=n`, `fame:<group>.<subject>+=n`, `infamy:<group>.<subject>+=n`. Without a subject, `fame` and `infamy` mean the context's person (the player when there's none), in effects and conditions alike: an action's `then: ['fame:watch+=0.1']` raises the doer's standing. Name the player to change theirs: `fame:watch.player+=0.1`.
 
 See [Conditions](../conditions.md#fellowship).
 

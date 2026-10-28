@@ -144,6 +144,17 @@ test('standing: fame and infamy apart, with a label', () => {
   assert.ok(w.lang.test('infamy:watch.player>0.5', w.ctx()));
 });
 
+test('fame and infamy without a subject mean the person, in effects as in conditions', () => {
+  const w = rocinante();
+  const ctx = w.ctx(w.get('ruth'));
+  w.lang.apply('fame:watch+=0.3', ctx);
+  assert.equal(w.fellowship.standing('watch', 'ruth').fame, 0.3);
+  assert.ok(w.lang.test('fame:watch>0.2', ctx));
+  assert.equal(w.fellowship.standing('watch', 'player').fame, 0);
+  w.lang.apply('infamy:watch.player+=0.2', ctx);
+  assert.equal(w.fellowship.standing('watch', 'player').infamy, 0.2);
+});
+
 test('groups and households: members by definition and by joining', () => {
   const w = rocinante();
   assert.deepEqual(w.fellowship.members('h_okafor').sort(), ['mara', 'pip', 'tomas']);

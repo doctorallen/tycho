@@ -30,8 +30,8 @@
   w.need({ id: 'hygiene', rise: 0.03, start: 0.2, urgent: 1.1 });
 
   // ---- places ---------------------------------------------------------------
-  const flats = ['flat_1', 'flat_2', 'flat_3', 'flat_4', 'flat_5'];
-  for (const f of flats) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'flat_1' ? 3 : 2, shower: 1 } });
+  const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
+  for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
   w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30 }, restock: { bread: [10, 3] } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
   w.place({ id: 'bar', name: 'The Belt', tags: ['social', 'drink'], region: 'main', hours: [17, 2], slots: { stool: 6, bar: 1 }, owner: 'ines' });
@@ -39,7 +39,7 @@
   w.place({ id: 'workshop', name: 'Tomas\'s Workshop', tags: ['work', 'repairs'], region: 'river', hours: [8, 18], slots: { bench: 2 }, owner: 'tomas' });
   w.place({ id: 'clinic', name: 'The Clinic', tags: ['care'], region: 'river', hours: [9, 17], slots: { desk: 1, chair: 3 } });
   w.place({ id: 'station', name: 'Tram Station', tags: ['edge'], region: 'main' });
-  for (const f of flats) { w.link(f, 'park', 6); w.link(f, 'cafe', 8); }
+  for (const f of apartments) { w.link(f, 'park', 6); w.link(f, 'cafe', 8); }
   w.link('park', 'cafe', 3); w.link('cafe', 'market', 2); w.link('market', 'bar', 3); w.link('cafe', 'bar', 4);
   w.link('park', 'workshop', 9); w.link('workshop', 'clinic', 3); w.link('station', 'cafe', 5);
 
@@ -96,36 +96,36 @@
   // a routine names what's expected and when; [hour, null, '*'] is free time
   const sleepNight = [[7, null, '*'], [23, 'home', 'sleep']];
   w.person('mara', {
-    name: 'Mara', home: 'flat_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
+    name: 'Mara', home: 'apt_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
     traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6 }, values: { honesty: 0.8, family: 0.9 },
     job: { id: 'baker', place: 'cafe', action: 'bake', shifts: [[6, 14]], wage: 0 },
     routine: [[5.5, 'home', 'shower'], [6, null, '*'], [14.25, 'market', 'buy_food'], [14.5, null, '*'], [22, 'home', 'sleep']],
   });
   w.person('tomas', {
-    name: 'Tomas', home: 'flat_1', groups: ['h_okafor'], vars: { money: 60 },
+    name: 'Tomas', home: 'apt_1', groups: ['h_okafor'], vars: { money: 60 },
     traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7 }, values: { honesty: 0.6, craft: 0.9 },
     job: { id: 'mechanic', place: 'workshop', action: 'fix', shifts: [[8, 17]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: [[7, null, '*'], [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('pip', {
-    name: 'Pip', home: 'flat_1', groups: ['h_okafor'], born: -9 * 365 * DAY, tags: ['child'],
+    name: 'Pip', home: 'apt_1', groups: ['h_okafor'], born: -9 * 365 * DAY, tags: ['child'],
     traits: { talkative: 0.8, courage: 0.4, honesty: 0.7 },
     routine: [[7, 'home', '*'], [10, 'park', 'sit_park'], [11, null, '*'], [15, 'park', 'walk'], [16, null, '*'], [20.5, 'home', 'sleep']],
   });
   w.person('ines', {
-    name: 'Ines', home: 'flat_2', groups: ['regulars'], vars: { money: 80 },
+    name: 'Ines', home: 'apt_2', groups: ['regulars'], vars: { money: 80 },
     traits: { thrift: 0.3, honesty: 0.6, talkative: 0.9, courage: 0.8 }, values: { honesty: 0.4 },
     job: { id: 'bartender', place: 'bar', action: 'serve', shifts: [[17, 1]], wage: 9 },
     routine: [[2, 'home', 'sleep'], [10, null, '*']],
   });
   w.person('dev', {
-    name: 'Dev', home: 'flat_3', vars: { money: 90 },
+    name: 'Dev', home: 'apt_3', vars: { money: 90 },
     traits: { thrift: 0.8, honesty: 0.7, talkative: 0.5, greed: 0.6 }, values: { honesty: 0.5 },
     job: { id: 'grocer', place: 'market', action: 'sell', shifts: [[8, 16]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: sleepNight,
   });
   w.person('ruth', {
-    name: 'Ruth', home: 'flat_4', vars: { money: 100 }, inv: { broken_radio: 1 },
+    name: 'Ruth', home: 'apt_4', vars: { money: 100 }, inv: { broken_radio: 1 },
     traits: { thrift: 0.7, honesty: 0.9, talkative: 0.8, memory: 0.5 }, values: { honesty: 0.9, faith: 0.7 },
     routine: [
       { days: [6], plan: [[8, null, '*'], [11, 'park', 'sit_park'], [12, null, '*'], [22, 'home', 'sleep']] },
@@ -134,21 +134,21 @@
     ],
   });
   w.person('kofi', {
-    name: 'Kofi', home: 'flat_5', vars: { money: 25 },
+    name: 'Kofi', home: 'apt_5', vars: { money: 25 },
     traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5 }, values: { honesty: 0.5 },
   });
   w.person('lena', {
-    name: 'Lena', home: 'flat_5', vars: { money: 150 }, groups: ['regulars'],
+    name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],
     traits: { thrift: 0.5, honesty: 0.9, talkative: 0.4, courage: 0.6 }, values: { honesty: 0.8 },
     job: { id: 'doctor', place: 'clinic', action: 'treat', shifts: [[9, 17]], days: [0, 1, 2, 3, 4], wage: 20 },
     routine: [[7, 'home', 'shower'], [7.5, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('sam', {
-    name: 'Sam', home: 'flat_3', vars: { money: 4 },
+    name: 'Sam', home: 'apt_3', vars: { money: 4 },
     traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8 }, values: { honesty: 0.05 },
   });
   w.person('vance', {
-    name: 'Officer Vance', home: 'flat_2', groups: ['watch'], vars: { money: 100 },
+    name: 'Officer Vance', home: 'apt_2', groups: ['watch'], vars: { money: 100 },
     traits: { thrift: 0.5, honesty: 0.8, talkative: 0.5, courage: 0.9, lawful: 0.9 }, values: { honesty: 0.7, law: 0.9 },
     job: { id: 'officer', place: 'park', action: 'patrol', shifts: [[10, 18]], wage: 15 },
     routine: [[7, null, '*'], [18, 'tag:food', 'eat_cafe'], [19, null, '*'], [23, 'home', 'sleep']],

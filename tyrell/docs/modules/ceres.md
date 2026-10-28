@@ -21,8 +21,8 @@ A person's money is their variable `money` (`PersonDef.vars.money`, 0 by default
 
 ```js
 world.fellowship.group({ id: 'h_okafor', kind: 'household', purse: true });
-world.person('mara', { home: 'flat_1', groups: ['h_okafor'] });
-world.person('pip', { home: 'flat_1', groups: ['h_okafor'] });
+world.person('mara', { home: 'apt_1', groups: ['h_okafor'] });
+world.person('pip', { home: 'apt_1', groups: ['h_okafor'] });
 world.ceres.pay('world', 'h_okafor', 200, 'savings');
 world.ceres.money('pip');      // 200: Pip spends from the household's purse
 ```

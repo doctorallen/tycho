@@ -288,7 +288,7 @@ test('a listener\'s own calls are recorded; the engine work they set off isn\'t'
     w.on('step', (b) => {
       if (n >= 2) return;
       n++;
-      w.person('visitor' + n, { home: 'flat_5' }); // applies at once; its 'joined' entry is the engine's
+      w.person('visitor' + n, { home: 'apt_5' }); // applies at once; its 'joined' entry is the engine's
       w.log('noticed', b.id); // the game's own: recorded
     });
     w.advance(6 * HOUR);

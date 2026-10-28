@@ -80,7 +80,7 @@ const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
 
 ## A first world
 
-A town with one person, a flat, a cafe and a park. Save this as `first.js` and run it with `node first.js` (in the browser, drop the `require` line).
+A town with one person, an apartment, a cafe and a park. Save this as `first.js` and run it with `node first.js` (in the browser, drop the `require` line).
 
 ```js
 const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
@@ -94,10 +94,10 @@ world.need({ id: 'energy', rise: 0.04 });
 world.need({ id: 'fun', rise: 0.05, urgent: 1.1 });   // never breaks a routine
 
 // places, and the walks between them (minutes)
-world.place({ id: 'flat', tags: ['home'], region: 'town', slots: { bed: 1 } });
+world.place({ id: 'apartment', tags: ['home'], region: 'town', slots: { bed: 1 } });
 world.place({ id: 'cafe', tags: ['food'], region: 'town', hours: [7, 22], slots: { seat: 4 } });
 world.place({ id: 'park', region: 'town' });
-world.link('flat', 'cafe', 10);
+world.link('apartment', 'cafe', 10);
 world.link('cafe', 'park', 5);
 
 // what people can do
@@ -108,7 +108,7 @@ world.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: 
 world.action({ id: 'stroll', label: 'a stroll', at: 'park', minutes: 40, relieves: { fun: 0.4 }, pose: 'walk' });
 
 // a person: free time from 8, bed at 23
-world.person('ana', { name: 'Ana', home: 'flat', routine: [[8, null, '*'], [23, 'home', 'sleep']] });
+world.person('ana', { name: 'Ana', home: 'apartment', routine: [[8, null, '*'], [23, 'home', 'sleep']] });
 
 world.advance(16 * HOUR);
 for (const line of world.westmarch.chronicle('ana', 0)) console.log(line);
@@ -118,15 +118,15 @@ console.log(world.describe('ana'));
 It prints Ana's day, something like this:
 
 ```
-07:00 sleeping at flat
+07:00 sleeping at apartment
 08:00 set out for cafe
 08:09 got to cafe
 08:09 eating at cafe
-08:39 set out for flat
-08:50 got to flat
-08:50 reading at flat
+08:39 set out for apartment
+08:50 got to apartment
+08:50 reading at apartment
 ...
-21:30 sleeping at flat
+21:30 sleeping at apartment
 ```
 
 and an account of her: her needs, her mood, what she's doing and why. Some things to notice:

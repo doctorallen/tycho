@@ -54,7 +54,7 @@ A relationship keeps at most `sentiments` (4); past that, the weakest (by absolu
 ```js
 world.fellowship.group({ id: 'h_okafor', kind: 'household', label: 'the Okafors', purse: true });
 world.fellowship.group({ id: 'watch', kind: 'authority', label: 'the Watch' });
-world.person('mara', { home: 'flat_1', groups: ['h_okafor'] });
+world.person('mara', { home: 'apt_1', groups: ['h_okafor'] });
 world.fellowship.join('regulars', 'kofi');
 ```
 

@@ -13,11 +13,11 @@ const world = Tyrell.create({ seed: 'my-town', start: 8 * 60 });
 
 world.need({ id: 'hunger', rise: 0.07 });                       // per game hour, 0 calm to 1 desperate
 world.place({ id: 'cafe', tags: ['food'], hours: [7, 22], slots: { seat: 6 } });
-world.place({ id: 'flat', tags: ['home'] });
-world.link('flat', 'cafe', 10);                                  // ten minutes' walk
+world.place({ id: 'apartment', tags: ['home'] });
+world.link('apartment', 'cafe', 10);                                  // ten minutes' walk
 world.action({ id: 'eat', at: 'tag:food', slot: 'seat', minutes: 30, relieves: { hunger: 0.6 }, pose: 'sit' });
 
-world.person('ana', { home: 'flat', routine: [[7, null, '*'], [23, 'home', 'sleep']] });
+world.person('ana', { home: 'apartment', routine: [[7, null, '*'], [23, 'home', 'sleep']] });
 
 world.focus(['downtown']);                 // the regions the game has loaded
 world.on('embody', (body) => spawnSprite(body));

@@ -88,7 +88,7 @@ People with Reverie act on what they believe: a plan step goes to a place they t
 ## Slots
 
 ```js
-world.place({ id: 'flat_1', tags: ['home'], slots: { bed: 2, shower: 1 } });
+world.place({ id: 'apt_1', tags: ['home'], slots: { bed: 2, shower: 1 } });
 world.place({ id: 'club', slots: { sofa: { count: 4, who: ['member:regulars'] } } });
 world.action({ id: 'sleep', at: 'home', slot: 'bed', minutes: 480, relieves: { energy: 0.95 } });
 ```
@@ -120,10 +120,10 @@ Travel time is minutes. It comes from one of two sources.
 **Links** (the default): declare walks between places, and Tyrell finds the shortest path.
 
 ```js
-world.link('flat_1', 'cafe', 8);           // both ways
+world.link('apt_1', 'cafe', 8);           // both ways
 world.link('cafe', 'market', 2);
 world.link('lift_top', 'lift_bottom', 1, true);   // one way
-world.ring.travel('flat_1', 'market');    // 10
+world.ring.travel('apt_1', 'market');    // 10
 ```
 
 Links join the outermost places; travel within one outermost place is free. Declare links between outermost places: a link on a place that's inside another is never used. Paths are computed with Dijkstra and cached. Places with no path between them are `Infinity` apart, and options there are ruled out ("can't get to"). Links are definitions: declare them every start.
@@ -237,7 +237,7 @@ Each stranger sets out at a seeded minute in its hour, walks in (the travel time
 A promoted stranger becomes a person defined by `def`, placed where the stranger is now (or where they were headed, if walking), unless `def.place` says otherwise, with the stranger's `data` merged under `def.data` and the tag `'promoted'` added. They're no longer listed by `at()`. Give the new person a `home` in `def` if they should have one.
 
 ```js
-const id = world.strangers.promote(passersBy[0].id, { name: 'Nadia', home: 'flat_5', traits: { talkative: 0.8 } });
+const id = world.strangers.promote(passersBy[0].id, { name: 'Nadia', home: 'apt_5', traits: { talkative: 0.8 } });
 world.sense({ kind: 'theft', actor: 'player', place: 'cafe', seenBy: [id] });
 ```
 

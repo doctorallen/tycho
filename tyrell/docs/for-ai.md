@@ -59,7 +59,7 @@ const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');   // the browser: the
 
 // ---- the game's side: stand-ins -----------------------------------------------
 const game = { minutes: 6 * 60, level: 'cafe', save: null };
-const DOORS = { flat: 40, cafe: 300, street: 150 };   // each place's door, x on the street
+const DOORS = { apartment: 40, cafe: 300, street: 150 };   // each place's door, x on the street
 const WALK = 4;                                       // px per game minute
 const routeMinutes = (a, b) => Math.abs(DOORS[a] - DOORS[b]) / WALK;
 const sprites = new Map();
@@ -87,7 +87,7 @@ world.need({ id: 'company', rise: 0.04, urgent: 1.1 });
 
 // ---- 4. places and regions -----------------------------------------------------------
 world.place({ id: 'street', region: 'street' });
-world.place({ id: 'flat', region: 'flat', tags: ['home'], slots: { bed: 2 } });
+world.place({ id: 'apartment', region: 'apartment', tags: ['home'], slots: { bed: 2 } });
 world.place({ id: 'cafe', region: 'cafe', tags: ['food', 'social'], hours: [7, 22], slots: { seat: 6 }, owner: 'mo',
   data: { spots: { seat: [20, 40, 60, 80, 100, 120] } } });
 
@@ -104,10 +104,10 @@ world.wormtongue.crime({ kind: 'theft', severity: 0.4 });
 world.cityspeak.line({ key: 'hello', topic: 'greet', text: 'Hello.' });
 
 // ---- 7. people ---------------------------------------------------------------------------
-world.person('mo', { name: 'Mo', home: 'flat', vars: { money: 40 },
+world.person('mo', { name: 'Mo', home: 'apartment', vars: { money: 40 },
   job: { id: 'cook', place: 'cafe', action: 'serve', shifts: [[7, 15]] },
   routine: [[6, null, '*'], [22, 'home', 'sleep']] });
-world.person('ana', { name: 'Ana', home: 'flat', vars: { money: 30 }, routine: [[7, null, '*'], [23, 'home', 'sleep']] });
+world.person('ana', { name: 'Ana', home: 'apartment', vars: { money: 30 }, routine: [[7, null, '*'], [23, 'home', 'sleep']] });
 
 // ---- 8. one-time setup, guarded --------------------------------------------------------------
 if (!world.kept('setup')) { world.ceres.income('ana', 50, 7); world.keep('setup', true); }

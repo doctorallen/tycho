@@ -183,7 +183,7 @@ The sample town that ships with Tyrell, named for the ship in The Expanse: `exam
 | | |
 |---|---|
 | **People** | Mara (baker, owns the cafe) and Tomas (mechanic), partners, with their son Pip (9), in a household that shares a purse; Ines (bartender, owns the Belt); Dev (grocer, Kofi's landlord); Ruth (retired, a broken radio, routine variants for one day of the week and for rain); Kofi (a student, no routine); Lena (doctor); Sam (broke and dishonest, no routine); Officer Vance (the Watch) |
-| **Places** | Five flats (region `blocks`); the cafe, market, bar, park and tram station (`main`); the workshop and clinic (`river`); linked by walks |
+| **Places** | Five apartments (region `blocks`); the cafe, market, bar, park and tram station (`main`); the workshop and clinic (`river`); linked by walks |
 | **Needs** | hunger, energy, and fun, company and hygiene (which never break a routine) |
 | **Actions** | Sleeping (slowing other needs), naps, showers, reading, eating out and in, shopping, stealing, drinking, walks, chatting (a social act), helping out (a deed), work for each job, a breakdown's sulk and bender, and the radio repair |
 | **Tasks** | Dinner at home (from the cupboard, or shop first with `get:food`); fixing the radio (take it in if they think the workshop's open, buy another, or do without) |

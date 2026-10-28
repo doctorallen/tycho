@@ -4,7 +4,7 @@
 //   world.need({ id: 'hunger', rise: 0.15 });
 //   world.place({ id: 'cafe', tags: ['food'], slots: { seat: 6 } });
 //   world.action({ id: 'eat', at: 'tag:food', slot: 'seat', minutes: 30, relieves: { hunger: 0.6 } });
-//   world.person('ana', { home: 'flat_a' });
+//   world.person('ana', { home: 'apt_a' });
 //   world.tick(1 / 60);  // every frame
 //
 // See docs/ for everything else.

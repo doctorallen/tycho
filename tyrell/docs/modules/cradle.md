@@ -20,7 +20,7 @@ The ideas come from Merryfolk's genetics (children who blend their parents' trai
 A person's age comes from `PersonDef.born` (a time in minutes, usually negative for people older than the world): `(now - born) / config.year`, in years. People without `born` are always 30.
 
 ```js
-world.person('pip', { home: 'flat_1', born: -9 * 365 * 1440, tags: ['child'] });
+world.person('pip', { home: 'apt_1', born: -9 * 365 * 1440, tags: ['child'] });
 world.cradle.age('pip');     // 9
 world.cradle.stage('pip');   // 'child'
 ```

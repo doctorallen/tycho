@@ -311,7 +311,7 @@ test('unseen storylets pick the same place whatever the game is showing, and on 
     return w;
   };
   const a = build(), b = build();
-  a.focus(['blocks']); // the player is looking at the flats
+  a.focus(['blocks']); // the player is looking at the apartments
   a.advance(DAY); b.advance(DAY);
   assert.ok(Object.keys(a.s.facts).some((k) => k.startsWith('broken_into:')));
   assert.equal(a.hash(), b.hash(), 'watching changes nothing');

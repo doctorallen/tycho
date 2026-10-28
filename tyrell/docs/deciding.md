@@ -117,7 +117,7 @@ A routine says what's expected when: from this hour, be at this place doing this
 
 ```js
 world.person('ruth', {
-  home: 'flat_4',
+  home: 'apt_4',
   routine: [
     [8, null, '*'],               // from 8:00: free time
     [9.5, 'market', 'buy_food'],  // 9:30: shopping
@@ -152,7 +152,7 @@ Each entry is `[hour, place, activity, extra?]`:
 
 ```js
 world.person('lena', {
-  home: 'flat_5',
+  home: 'apt_5',
   routine: [
     { days: [5, 6], plan: [[8, null, '*'], [23, 'home', 'sleep']] },                          // weekends
     { when: ['fact:raining'], plan: [[8, 'home', '*'], [22, 'home', 'sleep']] },             // rain: stay in
@@ -174,7 +174,7 @@ If no variant fits, the person has no routine that day (their needs decide).
 ```js
 world.action({ id: 'sell', at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work' });
 world.person('dev', {
-  home: 'flat_3',
+  home: 'apt_3',
   job: { id: 'grocer', place: 'market', action: 'sell', shifts: [[8, 16]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
 });
 ```

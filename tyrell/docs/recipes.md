@@ -1,6 +1,6 @@
 # Recipes
 
-Short worked examples to copy from. Most start from the small base world below: two flats on a street, four needs, sleeping, eating in and reading. Add a recipe's code after it. The detective recipe uses Rocinante.
+Short worked examples to copy from. Most start from the small base world below: two apartments on a street, four needs, sleeping, eating in and reading. Add a recipe's code after it. The detective recipe uses Rocinante.
 
 - [The base world](#the-base-world)
 - [A shop with hours and a keeper on shift](#a-shop-with-hours-and-a-keeper-on-shift)
@@ -26,11 +26,11 @@ world.need({ id: 'energy', rise: 0.06, start: 0.2 });
 world.need({ id: 'fun', rise: 0.05, start: 0.3, urgent: 1.1 });
 world.need({ id: 'company', rise: 0.04, start: 0.3, urgent: 1.1 });
 
-world.place({ id: 'flat_a', tags: ['home'], region: 'flats', slots: { bed: 2 } });
-world.place({ id: 'flat_b', tags: ['home'], region: 'flats', slots: { bed: 2 } });
+world.place({ id: 'apt_a', tags: ['home'], region: 'apartments', slots: { bed: 2 } });
+world.place({ id: 'apt_b', tags: ['home'], region: 'apartments', slots: { bed: 2 } });
 world.place({ id: 'street', region: 'street' });
-world.link('flat_a', 'street', 3);
-world.link('flat_b', 'street', 4);
+world.link('apt_a', 'street', 3);
+world.link('apt_b', 'street', 4);
 
 const night = { name: 'night', input: 'hour', range: [0, 24], curve: [[0, 1], [6 / 24, 1], [8 / 24, 0.1], [21 / 24, 0.3], [23 / 24, 1], [1, 1]] };
 world.action({ id: 'sleep', at: 'home', slot: 'bed', minutes: [420, 480], relieves: { energy: 0.95 }, rates: { hunger: 0.4 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
@@ -57,12 +57,12 @@ world.action({ id: 'buy_food', label: 'shopping', at: 'tag:shop', minutes: 10, p
 world.action({ id: 'cook', label: 'cooking', at: 'home', minutes: 30, uses: { food: 1 }, relieves: { hunger: 0.6 }, pose: 'sit' });
 
 world.person('mo', {
-  name: 'Mo', home: 'flat_a', vars: { money: 50 },
+  name: 'Mo', home: 'apt_a', vars: { money: 50 },
   job: { id: 'grocer', place: 'grocery', action: 'mind_till', shifts: [[7.5, 20]], days: [0, 1, 2, 3, 4, 5] },
   routine: [[7, 'grocery', 'open_up'], [7.5, null, '*'], [22.5, 'home', 'sleep']],
 });
 world.person('ana', {
-  name: 'Ana', home: 'flat_b', vars: { money: 30 },
+  name: 'Ana', home: 'apt_b', vars: { money: 30 },
   routine: [[7, null, '*'], [10, 'tag:shop', 'buy_food'], [10.25, null, '*'], [23, 'home', 'sleep']],
 });
 
@@ -90,9 +90,9 @@ world.action({ id: 'drink', label: 'a drink at the Belt', at: 'tag:drink', slot:
 world.action({ id: 'pour', label: 'behind the bar', at: 'bar', slot: 'taps', minutes: 60, job: 'bartender', rank: -1, pose: 'work' });
 
 world.fellowship.group({ id: 'regulars', kind: 'club', label: "the Belt's regulars" });
-world.person('ines', { name: 'Ines', home: 'flat_a', job: { id: 'bartender', place: 'bar', action: 'pour', shifts: [[17, 1]], wage: 9 }, routine: [[2, 'home', 'sleep'], [10, null, '*']] });
+world.person('ines', { name: 'Ines', home: 'apt_a', job: { id: 'bartender', place: 'bar', action: 'pour', shifts: [[17, 1]], wage: 9 }, routine: [[2, 'home', 'sleep'], [10, null, '*']] });
 world.person('ruth', {
-  name: 'Ruth', home: 'flat_b', groups: ['regulars'], vars: { money: 60 },
+  name: 'Ruth', home: 'apt_b', groups: ['regulars'], vars: { money: 60 },
   routine: [
     { days: [5, 6], plan: [[8, null, '*'], [23, 'home', 'sleep']] },
     { when: ['fact:raining'], plan: [[8, null, '*'], [22, 'home', 'sleep']] },
@@ -129,8 +129,8 @@ world.action({ id: 'buy_food', at: 'tag:shop', minutes: 10, price: 8, buys: { fo
 world.action({ id: 'cook', at: 'home', minutes: 30, uses: { food: 1 }, relieves: { hunger: 0.6 }, pose: 'sit' });
 
 world.fellowship.group({ id: 'h_okafor', kind: 'household', label: 'the Okafors', purse: true });
-world.person('mara', { name: 'Mara', home: 'flat_a', groups: ['h_okafor'], routine: [[7, null, '*'], [9, 'tag:shop', 'buy_food'], [9.25, null, '*'], [23, 'home', 'sleep']] });
-world.person('pip', { name: 'Pip', home: 'flat_a', groups: ['h_okafor'], tags: ['child'] });
+world.person('mara', { name: 'Mara', home: 'apt_a', groups: ['h_okafor'], routine: [[7, null, '*'], [9, 'tag:shop', 'buy_food'], [9.25, null, '*'], [23, 'home', 'sleep']] });
+world.person('pip', { name: 'Pip', home: 'apt_a', groups: ['h_okafor'], tags: ['child'] });
 
 if (!world.kept('setup:okafor')) {                 // once, not on every load
   world.ceres.pay('world', 'h_okafor', 100, 'savings');
@@ -162,9 +162,9 @@ world.fellowship.group({ id: 'watch', kind: 'authority', label: 'the Watch' });
 world.wormtongue.crime({ kind: 'strip', severity: 0.6, reportTo: 'watch' });
 world.deed('fixed', { feeling: 'helped', regard: 0.2, memory: 6 });
 
-world.person('mo', { name: 'Mo', home: 'flat_a', traits: { courage: 0.6, honesty: 0.8, greed: 0.3 } });
-world.person('ana', { name: 'Ana', home: 'flat_b', traits: { courage: 0.3, honesty: 0.3, greed: 0.8 } });
-world.person('vance', { name: 'Officer Vance', home: 'flat_b', groups: ['watch'] });
+world.person('mo', { name: 'Mo', home: 'apt_a', traits: { courage: 0.6, honesty: 0.8, greed: 0.3 } });
+world.person('ana', { name: 'Ana', home: 'apt_b', traits: { courage: 0.3, honesty: 0.3, greed: 0.8 } });
+world.person('vance', { name: 'Officer Vance', home: 'apt_b', groups: ['watch'] });
 world.advanceTo(10 * HOUR);
 world.direct('mo', { do: 'browse', at: 'grocery', until: 13 * HOUR, repeat: true });
 world.direct('ana', { do: 'browse', at: 'grocery', until: 13 * HOUR, repeat: true });
@@ -202,7 +202,7 @@ Regulars meet at the cafe every morning. Kofi has heard Ines is engaged; Sam saw
 world.place({ id: 'cafe', tags: ['social'], region: 'street', hours: [7, 22], slots: { seat: 8 } });
 world.link('street', 'cafe', 2);
 world.action({ id: 'coffee', at: 'cafe', slot: 'seat', minutes: [40, 90], relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], pose: 'sit' });
-const regular = (id, traits) => world.person(id, { home: 'flat_a', traits, routine: [[8, null, '*'], [10, 'cafe', 'coffee'], [12, null, '*'], [23, 'home', 'sleep']] });
+const regular = (id, traits) => world.person(id, { home: 'apt_a', traits, routine: [[8, null, '*'], [10, 'cafe', 'coffee'], [12, null, '*'], [23, 'home', 'sleep']] });
 regular('sam', { honesty: 0.1, talkative: 0.9 });
 regular('lena', { honesty: 0.9, talkative: 0.5 });
 regular('kofi', { honesty: 0.6, talkative: 0.7 });
@@ -254,7 +254,7 @@ world.task({
 world.task({ id: 'rig_antenna', base: 0.2, if: ['has:radio', '!has:antenna'], methods: [{ do: ['get:antenna', 'tune_in'] }] });
 
 world.advanceTo(9 * HOUR);                                          // the shops are open
-world.person('ruth', { name: 'Ruth', home: 'flat_b', vars: { money: 100 }, inv: { broken_radio: 1 } });
+world.person('ruth', { name: 'Ruth', home: 'apt_b', vars: { money: 100 }, inv: { broken_radio: 1 } });
 world.fact('closed:workshop', true);                                 // shut today...
 world.reverie.believe('ruth', 'open:workshop', true, 'assumed');    // ...but Ruth thinks it's open
 
@@ -284,7 +284,7 @@ world.place({ id: 'square', tags: ['outdoors', 'social'], region: 'street' });
 world.link('street', 'square', 2);
 world.action({ id: 'dance', at: 'square', minutes: 60, relieves: { fun: 0.5, company: 0.3 }, tags: ['social'], pose: 'dance', if: ['fact:festival'] });
 world.action({ id: 'watch_lanterns', at: 'square', minutes: 45, relieves: { fun: 0.3 }, pose: 'stand', if: ['fact:lanterns'] });
-for (const id of ['ana', 'bo', 'cy']) world.person(id, { home: 'flat_a', routine: [[7, null, '*'], [23, 'home', 'sleep']] });
+for (const id of ['ana', 'bo', 'cy']) world.person(id, { home: 'apt_a', routine: [[7, null, '*'], [23, 'home', 'sleep']] });
 
 const gaff = world.gaff;
 // the trigger: when it comes up, a card is drawn from the deck and fired instead

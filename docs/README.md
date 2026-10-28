@@ -18,3 +18,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 - [testkit.md](testkit.md): the Node test kit (`dist/testkit.cjs`).
 - [brand/](brand/README.md): the logo, its files and colors, and the script that draws it.
 - [move.md](move.md): moving the three games onto Tycho, phase by phase: what moved, what changed, what's left.
+
+Proposed, and not built yet:
+
+- [harm.md](harm.md): people and creatures hurting each other (fights, traps, poison, accidents): the moment in `Tycho.harm`, what follows in Morgul, a Tyrell module, and the open questions.

@@ -69,3 +69,6 @@ nav:
       - { title: Delos, url: /tyrell/docs/modules/delos.html }
       - { title: Athelas, url: /tyrell/docs/modules/athelas.html }
       - { title: Joi, url: /tyrell/docs/modules/joi.html }
+  - title: Proposed
+    pages:
+      - { title: Harm, url: /docs/harm.html }

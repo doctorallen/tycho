@@ -83,6 +83,9 @@ Every field of `ActionDef`:
 | `buys` | `{ item: n }` | none | Goods bought from the place's stock when it starts (Ceres) |
 | `uses` | `{ item: n }` | none | Goods used up when it starts; blocks it if they don't have them (Ceres) |
 | `gives` | `{ item: n }` | none | Goods gained when it ends (Ceres), and what Mentat's `get:` searches for |
+| `makes` | `{ item: n }` | none | Goods made, added to the stock of `store` (or the place it's done) when it ends; a share of it if cut short (Ceres: [Production](modules/ceres.md#production)) |
+| `store` | place id or `'here'` | none | The place whose stock `makes` goes into; with it, `uses` comes from that stock instead of the person's goods (Ceres) |
+| `yields` | Consideration[] | none | Factors on what `makes` makes (Ceres) |
 | `wage` | number | none | Pay per hour, paid at the end by the place's owner (Ceres) |
 | `social` | string | none | A social act resolved with the target when it ends (Cityspeak) |
 | `feels` | string[] | none | Feelings the person gets when it ends (Reverie) |

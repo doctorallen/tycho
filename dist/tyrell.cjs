@@ -5439,6 +5439,9 @@ var Ceres = class {
   constructor() {
     this.name = "ceres";
     this.goods = /* @__PURE__ */ new Map();
+    this.chains = /* @__PURE__ */ new Map();
+    /** Whether anything makes goods or works from a store (worked out from the definitions, kept until they change). */
+    this.producingCache = null;
   }
   init() {
     return { purses: {}, pantry: {}, rent: {}, ledger: [] };
@@ -5470,11 +5473,19 @@ var Ceres = class {
     w.defineInput("stock", (place, item, n) => {
       const st = w.ring.state(place);
       st.stock || (st.stock = {});
-      st.stock[item] = Math.max(0, (st.stock[item] || 0) + n);
+      const before = st.stock[item] || 0;
+      st.stock[item] = Math.max(0, before + n);
+      this.flow(place, item, st.stock[item] - before);
     });
   }
   good(def) {
     this.goods.set(def.id, def);
+    return this;
+  }
+  /** A production chain, for the daily report's bottlenecks. */
+  chain(def) {
+    this.chains.set(def.id, def);
+    this.producingCache = null;
     return this;
   }
   /** How many goods of a kind a person can use (their own and their household's pantry). */
@@ -5573,6 +5584,105 @@ var Ceres = class {
     this.w.input("stock", [place, item, n]);
   }
   // -------------------------------------------------------------------------
+  // Production
+  // -------------------------------------------------------------------------
+  /** Does anything make goods or work from a store, or is there a chain? Then stock flows are counted. */
+  producing() {
+    const w = this.w;
+    const n = w.actions.size * 1e3 + this.chains.size;
+    if (this.producingCache && this.producingCache.n === n) return this.producingCache.on;
+    let on = this.chains.size > 0;
+    if (!on) {
+      for (const a of w.actions.values()) if (a.makes || a.store) {
+        on = true;
+        break;
+      }
+    }
+    this.producingCache = { n, on };
+    return on;
+  }
+  /** The place an action's `store` names, from the place it's done. */
+  storeOf(a, place) {
+    if (!a.store || a.store === "here") return place ?? null;
+    return a.store;
+  }
+  /** Counts a change in a place's stock as made (more) or used (less), when production is on. */
+  flow(place, item, n) {
+    var _a;
+    if (!n || !this.producing()) return;
+    const st = this.st;
+    const prod = st.prod || (st.prod = { day: Math.floor(this.w.s.now / DAY), today: {}, yesterday: {} });
+    const f = (_a = prod.today)[place] || (_a[place] = {});
+    const side = n > 0 ? f.made || (f.made = {}) : f.used || (f.used = {});
+    side[item] = round((side[item] || 0) + Math.abs(n), 4);
+  }
+  /** Takes goods out of a place's stock (not below none), counting them as used. */
+  takeStock(place, item, n) {
+    const st = this.w.ring.state(place);
+    const before = st.stock?.[item] ?? 0;
+    if (!st.stock) return;
+    st.stock[item] = round(Math.max(0, before - n), 4);
+    this.flow(place, item, st.stock[item] - before);
+  }
+  /** Adds goods to a place's stock, counting them as made. */
+  addStock(place, item, n) {
+    const st = this.w.ring.state(place);
+    st.stock || (st.stock = {});
+    st.stock[item] = round((st.stock[item] || 0) + n, 4);
+    this.flow(place, item, n);
+  }
+  stockAt(item, store) {
+    if (store) return this.stock(store, item);
+    let n = 0;
+    for (const id in this.w.s.places) n += this.w.s.places[id].stock?.[item] ?? 0;
+    return round(n, 4);
+  }
+  flowAt(side, item, store) {
+    const y = this.st.prod?.yesterday;
+    if (!y) return 0;
+    if (store) return y[store]?.[side]?.[item] ?? 0;
+    let n = 0;
+    for (const id in y) n += y[id][side]?.[item] ?? 0;
+    return round(n, 4);
+  }
+  /**
+   * The production report: for each store (or the one asked for), every good
+   * with its stock now, what was made and used yesterday, and how many days
+   * it would last if yesterday repeated; and the bottleneck links of every
+   * chain, where a good piles up while the next one runs short.
+   */
+  production(place) {
+    const w = this.w;
+    const prod = this.st.prod;
+    const y = prod?.yesterday ?? {};
+    const out = { day: Math.floor(w.s.now / DAY) - 1, places: {}, bottlenecks: [] };
+    const places = new Set(place ? [place] : Object.keys(y));
+    if (!place) {
+      for (const c of this.chains.values()) if (c.store) places.add(c.store);
+    }
+    for (const pl of [...places].sort()) {
+      const items = /* @__PURE__ */ new Set([...Object.keys(w.s.places[pl]?.stock || {}), ...Object.keys(y[pl]?.made || {}), ...Object.keys(y[pl]?.used || {})]);
+      const goods = {};
+      for (const item of [...items].sort()) {
+        const stock = this.stock(pl, item), made = y[pl]?.made?.[item] ?? 0, used = y[pl]?.used?.[item] ?? 0;
+        const net = round(made - used, 4);
+        goods[item] = { stock, made, used, net, days: net < 0 && stock > 0 ? round(stock / -net, 2) : null };
+      }
+      out.places[pl] = goods;
+    }
+    for (const c of this.chains.values()) {
+      if (place && c.store !== place) continue;
+      for (let i = 0; i + 1 < c.goods.length; i++) {
+        const from = c.goods[i], to = c.goods[i + 1];
+        const fromStock = this.stockAt(from, c.store), toStock = this.stockAt(to, c.store);
+        const plenty = c.plenty ?? Math.max(2, 2 * this.flowAt("used", from, c.store));
+        const short = c.short !== void 0 ? toStock <= c.short : toStock < Math.max(1, this.flowAt("used", to, c.store));
+        if (fromStock >= plenty && short) out.bottlenecks.push({ chain: c.id, from, to, store: c.store ?? null, fromStock, toStock });
+      }
+    }
+    return out;
+  }
+  // -------------------------------------------------------------------------
   // Hooks
   // -------------------------------------------------------------------------
   block(p, c) {
@@ -5585,7 +5695,10 @@ var Ceres = class {
       for (const item in a.buys) if (this.stock(c.place, item) < a.buys[item]) return `${item} sold out`;
     }
     if (a.uses) {
-      for (const item in a.uses) if (this.w.have(p, item) < a.uses[item]) return `needs ${item}`;
+      const store = a.store ? this.storeOf(a, c.place ?? p.place) : null;
+      if (store) {
+        for (const item in a.uses) if (this.stock(store, item) < a.uses[item]) return `no ${item} left at ${store}`;
+      } else for (const item in a.uses) if (this.w.have(p, item) < a.uses[item]) return `needs ${item}`;
     }
     return null;
   }
@@ -5610,11 +5723,18 @@ var Ceres = class {
       const st = w.ring.state(d.place);
       for (const item in a.buys) {
         const n = a.buys[item];
-        if (st.stock) st.stock[item] = Math.max(0, (st.stock[item] || 0) - n);
+        if (st.stock) {
+          const before = st.stock[item] || 0;
+          st.stock[item] = Math.max(0, before - n);
+          this.flow(d.place, item, st.stock[item] - before);
+        }
         this.store(p, item, n);
       }
     }
-    if (a.uses) {
+    const store = a.store ? this.storeOf(a, d.place) : null;
+    if (a.uses && store) {
+      for (const item in a.uses) this.takeStock(store, item, a.uses[item]);
+    } else if (a.uses) {
       for (const item in a.uses) {
         w.takeItem(p, item, a.uses[item]);
         const g = this.goods.get(item);
@@ -5635,6 +5755,20 @@ var Ceres = class {
       if (payer !== p.id) this.applyPay(payer, p.id, round(wage * hours, 2), "wages");
     }
     if (a.gives && !interrupted) for (const item in a.gives) p.inv[item] = (p.inv[item] || 0) + a.gives[item];
+    if (a.makes && frac > 0) {
+      let f = interrupted ? frac : 1;
+      if (a.yields?.length) {
+        const ctx = w.ctx(p, { place: d.place, action: a.id });
+        for (const k of a.yields) f *= w.mind.consider(k, ctx);
+      }
+      const place = this.storeOf(a, d.place);
+      for (const item of Object.keys(a.makes)) {
+        const n = round(a.makes[item] * f, 4);
+        if (n <= 0) continue;
+        if (place) this.addStock(place, item, n);
+        else this.store(p, item, n);
+      }
+    }
   }
   hour(t) {
     const w = this.w;
@@ -5647,13 +5781,22 @@ var Ceres = class {
         const [n, every] = def.restock[item];
         if (every > 0 && hourIndex % every === 0) {
           const cap = def.stock?.[item] ?? n;
-          st.stock[item] = Math.min(cap, (st.stock[item] || 0) + n);
+          const before = st.stock[item] || 0;
+          st.stock[item] = Math.min(cap, before + n);
+          this.flow(def.id, item, st.stock[item] - before);
         }
       }
     }
   }
   day() {
     const w = this.w, now2 = w.s.now;
+    const prod = this.st.prod;
+    if (prod) {
+      prod.yesterday = prod.today;
+      prod.today = {};
+      prod.day = Math.floor(now2 / DAY);
+      w.emit("production", this.production());
+    }
     for (const id in this.st.income || {}) {
       const inc = this.st.income[id];
       if (inc.next > now2 + 1e-6) continue;

@@ -202,6 +202,20 @@ export interface ActionDef {
   uses?: Record<Id, number>;
   /** Goods gained (Ceres and Mentat's 'get:' planning). */
   gives?: Record<Id, number>;
+  /**
+   * Goods made, added at the end to the stock of `store` (default: the place
+   * it's done), scaled by `yields`, and by how much was done if it's cut
+   * short (Ceres).
+   */
+  makes?: Record<Id, number>;
+  /**
+   * The place whose stock `makes` goes into: a place id, or 'here' (the place
+   * it's done, the default). With a store, `uses` comes out of that stock
+   * instead of the person's goods (Ceres).
+   */
+  store?: Id;
+  /** Factors on what `makes` makes (a skilled hand makes more): considerations, multiplied (Ceres). */
+  yields?: Consideration[];
   /** Wage paid per hour at the end (Ceres). */
   wage?: number;
   /** A social act resolved with the target at the end (Cityspeak). */

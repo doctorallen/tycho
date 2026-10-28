@@ -32,7 +32,7 @@
   // ---- places ---------------------------------------------------------------
   const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
   for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
-  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30 }, restock: { bread: [10, 3] } });
+  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30, flour: 12 }, restock: { flour: [8, 24] } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
   w.place({ id: 'bar', name: 'The Belt', tags: ['social', 'drink'], region: 'main', hours: [17, 2], slots: { stool: 6, bar: 1 }, owner: 'ines' });
   w.place({ id: 'park', name: 'Ring Park', tags: ['outdoors', 'fun', 'social'], region: 'main', slots: { bench: 6 } });
@@ -50,7 +50,7 @@
   w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
   w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
-  w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'] });
+  w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
   w.action({ id: 'eat_home', label: 'eating at home', at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
   w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
   w.action({ id: 'steal_food', label: 'pocketing food', at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
@@ -63,7 +63,9 @@
   w.action({ id: 'sulk', label: 'sulking', at: 'home', minutes: 120, pose: 'sit', rank: -1 });
   w.action({ id: 'bender', label: 'a bender', at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
   // work: only done on shift (rank -1 means "only when required")
-  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 } });
+  // Mara bakes the cafe's bread from its flour, an hour at a time (fill: false), more of it the better she is
+  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, fill: false, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 },
+    store: 'here', uses: { flour: 1 }, makes: { bread: 2 }, yields: [{ input: 'skill.baking', out: [0.6, 1.4] }] });
   w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'], trains: { repair: 1 } });
   w.action({ id: 'serve', label: 'serving drinks', at: 'bar', slot: 'bar', minutes: 60, job: 'bartender', rank: -1, pose: 'work', tags: ['work'], relieves: { company: 0.15 } });
   w.action({ id: 'sell', label: 'minding the till', at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work', tags: ['work'] });
@@ -222,6 +224,10 @@
     }
     w.ceres.good({ id: 'radio', kind: 'gadget', price: 40 });
     w.ceres.good({ id: 'broken_radio', kind: 'junk', price: 0 });
+    // the cafe's bread: flour delivered every morning, baked by Mara, eaten at the tables
+    w.ceres.good({ id: 'flour', kind: 'stores' });
+    w.ceres.good({ id: 'bread', kind: 'food', price: 2 });
+    w.ceres.chain({ id: 'bread', label: 'Bread', goods: ['flour', 'bread'], store: 'cafe' });
   }
 
   // ---- Cityspeak: lines, practices, social acts -------------------------------

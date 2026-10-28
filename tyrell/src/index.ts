@@ -77,7 +77,7 @@ export type { CrimeDef, Report, Secret, WormtongueConfig } from './modules/wormt
 export type { LineDef, PracticeDef, SocialActDef, Said } from './modules/cityspeak';
 export type { MentatConfig } from './modules/mentat';
 export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
-export type { GoodDef } from './modules/ceres';
+export type { GoodDef, ChainDef, GoodReport, ProductionReport } from './modules/ceres';
 export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken } from './modules/joi';
 export type { StrangerDef, StrangerErrand } from './core/strangers';

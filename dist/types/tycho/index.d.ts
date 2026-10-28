@@ -5,6 +5,10 @@ import * as loop from './core/loop';
 import * as gpu from './pixels/gpu';
 import * as light from './pixels/light';
 import * as post from './pixels/post';
+import * as grid from './world/grid';
+import * as collide from './world/collide';
+import * as move from './world/move';
+import * as path from './world/path';
 import * as save from './shell/save';
 import * as pwa from './shell/pwa';
 import * as dev from './shell/dev';
@@ -14,4 +18,4 @@ import * as inspect from './shell/inspect';
 import * as ui from './shell/ui';
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export declare const VERSION: string;
-export { seed, math, color, loop, gpu, light, post, save, pwa, dev, loader, audio, inspect, ui };
+export { seed, math, color, loop, gpu, light, post, grid, collide, move, path, save, pwa, dev, loader, audio, inspect, ui };

@@ -2093,8 +2093,8 @@ var Strangers = class {
     w.defineInput("promote", (sid, given, def) => {
       var _a;
       const id = given ?? `p${++w.s.ids}`;
-      ((_a = w.s.mod)["@strangers"] || (_a["@strangers"] = {}))[sid] = id;
       const b = this.find(sid);
+      ((_a = w.s.mod)["@strangers"] || (_a["@strangers"] = {}))[sid] = id;
       const p = w.input("person", [id, { ...def, place: def.place ?? b?.place ?? b?.travel?.to ?? void 0, data: { ...b?.data || {}, ...def.data || {} }, tags: [...def.tags || [], "promoted"] }]);
       w.log("promoted", id, { stranger: sid });
       return p.id;

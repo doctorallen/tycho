@@ -357,14 +357,16 @@ test('timers call the game back', () => {
 
 test('strangers: the same passers-by from the seed, and one can be promoted', () => {
   const w = tiny({ start: 12 * HOUR });
-  w.strangers.define('main', { perHour: 6, errands: [{ from: 'park', to: 'cafe', action: 'eat', minutes: [10, 30] }] });
+  w.strangers.define('main', { perHour: 6, errands: [{ from: 'park', to: 'cafe', action: 'eat', minutes: [10, 30] }], data: (r) => ({ coat: r.pick(['red', 'grey']) }) });
   const a = w.strangers.at('main');
   const b = w.strangers.at('main');
   assert.ok(a.length > 0);
   assert.deepEqual(a.map((s) => s.id), b.map((s) => s.id));
   const id = w.strangers.promote(a[0].id, { name: 'A stranger' });
   assert.equal(w.get(id).name, 'A stranger');
+  assert.equal(w.get(id).place, a[0].place ?? a[0].travel.to, 'they carry on from where the stranger was');
   assert.equal(w.strangers.at('main').some((s) => s.id === a[0].id), false);
+  assert.equal(w.get(id).def.data.coat, a[0].data.coat, 'and look the same');
 });
 
 test('a big city stays fast: 150 people for a day', () => {

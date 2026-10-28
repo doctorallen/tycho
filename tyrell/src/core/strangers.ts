@@ -35,8 +35,8 @@ export class Strangers {
   constructor(private w: World) {
     w.defineInput('promote', (sid: string, given: Id | null, def: PersonDef) => {
       const id = given ?? `p${++w.s.ids}`;
+      const b = this.find(sid); // where they are and how they look, before they stop being a stranger
       (w.s.mod['@strangers'] ||= {})[sid] = id;
-      const b = this.find(sid);
       const p = w.input('person', [id, { ...def, place: def.place ?? b?.place ?? b?.travel?.to ?? undefined, data: { ...(b?.data || {}), ...(def.data || {}) }, tags: [...(def.tags || []), 'promoted'] }]);
       w.log('promoted', id, { stranger: sid });
       return (p as { id: Id }).id;

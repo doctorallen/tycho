@@ -23,12 +23,13 @@ Always run `npm test` and commit `dist/` with any change to `src/`. CI fails if 
 - `src/core/`: the engine itself.
   - `world.ts`: `World`, the public API, inputs (what Esper records), the condition language's core terms and effects.
   - `types.ts`: every definition and state shape.
-  - `bicameral.ts`: needs, the layered stack, considerations, weighing and the pick, habits.
+  - `bicameral.ts`: needs, the layered stack, considerations, weighing and the pick, habits, instincts, pastimes that pall, wishes and dreams.
+  - `skills.ts`: skills that grow with practice, at each person's talent.
   - `entmoot.ts`: the event queue and clock, doing things (travel, act, finish, interrupt, fail), bodies.
   - `esper.ts`: time walk: snapshots, the input log, seek, branch, marks.
   - `ring.ts`: places, travel, slots, hours.
   - `westmarch.ts`: the log. `strangers.ts`: passers-by. `conds.ts`: the condition and effect language. `util.ts`: hashing, seeded streams, the heap. `module.ts`: the module hooks.
-- `src/modules/`: Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi.
+- `src/modules/`: Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice.
 - `src/tools/`: Palantír (`palantir.ts`) and Voight-Kampff (`voightkampff.ts`).
 - `src/index.ts`: `create()` and the exports.
 - `examples/rocinante.js`: the sample town (plain JS; works as a script, with require and import). Tests and the runner use it.

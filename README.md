@@ -19,7 +19,7 @@ It's TypeScript, built into plain JavaScript that a game loads with script tags:
 |---|---|---|
 | `dist/tycho.js` | `Tycho` | The engine: seeds, colors and the loop; the renderer, sprites, painting and effects; grids, collision, movers and paths; controls, items and guides; saving, the installable app, dev flags, loading, sound, the minds inspector and the interface kit |
 | `dist/tyrell.js` | `Tyrell` | The minds engine: people with needs, routines, plans, feelings, memories and relationships, with time walk. See [tyrell/README.md](tyrell/README.md) |
-| `dist/tycho-minds.js` | `TychoMinds` (and `Tycho.minds`) | The bridge between them: Tyrell's clock from the game's, the minds in the save, seats, travel times, who might be on screen, who saw what. See [docs/minds.md](docs/minds.md) |
+| `dist/tycho-minds.js` | `TychoMinds` (and `Tycho.minds`) | The bridge between them: Tyrell's clock from the game's, the minds in the save, seats, travel times, who might be on screen, who saw what, and harm handed between Tycho.harm and Morgul. See [docs/minds.md](docs/minds.md) |
 
 Each is also built as an ES module (`.mjs`) and for Node's require (`.cjs`), with types (`.d.ts`, and `.global.d.ts` for the global). Beside them, `dist/tycho-sw.js` is the service worker an installable game imports, and `dist/testkit.cjs` the Node test kit. A game without people (Lodestar) loads `tycho.js` alone.
 

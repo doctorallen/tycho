@@ -1,6 +1,6 @@
 # Harm
 
-**Partly built.** The design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. The moment of a hit is built ([`Tycho.harm`](#tycho-the-moment), with Lodestar's fighting on it), and so is what follows ([Morgul](../tyrell/docs/modules/morgul.md) and the [larger Athelas](#athelas-grown)); the bridge between them and Merryfolk's harm come next ([the order](#the-order-to-build-it)). Its questions are settled ([what's decided](#whats-decided)).
+**Partly built.** The design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. The moment of a hit is built ([`Tycho.harm`](#tycho-the-moment), with Lodestar's fighting on it), and so is what follows ([Morgul](../tyrell/docs/modules/morgul.md) and the [larger Athelas](#athelas-grown)), and the bridge between them ([on screen and off](#on-screen-and-off)); Merryfolk's harm comes next ([the order](#the-order-to-build-it)). Its questions are settled ([what's decided](#whats-decided)).
 
 The ideas come from Lodestar's own fighting (a hit that passes through resistances, armor, wards and statuses that react together, and hazards shown before they bite), RimWorld (wounds that need tending, infections, social fights that turn into brawls), Dwarf Fortress (grudges and vengeance that outlive the fight), Thief and Dishonored (traps and poison as the patient way to hurt someone, and accidents arranged to look like nothing), and Crusader Kings (murder by scheme, suspicion that falls on whoever had reason).
 
@@ -307,7 +307,7 @@ A Bree fight (a kind in `fights`) comes out by a contest, wherever it is. Both f
 
 ### Fights with the player
 
-Harm by `'player'` (or to the player by a character) makes the character answer, as the fight starts and after each harm between them: fight back, flee, yield or call for help, drawn by their nerve and temper, how hurt they are, their odds against the player (whose might is the game's fact, `might:player`), and whether a friend is about. It's emitted as `morgul:respond`; `respond(id)` asks without changing anything. One who flees wants to get away a while.
+Harm by `'player'` (or to the player by a character) face to face, not by a trap or a dose, makes the character answer, as the fight starts and after each harm between them: fight back, flee, yield or call for help, drawn by their nerve and temper, how hurt they are, their odds against the player (whose might is the game's fact, `might:player`), and whether a friend is about. It's emitted as `morgul:respond`; `respond(id)` asks without changing anything. One who flees wants to get away a while.
 
 ### Choosing harm
 
@@ -346,7 +346,7 @@ Every finer number is a setting too ([Tuning](../tyrell/docs/tuning.md#morgul)).
 | `trap(def)` | definition | A kind of trap: its harm, `hidden`, `uses`, `catch` |
 | `harm(h)` | **input** | A harm, from the game (on screen); returns it |
 | `set(kind, { by, place, for, seenBy })` | **input** | A trap set, from the game |
-| `spring(trap, id)` | **input** | A trap caught someone on screen |
+| `spring(trap, id)` | **input** | A trap caught someone on screen, or the player |
 | `disarm(trap, by)` | **input** | |
 | `taint(def)` | **input** | Poison into stock, a pot, or someone's goods |
 | `tend(id, by)` | **input** | Someone tends someone: their wounds, and up if down |
@@ -372,12 +372,12 @@ Wounds and poisons need a little more of Athelas than colds and ale do, and it h
 
 ## On screen and off
 
-Tyrell has no coordinates, so off screen Morgul settles harm by numbers: a fight by its contest, a trap by its chance, a poison by who eats. On screen the game plays it out with `Tycho.harm` and reports each harm (`morgul.harm`) and each trap sprung (`morgul.spring`). The bridge does the handing over, the way Tyrell already hands bodies to the game near the player:
+Tyrell has no coordinates, so off screen Morgul settles harm by numbers: a fight by its contest, a trap by its chance, a poison by who eats. On screen the game plays it out with `Tycho.harm` and reports each harm (`morgul.harm`) and each trap sprung (`morgul.spring`). The bridge does the handing over, the way Tyrell already hands bodies to the game near the player ([Harm in the bridge](minds.md#harm)):
 
-- `Tycho.minds.means(world, list)` declares the means to both sides; `Tycho.minds.harm(world, blow, { seenBy })` turns a hit Tycho landed into a harm, with its witnesses.
-- A fight between characters goes on by numbers wherever it is. Near the player the game shows it as a scuffle: two bodies tussling, a blow landing as each turn lands, so what's seen and what's settled agree turn for turn.
-- A fight with the player in it is played in frames: the player's strikes, casts and throws through `Tycho.harm`, and the character's back with the moves of what they hold (fists, if nothing). Whether they fight back, flee, yield or call for help is Tyrell's choice, asked as the fight starts and after each blow.
-- A trap at a place near the player is left to the game's trigger, so nobody is caught twice.
+- `Tycho.minds.means(world, list, Tycho.harm.means)` declares the means to both sides at once (a means set as a trap as Morgul's trap too) and returns Tycho's arsenal; `Tycho.minds.harm(world, hit, { whole, people, sight })` turns a hit Tycho landed into a harm: the bodies' ids, its kind, its severity as the hit's share of what the game measures, what it was done with, and its witnesses.
+- A fight between characters goes on by numbers wherever it is. Near the player the game shows it as a scuffle: `Tycho.minds.scuffles(world)` gives it the beats in step with Bree's turns (they square up; each turn who swings at whom, whether it lands or the other counters, how hard; how it ends) and the fights going on as the world has them, so a rewind leaves nothing stale.
+- A fight with the player in it is played in frames: the player's strikes, casts and throws through `Tycho.harm`, and the character's back with the moves of what they hold (fists, if nothing). Whether they fight back, flee, yield or call for help is Tyrell's choice, made as the fight starts and after each blow; `Tycho.minds.fighters(world, { might })` makes each answer into what the game's fighter does, with what they'd fight with, and sets the player's might, the game's, as the fact Morgul reads.
+- A trap at a place near the player is left to the game's trigger, so nobody is caught twice: `Tycho.minds.traps(world, { regions, make, drop })` tells Morgul which regions are loaded, hands the game the traps there to make triggers from (and takes them back when they're spent or far), and reports a trigger that springs, on a character or the player.
 
 Lodestar's creatures stay frame brains in the game, not Tyrell minds; only people get the whole chain.
 
@@ -407,6 +407,6 @@ Settled on 2026-10-28:
 1. **Built: `Tycho.harm` from Lodestar**, bit for bit: the pipeline, statuses and reactions, means (its spells first), moves, triggers from its hazards, the feel; then the player's wounds, which Lodestar doesn't use. Lodestar's traces and a new test that replays recorded hits against its `hurtEnemy` hold it.
 2. **Built: Athelas grown**: severity, worsening, branches, care, ending badly, quiet phases.
 3. **Built: Morgul**: harm, wounds, down and dead, the victim, the onlookers and the law, traps, poison, suspicion, fights by numbers, the knobs; in Rocinante a brawl at the bar, a snare in the barn and a poisoned stew, and a Voight-Kampff check that nobody dies with `lethality` 0, grudges follow harm, and the poisoner is suspected some of the time and not always.
-4. **Next: the bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns, fights with the player played in frames, and traps handed between near and far.
+4. **Built: the bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns (`scuffles`), fights with the player played in frames (`fighters`), and traps handed between near and far (`traps`), held by `test/minds-harm.test.mjs` against Tyrell and Tycho.harm together.
 5. **Built: Lodestar** onto `Tycho.harm` (in step 1, as its proof), held to a test of 32 fights recorded before the move, frame for frame.
 6. **Then Merryfolk**: its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks.

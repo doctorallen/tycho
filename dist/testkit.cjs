@@ -164,11 +164,14 @@ async function waitFor(page, test, o = {}) {
     await sleep(o.every ?? 100);
   }
 }
-function errorsOf(page) {
+function errorsOf(page, o = {}) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message + " " + ((e.stack || "").split("\n")[1] || "").trim()));
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push("console: " + m.text());
+    if (m.type() !== "error") return;
+    const url = m.location && m.location().url || "";
+    if (!o.external && /^Failed to load resource/.test(m.text()) && /^https?:\/\//.test(url) && !/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) return;
+    errors.push("console: " + m.text());
   });
   return errors;
 }

@@ -129,11 +129,18 @@ export async function waitFor(page: Page, test: string | ((arg?: unknown) => unk
   }
 }
 
-/** Collects page errors and console errors into a list. */
-export function errorsOf(page: Page): string[] {
+/** Collects page errors and console errors into a list. A resource from
+ * another site that fails to load (a web font, where the network's closed)
+ * isn't the game's error and is left out unless `external` is set. */
+export function errorsOf(page: Page, o: { external?: boolean } = {}): string[] {
   const errors: string[] = [];
   page.on('pageerror', (e: Error) => errors.push(e.message + ' ' + ((e.stack || '').split('\n')[1] || '').trim()));
-  page.on('console', (m: { type(): string; text(): string }) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  page.on('console', (m: { type(): string; text(): string; location?(): { url?: string } }) => {
+    if (m.type() !== 'error') return;
+    const url = (m.location && m.location().url) || '';
+    if (!o.external && /^Failed to load resource/.test(m.text()) && /^https?:\/\//.test(url) && !/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url)) return;
+    errors.push('console: ' + m.text());
+  });
   return errors;
 }
 

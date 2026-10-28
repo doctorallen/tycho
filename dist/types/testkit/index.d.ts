@@ -47,8 +47,12 @@ export declare function waitFor(page: Page, test: string | ((arg?: unknown) => u
     every?: number;
     arg?: unknown;
 }): Promise<void>;
-/** Collects page errors and console errors into a list. */
-export declare function errorsOf(page: Page): string[];
+/** Collects page errors and console errors into a list. A resource from
+ * another site that fails to load (a web font, where the network's closed)
+ * isn't the game's error and is left out unless `external` is set. */
+export declare function errorsOf(page: Page, o?: {
+    external?: boolean;
+}): string[];
 export interface OpenOptions {
     /** The game's folder (opened from a file, or served when `serve` is set). */
     root?: string;

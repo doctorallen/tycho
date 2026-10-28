@@ -1,6 +1,6 @@
 # The world
 
-`Tycho.grid`, `Tycho.collide`, `Tycho.move` and `Tycho.path`: one model of a world's space for every game. Tiles live in grids; tiles and hand-placed shapes are asked about through one collision query; bodies move against it; and ways are found through it. The White Dragon's runner, Lodestar's bodies and its crowd's flow field run on these, bit for bit what the games had (`test/world.test.mjs` holds each to the game's original, and each game replays traces recorded from its old code: `test/traces.js`). Merryfolk's A* is here too, waiting for it.
+`Tycho.grid`, `Tycho.collide`, `Tycho.move` and `Tycho.path`: one model of a world's space for every game. Tiles live in grids; tiles and hand-placed shapes are asked about through one collision query; bodies move against it; and ways are found through it. The White Dragon's runner, Lodestar's bodies and its crowd's flow field run on these, bit for bit what the games had (`test/world.test.mjs` holds each to the game's original, and each game replays traces recorded from its old code: `test/traces.js`). Merryfolk's paths are found by its A*, step for step the paths it had.
 
 ## Tycho.grid
 

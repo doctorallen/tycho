@@ -23,8 +23,8 @@ Each game's own, by its options:
 |---|---|---|---|
 | canvas | `canvas(w, h)` (`canvasOf`) | `canvas(w, h, { read: true, min: 1 })` (`makeCanvas`) | `canvas(w, h, { read: !draw })` |
 | spriteFrom | | `spriteFrom(rows, pal, { read: true, min: 1 })` | `spriteFrom(rows, pal, { read: true, w: rows[0].length })` |
-| outline | | `outline(src, { ink })` (`outlined`) | `outline(c, { own: 0.42, alpha, grow: 'edge' })`, then its GPU copy (`outlineCanvas`) |
-| copies | `flipSprite(s)` | `tinted`, `flipped`, `flipSprite(s, ['c', 'ec'], ...)`, `enlarged` (`artFineCanvas`), with `{ read: true, min: 1 }` | `enlarged(src, 2, { read: true })` (`scale2x`), `disc`, `ellipse` (`ellipseFill`) |
+| outline | | `outline(src, { ink })` (`outlined`) | `outline(c, { own: 0.42, alpha, grow: 'edge' })`, then its GPU copy (`outlineCanvas`); `outline(spriteFrom(...), { own: 0.42 })` (`finishSprite`) |
+| copies | `flipSprite(s)` | `tinted`, `flipped`, `flipSprite(s, ['c', 'ec'], ...)`, `enlarged` (`artFineCanvas`), with `{ read: true, min: 1 }` | `enlarged(src, 2, { read: true })` (`scale2x`), `flipped(src, { read: true })` (`mirrorCanvas`), `disc`, `ellipse` (`ellipseFill`) |
 
 ## Letter grids enlarged by rule
 

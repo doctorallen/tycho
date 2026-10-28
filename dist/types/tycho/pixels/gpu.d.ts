@@ -62,6 +62,7 @@ type Source = CanvasImageSource & {
     width: number;
     height: number;
     gpuOwn?: boolean;
+    gpuLive?: boolean;
     getContext?: (k: '2d') => CanvasRenderingContext2D | null;
 };
 export interface GpuOptions {
@@ -212,7 +213,7 @@ export declare class Gpu {
     ownTex(src: object & {
         width: number;
         height: number;
-    }, img: ImageData | null, y0?: number, y1?: number): {
+    }, img: ImageData | TexImageSource | null, y0?: number, y1?: number): {
         tex: WebGLTexture;
         w: number;
         h: number;
@@ -300,6 +301,20 @@ export declare class Gradient {
     /** The color at t (0..1 along it), unpremultiplied [r, g, b, a]. */
     at(t: number): number[];
 }
+/** A radial gradient a Ctx can fill with: drawn as a picture a 2D canvas
+ * rasterized (kept, by its shape and the box's place in it). */
+export declare class RadialGradient {
+    x0: number;
+    y0: number;
+    r0: number;
+    x1: number;
+    y1: number;
+    r1: number;
+    css: [number, string][];
+    constructor(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number);
+    addColorStop(t: number, color: string): void;
+    key(): string;
+}
 /** A stand-in for a 2D context on a Gpu (gpu.ctx(layers)): fillRect,
  * clearRect, drawImage, globalAlpha, globalCompositeOperation (source-over,
  * lighter, destination-out, multiply), save/restore, translate, scale,
@@ -331,8 +346,8 @@ export declare class Ctx {
     private stack;
     constructor(gpu: Gpu, layers: number, over?: boolean);
     reset(): void;
-    get fillStyle(): string | Gradient;
-    set fillStyle(v: string | Gradient);
+    get fillStyle(): string | Gradient | RadialGradient;
+    set fillStyle(v: string | Gradient | RadialGradient);
     get globalCompositeOperation(): string;
     set globalCompositeOperation(v: string);
     get tx(): number;
@@ -349,13 +364,17 @@ export declare class Ctx {
     private plain;
     beginPath(): void;
     rect(x: number, y: number, w: number, h: number): void;
+    private box;
+    private covers;
     closePath(): void;
     clip(): void;
     createLinearGradient(x0: number, y0: number, x1: number, y1: number): Gradient;
+    createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): RadialGradient;
     private setState;
     private quad;
     fillRect(x: number, y: number, w: number, h: number): void;
     private fillGradient;
+    private fillRadial;
     clearRect(x: number, y: number, w: number, h: number): void;
     drawImage(img: Source, a1: number, a2: number, a3?: number, a4?: number, a5?: number, a6?: number, a7?: number, a8?: number): void;
     /** Pixels rewritten each frame (an ImageData): the box sx, sy, sw, sh of

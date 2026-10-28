@@ -158,6 +158,12 @@ export const hourOf = (t: number): number => (((t % DAY) + DAY) % DAY) / HOUR;
 /** The day number at a time in minutes. */
 export const dayOf = (t: number): number => Math.floor(t / DAY);
 
+/** The time of day at t as 'HH:MM' (a hair under a minute, from rounding, counts as that minute). */
+export function clockOf(t: number): string {
+  const m = Math.floor((((t % DAY) + DAY) % DAY) + 1e-6) % DAY;
+  return `${String(Math.floor(m / HOUR)).padStart(2, '0')}:${String(m % HOUR).padStart(2, '0')}`;
+}
+
 /** Is hour h inside [a, b), where the span may wrap past midnight? */
 export function inHours(h: number, span: readonly [number, number] | undefined): boolean {
   if (!span) return true;

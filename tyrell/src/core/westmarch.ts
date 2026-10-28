@@ -4,9 +4,18 @@
 // also sent to the game as a 'log' event.
 import type { Id, LogEntry, Minutes } from './types';
 import type { World } from './world';
-import { hourOf } from './util';
+import { clockOf } from './util';
 
 export interface LogFilter { k?: string | string[]; who?: Id; since?: Minutes; until?: Minutes }
+
+/** Is an entry about someone: by them, or naming them as its target (target, for or to)? */
+function about(e: LogEntry, who: Id): boolean {
+  if (e.who === who) return true;
+  const d = e.d as Record<string, unknown> | undefined;
+  if (!d) return false;
+  // a set-out's `to` is a place and a report's a group
+  return d.target === who || d.for === who || (d.to === who && e.k !== 'set-out' && e.k !== 'report');
+}
 
 export class Westmarch {
   constructor(private w: World) {}
@@ -28,7 +37,7 @@ export class Westmarch {
   find(f: LogFilter = {}): LogEntry[] {
     const kinds = f.k === undefined ? null : new Set(Array.isArray(f.k) ? f.k : [f.k]);
     return this.w.s.log.filter((e) =>
-      (!kinds || kinds.has(e.k)) && (f.who === undefined || e.who === f.who || (e.d && (e.d as any).target === f.who)) &&
+      (!kinds || kinds.has(e.k)) && (f.who === undefined || about(e, f.who)) &&
       (f.since === undefined || e.t >= f.since) && (f.until === undefined || e.t <= f.until));
   }
 
@@ -43,15 +52,14 @@ export class Westmarch {
     const w = this.w;
     const out: string[] = [];
     for (const e of this.find({ who, since })) {
-      const hh = hourOf(e.t);
-      const h = Math.floor(hh), m = Math.floor((hh - h) * 60);
-      const clock = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const clock = clockOf(e.t);
       const d: any = e.d || {};
       // something someone else did with them
       if (e.who !== who) {
         const other = w.s.people[e.who ?? '']?.name ?? e.who ?? 'someone';
         if (e.k === 'started') out.push(`${clock} ${other}: ${w.actions.get(d.action)?.label ?? d.action} with them`);
         else if (e.k === 'did') out.push(`${clock} ${other} ${d.verb} them`);
+        else if (e.k === 'told') out.push(`${clock} heard about ${d.key} from ${other}`);
         else if (e.k === 'met') out.push(`${clock} spent time with ${other}`);
         continue;
       }
@@ -62,10 +70,10 @@ export class Westmarch {
         case 'started': line = `${w.actions.get(d.action)?.label ?? d.action}${d.place ? ' at ' + d.place : ''}`; break;
         case 'failed': line = `couldn't: ${d.why}`; break;
         case 'felt': line = `felt ${d.label ?? d.feeling}`; break;
-        case 'told': line = e.who === who ? `told ${d.to} about ${d.key}` : `heard about ${d.key} from ${e.who}`; break;
+        case 'told': line = `told ${w.s.people[d.to]?.name ?? d.to} about ${d.key}`; break;
         case 'broke': line = `broke down: ${d.kind}`; break;
         case 'met': line = `spent time with ${w.s.people[d.target]?.name ?? d.target}`; break;
-        case 'did': line = `${d.verb} ${w.s.people[d.for]?.name ?? d.for ?? ''}`.trim(); break;
+        case 'did': { const t = d.for ?? d.to ?? d.target; line = `${d.verb} ${w.s.people[t]?.name ?? t ?? ''}`.trim(); break; }
         default: continue;
       }
       out.push(`${clock} ${line}`);

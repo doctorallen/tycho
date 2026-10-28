@@ -508,6 +508,21 @@ test('Westmarch: the log and a chronicle of someone\'s day', () => {
   assert.match(lines[0], /^\d\d:\d\d /);
 });
 
+test('a chronicle shows deeds done for someone, what they heard, at the right minute', () => {
+  const w = rocinante({ start: 7 * HOUR });
+  w.advance(20); // 7:20
+  w.did('player', 'fixed', { for: 'ruth', what: 'radio' });
+  w.did('kofi', 'helped', { to: 'ruth' });
+  w.wormtongue.config.gossipChance = 1;
+  w.reverie.believe('sam', 'did:dev:theft', 'bread', 'saw');
+  w.wormtongue.met(w.get('sam'), w.get('ruth'));
+  const lines = w.westmarch.chronicle('ruth', 7 * HOUR);
+  assert.ok(lines.includes('07:20 player fixed them'), lines.join('\n'));
+  assert.ok(lines.includes('07:20 Kofi helped them'), lines.join('\n'));
+  assert.ok(lines.includes('07:20 heard about did:dev:theft from Sam'), lines.join('\n'));
+  assert.match(w.describe('ruth'), /day 0 07:20/);
+});
+
 test('Voight-Kampff: Rocinante behaves like people for a week', () => {
   const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed }), days: 7 });
   assert.deepEqual(report.failures, []);

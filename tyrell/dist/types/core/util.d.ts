@@ -56,6 +56,8 @@ export declare const DAY = 1440;
 export declare const hourOf: (t: number) => number;
 /** The day number at a time in minutes. */
 export declare const dayOf: (t: number) => number;
+/** The time of day at t as 'HH:MM' (a hair under a minute, from rounding, counts as that minute). */
+export declare function clockOf(t: number): string;
 /** Is hour h inside [a, b), where the span may wrap past midnight? */
 export declare function inHours(h: number, span: readonly [number, number] | undefined): boolean;
 /** Minutes from time t until hour h next comes round (0 if it is h now). */

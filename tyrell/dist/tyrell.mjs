@@ -283,6 +283,10 @@ var HOUR = 60;
 var DAY = 1440;
 var hourOf = (t) => (t % DAY + DAY) % DAY / HOUR;
 var dayOf = (t) => Math.floor(t / DAY);
+function clockOf(t) {
+  const m = Math.floor((t % DAY + DAY) % DAY + 1e-6) % DAY;
+  return `${String(Math.floor(m / HOUR)).padStart(2, "0")}:${String(m % HOUR).padStart(2, "0")}`;
+}
 function inHours(h, span) {
   if (!span) return true;
   const [a, b] = span;
@@ -1893,6 +1897,12 @@ var Esper = class {
 };
 
 // src/core/westmarch.ts
+function about(e, who) {
+  if (e.who === who) return true;
+  const d = e.d;
+  if (!d) return false;
+  return d.target === who || d.for === who || d.to === who && e.k !== "set-out" && e.k !== "report";
+}
 var Westmarch = class {
   constructor(w) {
     this.w = w;
@@ -1912,7 +1922,7 @@ var Westmarch = class {
   /** Entries matching a filter, oldest first. */
   find(f = {}) {
     const kinds = f.k === void 0 ? null : new Set(Array.isArray(f.k) ? f.k : [f.k]);
-    return this.w.s.log.filter((e) => (!kinds || kinds.has(e.k)) && (f.who === void 0 || e.who === f.who || e.d && e.d.target === f.who) && (f.since === void 0 || e.t >= f.since) && (f.until === void 0 || e.t <= f.until));
+    return this.w.s.log.filter((e) => (!kinds || kinds.has(e.k)) && (f.who === void 0 || about(e, f.who)) && (f.since === void 0 || e.t >= f.since) && (f.until === void 0 || e.t <= f.until));
   }
   /** Everything since a time. */
   since(t, k) {
@@ -1926,14 +1936,13 @@ var Westmarch = class {
     const w = this.w;
     const out = [];
     for (const e of this.find({ who, since })) {
-      const hh = hourOf(e.t);
-      const h = Math.floor(hh), m = Math.floor((hh - h) * 60);
-      const clock2 = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      const clock2 = clockOf(e.t);
       const d = e.d || {};
       if (e.who !== who) {
         const other = w.s.people[e.who ?? ""]?.name ?? e.who ?? "someone";
         if (e.k === "started") out.push(`${clock2} ${other}: ${w.actions.get(d.action)?.label ?? d.action} with them`);
         else if (e.k === "did") out.push(`${clock2} ${other} ${d.verb} them`);
+        else if (e.k === "told") out.push(`${clock2} heard about ${d.key} from ${other}`);
         else if (e.k === "met") out.push(`${clock2} spent time with ${other}`);
         continue;
       }
@@ -1955,7 +1964,7 @@ var Westmarch = class {
           line = `felt ${d.label ?? d.feeling}`;
           break;
         case "told":
-          line = e.who === who ? `told ${d.to} about ${d.key}` : `heard about ${d.key} from ${e.who}`;
+          line = `told ${w.s.people[d.to]?.name ?? d.to} about ${d.key}`;
           break;
         case "broke":
           line = `broke down: ${d.kind}`;
@@ -1963,9 +1972,11 @@ var Westmarch = class {
         case "met":
           line = `spent time with ${w.s.people[d.target]?.name ?? d.target}`;
           break;
-        case "did":
-          line = `${d.verb} ${w.s.people[d.for]?.name ?? d.for ?? ""}`.trim();
+        case "did": {
+          const t = d.for ?? d.to ?? d.target;
+          line = `${d.verb} ${w.s.people[t]?.name ?? t ?? ""}`.trim();
           break;
+        }
         default:
           continue;
       }
@@ -1976,11 +1987,7 @@ var Westmarch = class {
 };
 
 // src/tools/palantir.ts
-var clock = (t) => {
-  const h = hourOf(t);
-  const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
-  return `day ${Math.floor(t / 1440)} ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-};
+var clock = (t) => `day ${Math.floor((t + 1e-6) / DAY)} ${clockOf(t)}`;
 var Palantir = class {
   constructor(w) {
     this.w = w;

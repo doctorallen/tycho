@@ -275,7 +275,7 @@ world.did('player', 'cheated', { for: 'dev', what: 'change', place: 'market', se
 
 The `data` of `world.did`: the receiver is `for` (or `to`, or `target`); `what`, `place` and `seenBy` (an array of ids) are read by the modules; anything else is logged. Every deed is noted in the receiver's file on the doer (and the witnesses'), which conditions read as `file:player.fixed`. Actions with `deed` and a target report the same way when they end. In TypeScript, `seenBy` needs a cast, since `data` is typed as plain values.
 
-`world.westmarch.chronicle(id, since)` lists deeds done to someone only when the data names them as `target`; use `{ for: id, target: id }` if you show chronicles.
+`world.westmarch.chronicle(id, since)` lists deeds done for someone whichever of `for`, `to` or `target` names them.
 
 ## Talking
 

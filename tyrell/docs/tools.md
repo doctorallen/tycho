@@ -55,9 +55,9 @@ world.westmarch.chronicle('ruth', world.now - 1440);
 
 | Call | Returns |
 |---|---|
-| `find({ k?, who?, since?, until? })` | Entries matching, oldest first. `k` is a kind or a list of kinds; `who` matches the entry's person or an entry whose data names them as `target`; `since` and `until` are times |
+| `find({ k?, who?, since?, until? })` | Entries matching, oldest first. `k` is a kind or a list of kinds; `who` matches the entry's person, or an entry whose data names them as `target`, `for` or `to` (a deed done for them, gossip told to them); `since` and `until` are times |
 | `since(t, k?)` | `find({ since: t, k })` |
-| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks, arrivals, actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them (entries that name them as `target`) |
+| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks, arrivals, actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them or for them, and what they heard (entries that name them as `target`, `for` or `to`) |
 
 A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 
@@ -67,7 +67,7 @@ A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 | `fact` | `{ key, value }` | A fact is set (by an input) |
 | `sensed` | `{ kind, what, place, by }` | The game reported a stimulus |
 | `did` | `{ verb, ...data }` | A deed |
-| `directed`, `released` | `{ do }` | A directive is given or cleared |
+| `directed`, `released` | `{ do, label? }` | A directive is given or cleared |
 | `set-out` | `{ to, for }` | Someone sets out |
 | `arrived` | `{ place }` | Someone arrives |
 | `started` | `{ action, place, layer, target? }` | An action starts |
@@ -90,7 +90,7 @@ A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 
 The `log:<kind>` effect writes your own entries from inside the simulation. `world.log(kind, who, data)` writes one from the game: it's an input, so the entry is recorded and comes back after a rewind (inside the simulation it writes at once).
 
-The log is in every snapshot and every save, so its size is the biggest lever on Esper's memory (see [Time](time.md#esperconfig-and-memory)). In the chronicle, clock times are rounded down, so a walk ending at 7:20 can show as 07:19.
+The log is in every snapshot and every save, so its size is the biggest lever on Esper's memory (see [Time](time.md#esperconfig-and-memory)).
 
 ## Voight-Kampff
 

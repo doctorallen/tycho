@@ -7,13 +7,9 @@
 // don't save and a rewind clears them.
 import type { Candidate, Decision, Id } from '../core/types';
 import type { World } from '../core/world';
-import { hourOf, round } from '../core/util';
+import { DAY, clockOf, round } from '../core/util';
 
-const clock = (t: number): string => {
-  const h = hourOf(t);
-  const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
-  return `day ${Math.floor(t / 1440)} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-};
+const clock = (t: number): string => `day ${Math.floor((t + 1e-6) / DAY)} ${clockOf(t)}`;
 
 export class Palantir {
   private decisions = new Map<Id, Decision[]>();

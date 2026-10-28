@@ -50,12 +50,21 @@ export interface FellowshipConfig {
   sentiments: number;
   /** How much a liked person's habits rub off. */
   imitation: number;
+  /**
+   * Days after their last meeting that a passing acquaintance is forgotten:
+   * a record whose regard and attraction are both under `forgetBelow` and that
+   * holds no sentiments. Keeps a big town's relationships to the ones that
+   * matter. 0 forgets nobody.
+   */
+  forget: number;
+  /** How faint a relationship has to be to be forgotten. */
+  forgetBelow: number;
   /** Standing labels, by fame (rows: low, some, high) and infamy (columns). */
   labels: string[][];
 }
 
 export const DEFAULT_FELLOWSHIP: FellowshipConfig = {
-  meetGain: 0.03, compatSpread: 0.6, decay: 0.004, sentiments: 4, imitation: 0.03,
+  meetGain: 0.03, compatSpread: 0.6, decay: 0.004, sentiments: 4, imitation: 0.03, forget: 14, forgetBelow: 0.05,
   labels: [
     ['unknown', 'suspect', 'trouble', 'menace'],
     ['familiar', 'mixed', 'rough edges', 'feared'],
@@ -314,12 +323,13 @@ export class Fellowship implements Module {
   }
 
   day(): void {
-    const d = this.config.decay;
+    const d = this.config.decay, now = this.w.s.now, gone = this.config.forget * DAY, below = this.config.forgetBelow;
     for (const k in this.st.rel) {
       const r = this.st.rel[k];
       if (Math.abs(r.r) <= d) r.r = 0; else r.r = round(r.r - Math.sign(r.r) * d, 4);
-      const now = this.w.s.now;
       r.s = r.s.filter((s) => s.until === undefined || s.until > now);
+      // a face in the crowd, long unseen: forgotten
+      if (gone > 0 && now - r.last > gone && Math.abs(r.r) < below && Math.abs(r.a) < below && !r.s.length) delete this.st.rel[k];
     }
   }
 

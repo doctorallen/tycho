@@ -3533,6 +3533,8 @@ var DEFAULT_FELLOWSHIP = {
   decay: 4e-3,
   sentiments: 4,
   imitation: 0.03,
+  forget: 14,
+  forgetBelow: 0.05,
   labels: [
     ["unknown", "suspect", "trouble", "menace"],
     ["familiar", "mixed", "rough edges", "feared"],
@@ -3817,13 +3819,13 @@ var Fellowship = class {
     for (const wid of seen) if (wid !== target && deed.regard) this.applyRegard(wid, actor, deed.regard * 0.4);
   }
   day() {
-    const d = this.config.decay;
+    const d = this.config.decay, now2 = this.w.s.now, gone = this.config.forget * DAY, below = this.config.forgetBelow;
     for (const k in this.st.rel) {
       const r = this.st.rel[k];
       if (Math.abs(r.r) <= d) r.r = 0;
       else r.r = round(r.r - Math.sign(r.r) * d, 4);
-      const now2 = this.w.s.now;
       r.s = r.s.filter((s) => s.until === void 0 || s.until > now2);
+      if (gone > 0 && now2 - r.last > gone && Math.abs(r.r) < below && Math.abs(r.a) < below && !r.s.length) delete this.st.rel[k];
     }
   }
   removed(p) {

@@ -43,6 +43,15 @@ export interface FellowshipConfig {
     sentiments: number;
     /** How much a liked person's habits rub off. */
     imitation: number;
+    /**
+     * Days after their last meeting that a passing acquaintance is forgotten:
+     * a record whose regard and attraction are both under `forgetBelow` and that
+     * holds no sentiments. Keeps a big town's relationships to the ones that
+     * matter. 0 forgets nobody.
+     */
+    forget: number;
+    /** How faint a relationship has to be to be forgotten. */
+    forgetBelow: number;
     /** Standing labels, by fame (rows: low, some, high) and infamy (columns). */
     labels: string[][];
 }

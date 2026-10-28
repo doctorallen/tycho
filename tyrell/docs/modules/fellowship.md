@@ -28,6 +28,8 @@ It moves:
 - **by social acts** (Cityspeak), silencing by fear (Wormtongue, -0.3), and the game (`fellowship.adjust`);
 - **back toward zero** by `decay` (0.004) every day.
 
+A passing acquaintance doesn't last: once two people haven't met for `forget` (14) days, and the one's regard and attraction for the other are both under `forgetBelow` (0.05) with no sentiments, the record goes, and they're strangers again (`knows` is false). A big town keeps only the relationships that matter.
+
 Social actions (tagged `'social'`) aimed at someone weigh `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)`: people seek out the people they like.
 
 ## Attraction and compatibility
@@ -155,6 +157,8 @@ Fellowship emits no events of its own. It writes log entries: `met` (`{ target, 
 | `decay` | 0.004 | Regard drifts back toward zero by this much a day |
 | `sentiments` | 4 | Most sentiments kept per relationship |
 | `imitation` | 0.03 | How much a liked person's habits rub off |
+| `forget` | 14 | Days after their last meeting that a passing acquaintance is forgotten: a record with regard and attraction both under `forgetBelow`, and no sentiments. Keeps a big town's relationships to the ones that matter. 0 forgets nobody |
+| `forgetBelow` | 0.05 | How faint a relationship has to be to be forgotten |
 | `labels` | the table above | Standing labels, rows by fame band, columns by infamy band |
 
 ## With other modules

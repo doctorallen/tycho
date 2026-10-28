@@ -124,6 +124,22 @@ test('time together grows regard; compatibility is the same both ways', () => {
   assert.ok(rels.some((r) => r.regard > 0));
 });
 
+test('passing acquaintances are forgotten after a while; friends are not', () => {
+  const make = (forget) => {
+    const w = Tyrell.create({ seed: 'forget', moduleConfig: forget === undefined ? {} : { fellowship: { forget } } });
+    w.place({ id: 'h' });
+    for (const id of ['a', 'b', 'c']) w.person(id, { home: 'h' });
+    w.fellowship.adjust('a', 'b', 0.02); // met once in a queue
+    w.fellowship.adjust('a', 'c', 0.5); // a friend
+    w.advance(15 * DAY);
+    return w;
+  };
+  const w = make();
+  assert.equal(w.fellowship.knows('a', 'b'), false, 'the stranger is forgotten');
+  assert.equal(w.fellowship.knows('a', 'c'), true, 'the friend is kept');
+  assert.equal(make(0).fellowship.knows('a', 'b'), true, 'forget: 0 keeps everyone');
+});
+
 test('sentiments: at most four, with reasons, some wearing off', () => {
   const w = tiny();
   w.person('a', { home: 'home_a' }); w.person('b', { home: 'home_b' });

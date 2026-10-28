@@ -605,6 +605,13 @@ export interface Config {
     logSize: number;
     /** Palantír keeps this many decisions per person. Default 12. */
     decisions: number;
+    /**
+     * A check (a boundary or an urge) already queued for someone at a moment
+     * isn't queued again, so each is thought over once. Default false: every
+     * call queues one, and someone who keeps on with what they're doing can
+     * think the same moment over several times.
+     */
+    checksOnce: boolean;
     /** Habit learning rates and bounds. */
     habitFast: number;
     habitSlow: number;

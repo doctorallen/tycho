@@ -54,6 +54,7 @@ export const DEFAULT_CONFIG: Config = {
   budgetMs: 4,
   logSize: 1000,
   decisions: 12,
+  checksOnce: false,
   habitFast: 0.25,
   habitSlow: 0.05,
   habitDrift: 0.02,

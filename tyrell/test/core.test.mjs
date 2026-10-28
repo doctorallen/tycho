@@ -312,6 +312,22 @@ test('a game that learns in its own way turns the habits\' own learning off', ()
   assert.equal(Tyrell.create({ seed: 'd' }).config.habitDrift, 0.02);
 });
 
+test('with checksOnce, a moment is thought over once however often its check is asked for', () => {
+  const urges = (config) => {
+    const w = tiny({ config });
+    w.action({ id: 'nap', at: 'home', minutes: 600, relieves: { energy: 0.2 }, base: 1, rank: 2 });
+    const p = w.person('ana', { home: 'home_a', needs: { hunger: 0.5 } });
+    w.advance(1);
+    assert.equal(p.doing.action, 'nap');
+    w.clock.scheduleChecks(p);
+    w.clock.scheduleChecks(p);
+    return w.s.q.filter((e) => e.k === 'think' && e.who === 'ana' && e.data?.mode === 'urge').length;
+  };
+  assert.equal(urges({}), 3, 'by default each call queues one');
+  assert.equal(urges({ checksOnce: true }), 1);
+  assert.equal(Tyrell.create({ seed: 'd' }).config.checksOnce, false);
+});
+
 test('waking from nothing: idle people wait and think again', () => {
   const w = Tyrell.create({ seed: 'idle' });
   w.place({ id: 'void' });

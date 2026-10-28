@@ -1801,10 +1801,12 @@ var Entmoot = class {
     const w = this.w;
     const d = p.doing;
     if (!d) return;
+    const queued = (t, mode) => w.config.checksOnce && w.s.q.some((e) => e.k === "think" && e.who === p.id && e.t === t && e.data?.mode === mode);
     const boundary = w.mind.nextBoundary(p);
-    if (boundary < d.end - 0.01) this.schedule({ t: boundary, k: "think", who: p.id, data: { mode: "boundary" } });
+    if (boundary < d.end - 0.01 && !queued(boundary, "boundary")) this.schedule({ t: boundary, k: "think", who: p.id, data: { mode: "boundary" } });
     const urge = w.mind.urgentAt(p);
-    if (urge < d.end - 0.01) this.schedule({ t: Math.max(w.s.now + 1, urge), k: "think", who: p.id, data: { mode: "urge" } });
+    const at = Math.max(w.s.now + 1, urge);
+    if (urge < d.end - 0.01 && !queued(at, "urge")) this.schedule({ t: at, k: "think", who: p.id, data: { mode: "urge" } });
   }
   /** People at the same place meet: modules hear about it (regard, gossip, talk). */
   meet(p) {
@@ -2637,6 +2639,7 @@ var DEFAULT_CONFIG = {
   budgetMs: 4,
   logSize: 1e3,
   decisions: 12,
+  checksOnce: false,
   habitFast: 0.25,
   habitSlow: 0.05,
   habitDrift: 0.02,

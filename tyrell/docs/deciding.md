@@ -337,6 +337,8 @@ People decide at these moments, all of them queued events:
 - a need is about to become urgent, desperate or reach 1 during an action (an "urge" check: they switch only if something now outranks what they're doing). Urge checks don't interrupt a walk; boundary checks do;
 - a directive is given (`world.direct`), they come back from being away, or something fails.
 
+Each check is an event queued for its moment. Someone who keeps on after a check has their checks queued again, so the same moment can be queued, and thought over, more than once; with `config.checksOnce` a check already queued for that moment isn't queued again.
+
 A plan that was set aside for something urgent is picked up again at the next decision, unless something outranks it (see [Mentat](modules/mentat.md)).
 
 ## Habits and rewards
@@ -467,6 +469,7 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame |
 | `logSize` | 1000 | Westmarch log entries kept |
 | `decisions` | 12 | Decisions Palantír keeps per person |
+| `checksOnce` | false | A check already queued for someone at a moment isn't queued again (see [When people think](#when-people-think)) |
 | `habitFast` | 0.25 | Learning rate of the fast habit weight |
 | `habitSlow` | 0.05 | How fast the slow weight follows the fast one |
 | `habitDrift` | 0.02 | How far the fast weight is pulled back toward 1 each time it learns |

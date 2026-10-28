@@ -23,9 +23,11 @@ const walk = (p) => {
   const abs = join(root, p);
   if (statSync(abs).isDirectory()) { for (const f of readdirSync(abs).sort()) if (f !== 'site') walk(posix.join(p, f)); }
   else if (p.endsWith('.md')) pages.push(p);
+  else if (/\.(svg|png|jpe?g|gif|webp)$/i.test(p)) pictures.push(p);
 };
+const pictures = [];
 for (const s of SOURCES) walk(s);
-const staged = new Set(pages);
+const staged = new Set(pages.concat(pictures));
 const isDir = (p) => existsSync(join(root, p)) && statSync(join(root, p)).isDirectory();
 
 // a relative link from page `from` to `target`: kept if it lands on a staged
@@ -54,12 +56,15 @@ for (const p of pages) {
   }))).join('');
   // (Jekyll runs Liquid over every page: one that shows {{ or {% as text
   // is held as raw after its title, which stays the page's title)
-  let body = done;
+  // (the README's logo is the site's header already)
+  let body = done.replace(/<!-- logo -->[\s\S]*?<!-- \/logo -->\n*/, '');
   if (/\{\{|\{%/.test(body)) body = body.replace(/^(#[^\n]*\n)?/, (h) => h + '{% raw %}\n') + '\n{% endraw %}\n';
   const dest = join(out, p);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, body);
 }
-// the layout, the stylesheet, the config and the pictures
+// the pictures the pages show, at their own paths
+for (const p of pictures) { mkdirSync(dirname(join(out, p)), { recursive: true }); cpSync(join(root, p), join(out, p)); }
+// the layout, the stylesheet and the config
 cpSync(join(root, 'docs/site'), out, { recursive: true });
-console.log(`staged ${pages.length} pages into ${relative(root, normalize(out)) || out}, ${changed} links pointed at GitHub`);
+console.log(`staged ${pages.length} pages and ${pictures.length} pictures into ${relative(root, normalize(out)) || out}, ${changed} links pointed at GitHub`);

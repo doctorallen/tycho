@@ -36,6 +36,7 @@ nav:
       - { title: Installable games, url: /docs/installable.html }
       - { title: The test kit, url: /docs/testkit.html }
       - { title: The move onto Tycho, url: /docs/move.html }
+      - { title: The logo, url: /docs/brand/ }
   - title: Tyrell
     pages:
       - { title: Overview, url: /tyrell/ }

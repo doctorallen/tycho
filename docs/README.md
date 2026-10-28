@@ -16,4 +16,5 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 - [minds.md](minds.md): the bridge, `Tycho.minds` (`dist/tycho-minds.js`): the glue between a game and Tyrell.
 - [installable.md](installable.md): the service worker (`dist/tycho-sw.js`).
 - [testkit.md](testkit.md): the Node test kit (`dist/testkit.cjs`).
+- [brand/](brand/README.md): the logo, its files and colors, and the script that draws it.
 - [move.md](move.md): moving the three games onto Tycho, phase by phase: what moved, what changed, what's left.

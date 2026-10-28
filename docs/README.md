@@ -4,6 +4,9 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 
 - [core.md](core.md): `Tycho.seed`, `Tycho.math`, `Tycho.color`, `Tycho.loop`.
 - [renderer.md](renderer.md): `Tycho.gpu`, `Tycho.light`, `Tycho.post`: the frame on the GPU.
+- [sprite.md](sprite.md): `Tycho.sprite`: canvases, letter-row sprites, outlines and copies, letter grids enlarged by rule, and the shape painter (`Shapes`).
+- [paint.md](paint.md): `Tycho.paint`: the chunked lazy painter: a pixel buffer, flat or stroked, operations with their own seeds, the chunk cache.
+- [fx.md](fx.md): `Tycho.fx`: particles thrown and falling, effects that run out, words rising.
 - [shell.md](shell.md): `Tycho.save`, `Tycho.pwa`, `Tycho.dev`, `Tycho.loader`.
 - [installable.md](installable.md): the service worker (`dist/tycho-sw.js`).
 - [testkit.md](testkit.md): the Node test kit (`dist/testkit.cjs`).

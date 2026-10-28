@@ -449,7 +449,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `escalateTemper` | 0.5 | ...plus this a point of temper above the middle... |
 | `escalateStress` | 0.5 | ...plus this a point of stress... |
 | `escalateGrudge` | 0.6 | ...plus this a point of grudge against the speaker... |
-| `escalateRegard` | 0.5 | ...less this a point of regard for them; times `escalation` |
+| `escalateRegard` | 0.5 | ...less this a point of regard for them; times `escalation`, and the kind's own `escalation` |
 | `calmBase` | 0.1 | The chance the other keeps their patience and calms it: this... |
 | `calmPatience` | 0.6 | ...plus this times their patience... |
 | `calmRegard` | 0.3 | ...plus this times their regard for the one hurt |

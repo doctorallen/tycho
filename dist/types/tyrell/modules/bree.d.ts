@@ -65,6 +65,13 @@ export interface KindDef {
     skill?: Record<string, number>;
     /** What it turns into when a turn goes sour and they won't let it go: chat to an argument, an argument to a fight. */
     escalates?: Id;
+    /**
+     * How readily it escalates, times the chance (over the escalation knob): a
+     * number, considerations or a function, read from the side of whoever would
+     * escalate (they're the person, the other the target). Default 1. A
+     * squabble that seldom comes to blows, or never between two children.
+     */
+    escalation?: number | Consideration[] | ((ctx: Ctx) => number);
     /** Regard moved by its outcome, times this. Default 1. */
     regard?: number;
     /** Attraction moved by its outcome (romantic kinds), times this. Default 1. */
@@ -719,6 +726,8 @@ export declare class Bree implements Module {
      * walk off, or let it go?
      */
     private react;
+    /** A kind's own say in how readily it escalates (its `escalation`), from the side of whoever would (`by`), against the other. */
+    private escalation;
     /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
     private stepper;
     /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */

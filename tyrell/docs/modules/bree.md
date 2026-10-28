@@ -66,6 +66,7 @@ b.kind({ id: 'apologize', to: ['grudged>0.05'], base: 0.5, traits: { forgiveness
 | `traits` | none | The listener's nature: trait role → how much each point above the middle adds (below takes away) |
 | `skill` | none | The speaker's nature, the same way |
 | `escalates` | none | What it turns into when it goes sour and they won't let it go |
+| `escalation` | 1 | How readily it escalates: the chance times this (a number, considerations or a function, read from the side of whoever would escalate, the other as target): a squabble that seldom comes to blows |
 | `regard`, `attraction`, `grudge` | 1 | Multipliers on what its outcome moves |
 | `mends` | none | How much a good outcome takes off the other's grudge against the starter |
 | `mutual` | false | It mends both ways |
@@ -190,7 +191,7 @@ The steps: `open`, `reply`, `more`, `back` (a topic's, or a quick kind's turn ab
 
 When a turn lands at `escalateAt` (sour) or worse, the one who heard it reacts:
 
-1. **They answer back harder**, if the kind `escalates`, with chance `escalateBase + escalateTemper × (temper - 0.5) × 2 + escalateStress × stress + escalateGrudge × their grudge - escalateRegard × regard` (0.25, 0.5, 0.5, 0.6, 0.5), times the `escalation` knob (theirs). Unless:
+1. **They answer back harder**, if the kind `escalates`, with chance `escalateBase + escalateTemper × (temper - 0.5) × 2 + escalateStress × stress + escalateGrudge × their grudge - escalateRegard × regard` (0.25, 0.5, 0.5, 0.6, 0.5), times the `escalation` knob (theirs) and the kind's own `escalation`. Unless:
    - **the other keeps their patience** (`calmBase + calmPatience × patience + calmRegard × regard`: 0.1, 0.6, 0.3): a `calm` turn, and it goes on as it was; or
    - **someone there steps in**: whoever likes one of them most (at least `stepInFrom`, 0.2), with the nerve for it, with chance `stepInBase + stepInRegard × that regard + stepInCourage × (courage - 0.5) × 2`: a `step_in` turn, and it's over (`stepped in`). Both like them `mediateRegard` (0.03) more, and their grudges against each other ease by `mediateMends` (0.1, by forgiveness);
    - otherwise it **escalates**: the exchange becomes the next kind (a chat an argument, an argument a fight), led by the one who escalated (who's now `by`, who started the trouble), with its own turns; `bree:escalated`.

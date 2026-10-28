@@ -84,6 +84,16 @@ A phase's `next` says where it goes when it runs out: a phase's id, `null` (the 
 
 The conditions read the person (`ctx.data.course` is the course). With no `next`, or no branch holding, the next phase in order, and after the last, the course passes. A branch can go back to an earlier phase (a fever that returns).
 
+A phase can be one only some go through: with `if`, conditions read as it would start (the person, `ctx.data.course` the course), it's passed over when they don't hold, as if it had run out at once (to its `next`), with nothing logged or told; with none left, the course passes. A course whose phases are bands of how much is in someone (ale past a pint or two, a toadstool's worst) starts at the band its severity says:
+
+```js
+A.course({ id: 'ale', again: 'restart', severity: { stretch: 1, depth: 0 }, phases: [
+  { id: 'merry', if: ['sev:ale>0.6'], minutes: 60, rates: { energy: 1.5 } },
+  { id: 'tipsy', if: ['sev:ale>0.45'], minutes: 60 },
+  { id: 'mellow', minutes: 60 },
+] });
+```
+
 ## Care
 
 `athelas.tend(id, course?, by?)` (an input; with no course, every course they have), and the effect `tend` / `tend:<course>` (the person tends the target, or themselves with none), mark a course as tended: how well, 0..1, is `tendBase` (0.5), plus the rest of the way to 1 by the tender's share of `tendSkill` (a skill; none by default). The phase they're in ends sooner by `tendHasten` (0.25) of what's left, times how well. The mark lasts the course out (a better tending raises it, a worse one doesn't lower it), and `tended:<course>` reads it, for branches and choices. With Morgul on, its `tend` effect is this and more: someone down is helped up.
@@ -166,6 +176,7 @@ Phase changes are queue items addressed to the module, so they save and rewind.
 | `then` | none | Effects when it starts |
 | `stop` | false | They stop and choose again when it starts |
 | `spreads` | true | Whether it's catching in this phase (with `contagion`) |
+| `if` | none | Only for some: conditions read as it would start; passed over (to its `next`) when they don't hold ([branches](#branches)) |
 | `next` | the next in order | Where it goes when it runs out: a phase's id, `null` (it passes), or [branches](#branches) `[{ if?, to }]` |
 | `dies` | false | It [ends in death](#ending-badly): true, or the why |
 | `quiet` | false | Nobody notices it: no feeling, `under:` reads nothing |

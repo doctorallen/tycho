@@ -324,3 +324,37 @@ test('quiet phases: nobody notices (no feeling, under reads nothing); a phase th
   assert.deepEqual(shows, ['sick']);
   assert.ok(w.reverie.feelings('ana').some((f) => f.id === 'sick'));
 });
+
+test('a phase only some go through: passed over when its conditions don\'t hold, as it would start', () => {
+  // ale by how much is in them: well in drink past 0.6, tipsy past 0.45, mellow below
+  const ale = { id: 'ale', again: 'restart', severity: { stretch: 1, depth: 0 }, phases: [
+    { id: 'merry', if: ['sev:ale>0.6'], minutes: 60, rates: { energy: 2 } },
+    { id: 'tipsy', if: ['sev:ale>0.45'], minutes: 60 },
+    { id: 'mellow', minutes: 60 },
+  ] };
+  const w = room(ale);
+  const seen = [];
+  w.on('course', (e) => seen.push(e.phase));
+  w.athelas.afflict('ana', 'ale', undefined, 0.3);
+  assert.equal(w.athelas.of('ana')[0].phase, 'mellow', 'a pint: neither merry nor tipsy');
+  assert.deepEqual(seen, ['mellow'], 'the phases passed over aren\'t told');
+  w.advance(30);
+  assert.equal(w.athelas.afflict('ana', 'ale', undefined, 0.7), true);
+  assert.equal(w.athelas.of('ana')[0].phase, 'merry', 'restarted, and well in drink now');
+  w.advance(61);
+  assert.equal(w.athelas.of('ana')[0].phase, 'tipsy');
+  // a course whose every phase is passed over passes at once
+  const none = room({ id: 'odd', phases: [{ id: 'only', if: ['sev:odd>0.9'], minutes: 60 }] });
+  const rec = [];
+  none.on('recovered', (e) => rec.push(e.course));
+  assert.equal(none.athelas.afflict('ana', 'odd', undefined, 0.2), true);
+  assert.deepEqual(none.athelas.of('ana'), []);
+  assert.deepEqual(rec, ['odd']);
+  // passed over by its branches, too; and a loop of them ends after one round
+  const loop = room({ id: 'loop', phases: [
+    { id: 'a', if: ['sev:loop>0.9'], minutes: 60, next: 'b' },
+    { id: 'b', if: ['sev:loop>0.9'], minutes: 60, next: 'a' },
+  ] });
+  loop.athelas.afflict('ana', 'loop', undefined, 0.2);
+  assert.equal(loop.athelas.of('ana').length, 1, 'entered after one round');
+});

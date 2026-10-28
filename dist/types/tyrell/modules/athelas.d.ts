@@ -12,6 +12,13 @@ export interface CourseBranch {
 export interface CoursePhase {
     id: string;
     label?: string;
+    /**
+     * Only for some: conditions on the person (ctx.data.course is the course),
+     * read as the phase would start. One whose conditions don't hold is passed
+     * over, as if it had run out at once (to its `next`), with nothing logged:
+     * ale past a pint or two, 'sev:ale>0.6'. None: always.
+     */
+    if?: Cond[];
     /** How long it lasts: minutes, or [min, max] (drawn from the person's stream). */
     minutes: number | [number, number];
     /** Longer or shorter for some (hardiness): considerations on the person, multiplied into the minutes. */
@@ -182,7 +189,7 @@ export declare class Athelas implements Module {
     private label;
     /** Afflicts someone, inside the simulation (at a severity, 0..1, if given). */
     applyAfflict(id: Id, course: Id, from?: Id, sev?: number): boolean;
-    /** Starts a phase (needs settled by the caller). */
+    /** Starts a phase (needs settled by the caller); one whose `if` doesn't hold is passed over, and with none left the course passes. */
     private enter;
     /** A course passes, or is cured (needs settled by the caller). */
     private end;

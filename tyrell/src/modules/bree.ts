@@ -105,6 +105,13 @@ export interface KindDef {
   skill?: Record<string, number>;
   /** What it turns into when a turn goes sour and they won't let it go: chat to an argument, an argument to a fight. */
   escalates?: Id;
+  /**
+   * How readily it escalates, times the chance (over the escalation knob): a
+   * number, considerations or a function, read from the side of whoever would
+   * escalate (they're the person, the other the target). Default 1. A
+   * squabble that seldom comes to blows, or never between two children.
+   */
+  escalation?: number | Consideration[] | ((ctx: Ctx) => number);
   /** Regard moved by its outcome, times this. Default 1. */
   regard?: number;
   /** Attraction moved by its outcome (romantic kinds), times this. Default 1. */
@@ -1602,7 +1609,7 @@ export class Bree implements Module {
     if (def.escalates && this.kinds.has(def.escalates)) {
       // the headline knob, for the one who'd escalate
       const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, 'temper') - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0)
-        + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob('escalation', l.id);
+        + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob('escalation', l.id) * this.escalation(def, l, s);
       if (r.chance(p)) {
         // the other keeps their patience
         if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, 'patience') + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: 'calm' };
@@ -1618,6 +1625,21 @@ export class Bree implements Module {
       if (r.chance(p)) return { act: 'leave' };
     }
     return { act: 'none' };
+  }
+
+  /** A kind's own say in how readily it escalates (its `escalation`), from the side of whoever would (`by`), against the other. */
+  private escalation(def: KindDef, by: PersonState, other: PersonState): number {
+    const e = def.escalation;
+    if (e === undefined || e === 1) return 1;
+    if (typeof e === 'number') return Math.max(0, e);
+    const w = this.w;
+    const ctx = w.ctx(by, { target: other.id });
+    return w.peek(() => {
+      if (typeof e === 'function') return Math.max(0, Number(e(ctx)) || 0);
+      let m = 1;
+      for (const k of e) m *= w.mind.consider(k, ctx);
+      return Math.max(0, m);
+    });
   }
 
   /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */

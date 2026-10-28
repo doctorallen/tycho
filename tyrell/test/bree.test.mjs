@@ -526,6 +526,31 @@ test('a sour turn turns talk into an argument, and an argument into a fight; esc
   assert.ok(ownEsc.every((e) => e.by !== 'b'), 'b never rises to it');
 });
 
+test('a kind says how readily it escalates: a number, or by who would and against whom', () => {
+  // an argument that never comes to blows, though a chat still turns into one
+  const words = hot();
+  words.bree.kind({ id: 'argue', tags: ['hostile'], base: -3, turns: 3, escalates: 'fight', weight: 0, escalation: 0 });
+  const esc = record(words, 'bree:escalated');
+  words.bree.start('chat', 'a', 'b');
+  words.advance(HOUR);
+  assert.deepEqual(esc.map((e) => [e.from, e.to]), [['chat', 'argue']]);
+  assert.equal(words.bree.history().at(-1).kind, 'argue');
+  // by a function of the one who'd escalate (the person) and the other (the target): only a would
+  const picky = hot();
+  const asked = [];
+  picky.bree.kind({ id: 'chat', base: -3, turns: 4, escalates: 'argue', escalation: (ctx) => { asked.push([ctx.person.id, ctx.target]); return ctx.person.id === 'a' ? 1 : 0; } });
+  const pe = record(picky, 'bree:escalated');
+  picky.bree.start('chat', 'a', 'b');
+  picky.advance(HOUR);
+  assert.ok(asked.length > 0 && asked.every(([p, t]) => (p === 'a' && t === 'b') || (p === 'b' && t === 'a')));
+  assert.ok(pe.length > 0 && pe.every((e) => e.from !== 'chat' || e.by === 'a'), 'only a turns the chat into an argument');
+  // and the default leaves every world as it was
+  const same = [hot(), hot()];
+  same[1].bree.kind({ id: 'chat', base: -3, turns: 4, escalates: 'argue', escalation: 1 });
+  for (const w of same) { w.bree.start('chat', 'a', 'b'); w.advance(HOUR); }
+  assert.equal(same[0].hash(), same[1].hash());
+});
+
 test('the other can keep their patience; someone there can step in', () => {
   const w = hot({ bree: { calmBase: 1 } });
   const turns = record(w, 'bree:turn'), esc = record(w, 'bree:escalated');

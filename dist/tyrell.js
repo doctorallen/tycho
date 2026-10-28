@@ -6931,11 +6931,20 @@ var Tyrell = (() => {
       this.enter(p, course, 0);
       return true;
     }
-    /** Starts a phase (needs settled by the caller). */
+    /** Starts a phase (needs settled by the caller); one whose `if` doesn't hold is passed over, and with none left the course passes. */
     enter(p, course, i) {
       const w = this.w;
       const def = this.courses.get(course);
       const r = this.st.on[p.id][course];
+      for (let n = 0; def.phases[i]?.if?.length && n < def.phases.length; n++) {
+        if (w.lang.all(def.phases[i].if, w.ctx(p, { data: { course } }))) break;
+        const next = this.nextOf(p, def, i);
+        if (next < 0) {
+          this.end(p, course, false);
+          return;
+        }
+        i = next;
+      }
       const ph = def.phases[i];
       r.p = i;
       r.since = w.s.now;
@@ -9371,7 +9380,7 @@ var Tyrell = (() => {
       const w = this.w, c = this.c, fs = w.fellowship, rv = w.reverie;
       const regard = (x, y) => fs ? fs.regard(x, y) : 0;
       if (def.escalates && this.kinds.has(def.escalates)) {
-        const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, "temper") - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0) + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob("escalation", l.id);
+        const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, "temper") - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0) + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob("escalation", l.id) * this.escalation(def, l, s);
         if (r.chance(p)) {
           if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, "patience") + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: "calm" };
           const by = this.stepper(ex, s, l, r);
@@ -9384,6 +9393,20 @@ var Tyrell = (() => {
         if (r.chance(p)) return { act: "leave" };
       }
       return { act: "none" };
+    }
+    /** A kind's own say in how readily it escalates (its `escalation`), from the side of whoever would (`by`), against the other. */
+    escalation(def, by, other) {
+      const e = def.escalation;
+      if (e === void 0 || e === 1) return 1;
+      if (typeof e === "number") return Math.max(0, e);
+      const w = this.w;
+      const ctx = w.ctx(by, { target: other.id });
+      return w.peek(() => {
+        if (typeof e === "function") return Math.max(0, Number(e(ctx)) || 0);
+        let m = 1;
+        for (const k of e) m *= w.mind.consider(k, ctx);
+        return Math.max(0, m);
+      });
     }
     /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
     stepper(ex, s, l, r) {

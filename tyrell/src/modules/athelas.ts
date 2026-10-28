@@ -45,6 +45,13 @@ export interface CourseBranch {
 export interface CoursePhase {
   id: string;
   label?: string;
+  /**
+   * Only for some: conditions on the person (ctx.data.course is the course),
+   * read as the phase would start. One whose conditions don't hold is passed
+   * over, as if it had run out at once (to its `next`), with nothing logged:
+   * ale past a pint or two, 'sev:ale>0.6'. None: always.
+   */
+  if?: Cond[];
   /** How long it lasts: minutes, or [min, max] (drawn from the person's stream). */
   minutes: number | [number, number];
   /** Longer or shorter for some (hardiness): considerations on the person, multiplied into the minutes. */
@@ -411,11 +418,18 @@ export class Athelas implements Module {
     return true;
   }
 
-  /** Starts a phase (needs settled by the caller). */
+  /** Starts a phase (needs settled by the caller); one whose `if` doesn't hold is passed over, and with none left the course passes. */
   private enter(p: PersonState, course: Id, i: number): void {
     const w = this.w;
     const def = this.courses.get(course) as CourseDef;
     const r = (this.st as State).on[p.id][course];
+    // phases only some go through, passed over as if they'd run out at once (a loop of them is entered after one round)
+    for (let n = 0; def.phases[i]?.if?.length && n < def.phases.length; n++) {
+      if (w.lang.all(def.phases[i].if, w.ctx(p, { data: { course } }))) break;
+      const next = this.nextOf(p, def, i);
+      if (next < 0) { this.end(p, course, false); return; }
+      i = next;
+    }
     const ph = def.phases[i];
     r.p = i;
     r.since = w.s.now;

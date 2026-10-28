@@ -35,7 +35,8 @@ var Tycho = (() => {
     post: () => post_exports,
     pwa: () => pwa_exports,
     save: () => save_exports,
-    seed: () => seed_exports
+    seed: () => seed_exports,
+    ui: () => ui_exports
   });
 
   // src/core/seed.ts
@@ -3396,6 +3397,207 @@ void main() {
     listHtml(L) {
       const P = this.P, name = (id) => this.o.name ? this.o.name(id) : id;
       return `<h3>${L.title}</h3><div class="${P}list">` + L.ids.map((id) => `<button data-${P}sel="${id}"><i style="background:${this.color(id)}"></i>${name(id)} <small>${this.o.note ? this.o.note(id) : ""}</small></button>`).join("") + `</div><div class="buttons"><button data-${P}do="close">Back</button></div>`;
+    }
+  };
+
+  // src/shell/ui.ts
+  var ui_exports = {};
+  __export(ui_exports, {
+    Acts: () => Acts,
+    Rising: () => Rising,
+    Toasts: () => Toasts,
+    bind: () => bind
+  });
+  var Toasts = class {
+    constructor(o) {
+      /** A redrawn list's toasts, oldest first. */
+      this.list = [];
+      /** Those waiting their turn. */
+      this.queue = [];
+      /** Words that waited and have been shown. */
+      this.seen = /* @__PURE__ */ new Set();
+      this.kinds = /* @__PURE__ */ new WeakMap();
+      this.o = o;
+    }
+    now() {
+      return this.o.clock ? this.o.clock() : performance.now() / 1e3;
+    }
+    most() {
+      const m = this.o.most;
+      return m === void 0 ? Infinity : typeof m === "function" ? m() : m;
+    }
+    life(text, kind) {
+      const l = this.o.life;
+      return l === void 0 ? 4 : typeof l === "function" ? l(text, kind) : l;
+    }
+    cls(kind) {
+      return this.o.cls ? this.o.cls(kind) : "toast" + (kind ? " " + kind : "");
+    }
+    /** A toast: shown now, or (a kind that waits) queued, unless it's waiting
+     * already or (once) has been shown. */
+    show(text, kind = "") {
+      const o = this.o;
+      if (o.waits && o.waits(kind)) {
+        if (this.seen.has(text) || this.queue.some((h) => h.text === text)) return;
+        this.queue.push({ text, kind });
+        this.pump();
+        return;
+      }
+      this.put(text, kind);
+    }
+    /** Shown now, whatever its kind. */
+    put(text, kind = "") {
+      const o = this.o;
+      if (o.redraw) {
+        const now = this.now(), last = this.list[this.list.length - 1];
+        if (o.merge !== void 0 && last && last.text === text && now - last.t < o.merge) {
+          last.t = now;
+          return;
+        }
+        this.list.push({ text, kind, t: now });
+        if (this.list.length > this.most()) this.list.shift();
+        this.draw();
+        if (o.after) o.after();
+        return;
+      }
+      const box = o.box();
+      if (!box) return;
+      if (o.replace) {
+        for (const c of Array.from(box.children)) if (c.textContent === text) c.remove();
+      }
+      const el = document.createElement("div");
+      el.className = this.cls(kind);
+      if (o.html) el.innerHTML = text;
+      else el.textContent = text;
+      el.dataset.born = String(Date.now());
+      this.kinds.set(el, kind);
+      const secs = this.life(text, kind);
+      if (o.animate) el.style.animationDuration = secs + "s";
+      box.appendChild(el);
+      while (box.children.length > this.most()) box.firstChild.remove();
+      if (o.after) o.after();
+      if (o.waits && o.waits(kind) && o.once) this.seen.add(text);
+      setTimeout(() => {
+        el.remove();
+        this.pump();
+      }, secs * 1e3);
+    }
+    /** A redrawn list, drawn. */
+    draw() {
+      const box = this.o.box();
+      if (!box) return;
+      const esc2 = (t) => this.o.html ? t : t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+      box.innerHTML = this.list.map((t) => `<div class="${this.cls(t.kind)}" data-t="${t.t}">${esc2(t.text)}</div>`).join("");
+    }
+    /** Every frame: a redrawn list fades and lets go of its oldest when its
+     * time's up; and any waiting are shown if there's room. */
+    tick() {
+      const o = this.o;
+      if (o.redraw) {
+        const box = o.box(), now = this.now();
+        if (box && o.fadeAt !== void 0) for (const n of Array.from(box.children)) n.style.opacity = now - +n.dataset.t > o.fadeAt ? 0 : 1;
+        if (this.list.length && now - this.list[0].t > this.life(this.list[0].text, this.list[0].kind)) {
+          this.list.shift();
+          this.draw();
+        }
+      }
+      if (this.queue.length) this.pump();
+    }
+    /** Those waiting, shown while there's room (and nothing holds them). */
+    pump() {
+      if (this.o.held && this.o.held()) return;
+      const box = this.o.box();
+      if (!box) return;
+      while (this.queue.length && box.children.length < this.most()) {
+        const h = this.queue.shift();
+        this.put(h.text, h.kind);
+      }
+    }
+    /** Everything on screen goes (a screen opened): news is dropped; one of
+     * the kinds that wait, shown less than `fresh` seconds ago, goes back to
+     * the front of the queue to be shown after, and the rest count as read. */
+    clear(fresh = 0) {
+      const box = this.o.box();
+      if (this.o.redraw) {
+        this.list = [];
+        this.draw();
+        return;
+      }
+      if (!box) return;
+      for (const t of Array.from(box.children)) {
+        const kind = this.kinds.get(t) || "";
+        if (!(this.o.waits && this.o.waits(kind))) {
+          t.remove();
+          continue;
+        }
+        if (Date.now() - +t.dataset.born < fresh * 1e3) {
+          this.seen.delete(t.textContent);
+          this.queue.unshift({ text: t.textContent, kind });
+        }
+        t.remove();
+      }
+    }
+    /** Forgets which have been shown (a new world: its hints again). */
+    forget() {
+      this.seen.clear();
+    }
+  };
+  var Rising = class {
+    constructor(o) {
+      this.list = [];
+      this.o = o;
+    }
+    add(x, y, lines) {
+      const t = this.o.clock(), st = this.o.stagger ?? 0.12;
+      lines.forEach((g, i) => this.list.push(Object.assign({ x, y, t: t + i * st, i, of: lines.length }, g)));
+    }
+    html(at) {
+      const o = this.o, now = o.clock(), life = o.life ?? 2.4, fadeAt = o.fadeAt ?? 1.8, fadeFor = o.fadeFor ?? 0.6, rise = o.rise ?? 12, gap = o.gap ?? 21, left = o.left ?? 34, cls = o.cls ?? "gain";
+      this.list = this.list.filter((g) => now - g.t < life);
+      let h = "";
+      for (const g of this.list) {
+        const a = now - g.t;
+        if (a < 0) continue;
+        const [sx, sy] = at(g.x, g.y), y = sy - (g.of - 1 - g.i) * gap - a * rise, op = a > fadeAt ? Math.max(0, 1 - (a - fadeAt) / fadeFor) : 1;
+        h += `<div class="${cls}${g.kind ? " " + g.kind : ""}" style="left:${(sx - left).toFixed(1)}px;top:${y.toFixed(1)}px;opacity:${op.toFixed(2)}">${o.line(g)}</div>`;
+      }
+      return h;
+    }
+  };
+  function bind(root, handlers, tag = "button") {
+    for (const key of Object.keys(handlers)) {
+      const m = /^([a-z0-9-]+)(.*)$/.exec(key), name = m[1], camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      root.querySelectorAll(`${tag}[data-${name}]${m[2]}`).forEach((b) => b.onclick = () => handlers[key](b.dataset[camel], b));
+    }
+  }
+  var Acts = class {
+    constructor(o) {
+      this.o = o;
+    }
+    /** Listens for taps on el (a screen, or the document). */
+    listen(el, type = "click") {
+      el.addEventListener(type, (e) => this.tap(e));
+      return this;
+    }
+    tap(e) {
+      const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+      if (!el || el.disabled || this.o.guard && this.o.guard()) return;
+      if (el.dataset.confirm && !el.classList.contains("armed")) {
+        for (const o of Array.from(document.querySelectorAll(".armed"))) {
+          o.classList.remove("armed");
+          o.textContent = o.dataset.label;
+        }
+        el.dataset.label = el.textContent;
+        el.classList.add("armed");
+        el.textContent = el.dataset.confirm;
+        if (this.o.armed) this.o.armed(el);
+        return;
+      }
+      const acts = typeof this.o.acts === "function" ? this.o.acts() : this.o.acts, name = el.dataset.act, fn = acts[name];
+      if (fn) {
+        if (this.o.onAct) this.o.onAct(name, el);
+        fn(el.dataset.arg, el);
+      }
     }
   };
 

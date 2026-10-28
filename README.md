@@ -53,7 +53,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade); then sprite, figure, paint, fx, life, sky | Partly in |
 | World | grid, shapes, space, collide, move, path, gen, liquid, tilelight | Planned |
 | Play | input, interact, items, craft, trade, build, mine, guide | Planned |
-| Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell); then ui, hud, map | Partly in |
+| Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell), `ui` (toasts, lines rising over the world, buttons wired by data attributes, a screen's acts); then hud, map | Partly in |
 
 The move is planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and recorded in [docs/move.md](docs/move.md). [docs/](docs/README.md) has a page for each part that's in.
 
@@ -72,6 +72,7 @@ Tyrell lives in [tyrell/](tyrell/) with its history, its docs, its sample town (
 npm install            # TypeScript and esbuild (pinned), for building only
 npm run build          # every output into dist/ (commit dist/ with any change to the sources)
 npm test               # builds, then the engine's and Tyrell's suites
+npm run test:browser   # what needs a browser page (the sound against Lodestar's), on the test kit
 npm run typecheck
 npm run vk             # Voight-Kampff: a week of Rocinante
 ```

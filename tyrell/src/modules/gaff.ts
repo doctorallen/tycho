@@ -80,6 +80,7 @@ export class Gaff implements Module {
     w.lang.term('phase', (_c, a) => this.phase(a.includes('.') ? a.split('.')[0] : 'world') === (a.includes('.') ? a.split('.')[1] : a));
     w.defineInput('trigger', (id: Id, place: Id | null) => this.fire(id, place));
     w.defineInput('bump', (subject: string, by: number) => this.applyBump(subject, by));
+    w.defineInput('draw', (deck: string) => this.applyDraw(deck) ?? null);
     // the built-in metrics
     this.metricFns.set('mood', (ww) => {
       const people = ww.people();
@@ -109,11 +110,14 @@ export class Gaff implements Module {
   // Intensity
   // -------------------------------------------------------------------------
 
+  /** A subject's intensity, made if missing (inside the simulation). */
   private int(subject: string): Intensity {
     return (this.st.intensity[subject] ||= { v: 0, phase: 'build', since: this.w.s.now });
   }
-  intensity(subject = 'world'): number { return round(this.int(subject).v, 4); }
-  phase(subject = 'world'): Phase { return this.int(subject).phase; }
+  /** A subject's intensity for reading: one never bumped is building from 0 (and isn't made). */
+  private look(subject: string): Intensity { return this.st.intensity[subject] ?? { v: 0, phase: 'build', since: this.w.s.now }; }
+  intensity(subject = 'world'): number { return round(this.look(subject).v, 4); }
+  phase(subject = 'world'): Phase { return this.look(subject).phase; }
   /** Raises (or lowers) a subject's intensity (from the game: recorded). */
   bump(subject: string, by: number): void { this.w.input('bump', [subject, by]); }
   applyBump(subject: string, by: number): void {
@@ -160,7 +164,7 @@ export class Gaff implements Module {
       if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
       let id = def.id;
       if (def.deck) {
-        const drawn = this.draw(def.deck);
+        const drawn = this.applyDraw(def.deck);
         if (!drawn) continue;
         const d = this.storylets.get(drawn);
         if (!d || !this.eligible(d)) continue;
@@ -172,8 +176,11 @@ export class Gaff implements Module {
     }
   }
 
-  /** Draws a card from a deck: shuffled, no repeat of the last one. */
-  draw(deck: string): Id | undefined {
+  /** Draws a card from a deck (from the game: recorded): shuffled, no repeat of the last one. */
+  draw(deck: string): Id | undefined { return (this.w.input('draw', [deck]) as Id | null | undefined) ?? undefined; }
+
+  /** Draws a card inside the simulation. */
+  applyDraw(deck: string): Id | undefined {
     const st = this.st;
     const d = (st.decks[deck] ||= { cards: [] });
     if (!d.cards.length) {

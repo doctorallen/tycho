@@ -2142,18 +2142,18 @@ var Tyrell = (() => {
       this.w = w;
       this.defs = /* @__PURE__ */ new Map();
       w.defineInput("promote", (sid, given, def) => {
+        var _a;
         const id = given ?? `p${++w.s.ids}`;
-        const st = this.store();
-        st[sid] = id;
+        ((_a = w.s.mod)["@strangers"] || (_a["@strangers"] = {}))[sid] = id;
         const b = this.find(sid);
         const p = w.input("person", [id, { ...def, place: def.place ?? b?.place ?? b?.travel?.to ?? void 0, data: { ...b?.data || {}, ...def.data || {} }, tags: [...def.tags || [], "promoted"] }]);
         w.log("promoted", id, { stranger: sid });
         return p.id;
       });
     }
+    /** Who's been promoted (read only: looking at strangers changes nothing). */
     store() {
-      var _a;
-      return (_a = this.w.s.mod)["@strangers"] || (_a["@strangers"] = {});
+      return this.w.s.mod["@strangers"] ?? {};
     }
     /** Declares the passers-by of a region. */
     define(region, def) {
@@ -2266,6 +2266,8 @@ var Tyrell = (() => {
       this.deferred = [];
       /** Listeners being called (game code): inputs they make wait their turn. */
       this.listening = 0;
+      /** The input depth the innermost listener was called at (deeper is engine code it set off). */
+      this.listenDepth = -1;
       /** Clock calls running (tick, advanceTo, seek, load). */
       this.moving = 0;
       /** Clock calls made while the engine was busy, waiting their turn. */
@@ -2643,12 +2645,15 @@ var Tyrell = (() => {
       if (this.replaying) return;
       const a = this.listeners.get(kind), b = kind !== "*" ? this.listeners.get("*") : void 0;
       if (!a?.length && !b?.length) return;
+      const outer = this.listenDepth;
       this.listening++;
+      this.listenDepth = this.depth;
       try {
         for (const fn of a || []) fn(data);
         for (const fn of b || []) fn({ kind, ...data, event: kind });
       } finally {
         this.listening--;
+        this.listenDepth = outer;
       }
     }
     // -------------------------------------------------------------------------
@@ -2729,7 +2734,7 @@ var Tyrell = (() => {
       const fn = this.inputs.get(name);
       if (!fn) throw new Error(`Tyrell: unknown input '${name}'`);
       if (this.replaying) return this.applyInput(fn, args);
-      const fromGame = this.listening > 0;
+      const fromGame = this.fromListener();
       if (this.depth > 0 && !fromGame) return this.applyInput(fn, args);
       const handling = this.clock.handling;
       if (this.depth > 0 || handling !== null) {
@@ -2746,6 +2751,10 @@ var Tyrell = (() => {
       this.flushDeferred(void 0);
       this.runLater();
       return out;
+    }
+    /** Is the code running now a listener's own (game code), not engine work it set off? */
+    fromListener() {
+      return this.listening > 0 && this.depth === this.listenDepth;
     }
     applyInput(fn, args) {
       this.depth++;
@@ -2802,9 +2811,15 @@ var Tyrell = (() => {
     nextSeq() {
       return ++this.s.seq;
     }
-    /** Writes to the log and tells the game. */
+    /**
+     * Writes to the log and tells the game. Inside the simulation (modules,
+     * effects, input handlers) it writes at once; from the game it's an input,
+     * so the entry is recorded for time walk.
+     */
     log(k, who, d) {
-      this.westmarch.write(k, who, d);
+      const engine = !this.fromListener() && (this.depth > 0 || this.clock.handling !== null || this.replaying);
+      if (engine) this.westmarch.write(k, who, d);
+      else this.input("log", [k, who ?? null, d === void 0 ? null : JSON.parse(JSON.stringify(d))]);
     }
     makePerson(id, def) {
       const needs = {};
@@ -2979,12 +2994,13 @@ var Tyrell = (() => {
       this.defineInput("keep", (key2, value) => {
         this.s.game[key2] = value;
       });
+      this.defineInput("log", (k, who, d) => this.westmarch.write(k, who ?? void 0, d ?? void 0));
       this.defineInput("at", (t, name, data) => {
         this.clock.schedule({ t, k: "timer", ref: name, data });
       });
     }
   };
-  var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth"]);
+  var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw"]);
   var MIGRATIONS = {
     // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
     // old records are kept apart (it takes the line definitions to read them).
@@ -3089,6 +3105,8 @@ var Tyrell = (() => {
       w.defineInput("forget", (id, key2) => {
         delete this.st.b[id]?.[key2];
       });
+      w.defineInput("recollect", (id, match, n) => this.applyRecall(id, match, n));
+      w.defineInput("hush", (id, key2, on) => this.applySilence(id, key2, on));
     }
     // -------------------------------------------------------------------------
     // Declaring
@@ -3239,16 +3257,20 @@ var Tyrell = (() => {
     /**
      * Brings memories to mind: the strongest matching ones (about someone, of
      * a kind). Recalling an important memory often enough can make it a core
-     * memory that changes them.
+     * memory that changes them. From the game: recorded for time walk.
      */
     recall(id, match = {}, n = 3) {
+      return this.w.input("recollect", [id, match, n]) ?? [];
+    }
+    /** Recalls inside the simulation (copies of the memories recalled). */
+    applyRecall(id, match = {}, n = 3) {
       const list = (this.st.m[id] || []).filter((m) => (!match.about || m.about === match.about) && (!match.k || m.k === match.k) && (!match.place || m.place === match.place));
       const out = list.sort((a, b) => this.strength(b) - this.strength(a)).slice(0, n);
       for (const m of out) {
         m.recalls++;
         if (!m.core && m.recalls >= 3 && m.imp >= 7) this.maybeCore(id, m);
       }
-      return out;
+      return out.map((m) => ({ ...m }));
     }
     maybeCore(id, m) {
       var _a, _b;
@@ -3334,18 +3356,17 @@ var Tyrell = (() => {
       if (f === void 0) return null;
       return this.belief(id, key2) === f;
     }
-    /** Marks a belief as one they won't pass on (paid or scared off). */
+    /** Marks a belief as one they won't pass on (a promise kept; from the game: recorded). */
     silence(id, key2, on = true) {
+      this.w.input("hush", [id, key2, on]);
+    }
+    /** Marks a belief as one they won't pass on, inside the simulation (paid or scared off). */
+    applySilence(id, key2, on = true) {
       const b = this.st.b[id]?.[key2];
       if (b) {
         if (on) b.silenced = true;
         else delete b.silenced;
       }
-    }
-    /** The raw belief map (for Wormtongue). */
-    beliefMap(id) {
-      var _a;
-      return (_a = this.st.b)[id] || (_a[id] = {});
     }
     // -------------------------------------------------------------------------
     // Files
@@ -3354,8 +3375,8 @@ var Tyrell = (() => {
     file(id, subject) {
       return this.st.files[id]?.[subject];
     }
-    /** Notes a deed in someone's file on someone. */
-    note(id, subject, verb, what) {
+    /** Notes a deed in someone's file on someone, inside the simulation (the game reports deeds with world.did). */
+    applyNote(id, subject, verb, what) {
       var _a;
       const files = (_a = this.st.files)[id] || (_a[id] = {});
       const now2 = this.w.s.now;
@@ -3446,14 +3467,14 @@ var Tyrell = (() => {
       const target = data.for ?? data.to ?? data.target;
       const deed = this.w.deeds.get(verb);
       if (target && this.w.s.people[target]) {
-        this.note(target, actor, verb, data.what === void 0 ? void 0 : String(data.what));
+        this.applyNote(target, actor, verb, data.what === void 0 ? void 0 : String(data.what));
         if (deed?.feeling) this.applyFeel(target, deed.feeling, `${actor} ${verb}`);
         if (deed?.memory) this.applyRemember(target, { k: verb, about: actor, imp: deed.memory, text: `${actor} ${verb}${data.what ? " " + data.what : ""}` });
       }
       const seen = Array.isArray(data.seenBy) ? data.seenBy : [];
       for (const wid of seen) {
         if (wid === target || !this.w.s.people[wid]) continue;
-        this.note(wid, actor, verb, data.what === void 0 ? void 0 : String(data.what));
+        this.applyNote(wid, actor, verb, data.what === void 0 ? void 0 : String(data.what));
         if (deed?.witnessFeeling) this.applyFeel(wid, deed.witnessFeeling, `saw ${actor} ${verb}`);
       }
     }
@@ -3562,7 +3583,7 @@ var Tyrell = (() => {
       L.effect("regard", (c, a, op, v) => {
         const o = other(c, a);
         if (!c.person || !o) return;
-        const cur = this.rel(c.person.id, o);
+        const cur = this.record(c.person.id, o);
         cur.r = round(clamp(op === "=" ? Number(v) : cur.r + (op === "-=" ? -1 : 1) * Number(v), -1, 1), 4);
       });
       L.effect("fame", (c, a, op, v) => {
@@ -3576,6 +3597,7 @@ var Tyrell = (() => {
         void c;
       });
       w.defineInput("regard", (a, b, by, why) => this.applyRegard(a, b, by, why ?? void 0));
+      w.defineInput("attraction", (a, b, by) => this.applyAttraction(a, b, by));
       w.defineInput("sentiment", (a, b, label, by, minutes) => this.applySentiment(a, b, label, by, minutes ?? void 0));
       w.defineInput("standing", (g, subject, fame, infamy) => this.applyStanding(g, subject, fame, infamy));
       w.defineInput("join", (g, id, on) => this.applyJoin(g, id, on));
@@ -3619,8 +3641,13 @@ var Tyrell = (() => {
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
-    /** The relationship record a -> b (made if missing). */
+    /** The relationship record a -> b, or undefined if there's none (a copy: change it through the inputs). */
     rel(a, b) {
+      const r = this.st.rel[key(a, b)];
+      return r ? { ...r, s: r.s.map((s) => ({ ...s })) } : void 0;
+    }
+    /** The relationship record a -> b, made if missing (inside the simulation). */
+    record(a, b) {
       const k = key(a, b);
       let r = this.st.rel[k];
       if (!r) r = this.st.rel[k] = { r: 0, a: 0, s: [], met: 0, last: this.w.s.now };
@@ -3641,6 +3668,14 @@ var Tyrell = (() => {
     }
     attraction(a, b) {
       return this.st.rel[key(a, b)]?.a ?? 0;
+    }
+    /** Changes a's attraction to b (from the game: recorded). */
+    attract(a, b, by) {
+      this.w.input("attraction", [a, b, by]);
+    }
+    applyAttraction(a, b, by) {
+      const r = this.record(a, b);
+      r.a = round(clamp(r.a + by, -1, 1), 4);
     }
     /** Hidden compatibility of a pair, -1..1 (the same both ways). */
     compat(a, b) {
@@ -3676,7 +3711,7 @@ var Tyrell = (() => {
       this.w.input("regard", [a, b, by, why ?? null]);
     }
     applyRegard(a, b, by, why) {
-      const r = this.rel(a, b);
+      const r = this.record(a, b);
       r.r = round(clamp(r.r + by, -1, 1), 4);
       if (why) this.w.log("regard", a, { target: b, by, why });
     }
@@ -3685,7 +3720,7 @@ var Tyrell = (() => {
       this.w.input("sentiment", [a, b, label, by, minutes ?? null]);
     }
     applySentiment(a, b, label, by, minutes) {
-      const r = this.rel(a, b);
+      const r = this.record(a, b);
       const now2 = this.w.s.now;
       r.s = r.s.filter((s2) => (s2.until === void 0 || s2.until > now2) && s2.label !== label);
       const s = { label, by: round(by, 4) };
@@ -3744,7 +3779,7 @@ var Tyrell = (() => {
     met(a, b, _place, minutes) {
       const rv = this.w.reverie;
       for (const [x, y] of [[a, b], [b, a]]) {
-        const r = this.rel(x.id, y.id);
+        const r = this.record(x.id, y.id);
         const mood = rv ? rv.mood(x.id) - 0.5 : 0;
         const gain = this.config.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) + mood);
         r.r = round(clamp(r.r + clamp(gain, -0.05, 0.08), -1, 1), 4);
@@ -3957,7 +3992,7 @@ var Tyrell = (() => {
       const pAccept = how === "pay" ? clamp(greed * 0.6 + Math.min(1, amount / 100) * 0.5 - honesty * 0.4 + 0.1) : clamp((1 - courage) * 0.8 - honesty * 0.2 + 0.1);
       const ok = r.chance(pAccept);
       if (ok) {
-        for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.silence(witness, b.key);
+        for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.applySilence(witness, b.key);
       }
       if (how === "pay" && ok) p.vars.money = Number(p.vars.money ?? 0) + amount;
       if (how === "scare") {
@@ -4126,6 +4161,7 @@ var Tyrell = (() => {
       w.lang.term("practice", (c, a) => c.person?.place ? this.activeAt(c.person.place).some((p) => p.id === a) : false);
       w.lang.term("role", (c, a) => c.person ? this.roleOf(c.person, a) : false);
       w.defineInput("say", (who, opts) => this.applySay(who, opts));
+      w.defineInput("social", (act, from, to) => this.applyResolve(act, from, to));
     }
     // -------------------------------------------------------------------------
     // Declaring
@@ -4343,10 +4379,14 @@ var Tyrell = (() => {
       if (d.kind !== "act" || interrupted || frac < 0.5 || !d.target) return;
       const a = this.w.actions.get(d.action);
       if (!a?.social) return;
-      this.resolve(a.social, p.id, d.target);
+      this.applyResolve(a.social, p.id, d.target);
     }
-    /** Resolves a social act: does the target accept? Applies the outcome. */
+    /** Resolves a social act now (from the game: recorded): does the target accept? Applies the outcome. */
     resolve(actId, from, to) {
+      return this.w.input("social", [actId, from, to]) === true;
+    }
+    /** Resolves a social act inside the simulation. */
+    applyResolve(actId, from, to) {
       const w = this.w;
       const def = this.acts.get(actId);
       const asker = w.s.people[from], target = w.s.people[to];
@@ -4721,6 +4761,7 @@ var Tyrell = (() => {
       w.lang.term("phase", (_c, a) => this.phase(a.includes(".") ? a.split(".")[0] : "world") === (a.includes(".") ? a.split(".")[1] : a));
       w.defineInput("trigger", (id, place) => this.fire(id, place));
       w.defineInput("bump", (subject, by) => this.applyBump(subject, by));
+      w.defineInput("draw", (deck) => this.applyDraw(deck) ?? null);
       this.metricFns.set("mood", (ww) => {
         const people = ww.people();
         if (!people.length || !ww.reverie) return 0.5;
@@ -4753,15 +4794,20 @@ var Tyrell = (() => {
     // -------------------------------------------------------------------------
     // Intensity
     // -------------------------------------------------------------------------
+    /** A subject's intensity, made if missing (inside the simulation). */
     int(subject) {
       var _a;
       return (_a = this.st.intensity)[subject] || (_a[subject] = { v: 0, phase: "build", since: this.w.s.now });
     }
+    /** A subject's intensity for reading: one never bumped is building from 0 (and isn't made). */
+    look(subject) {
+      return this.st.intensity[subject] ?? { v: 0, phase: "build", since: this.w.s.now };
+    }
     intensity(subject = "world") {
-      return round(this.int(subject).v, 4);
+      return round(this.look(subject).v, 4);
     }
     phase(subject = "world") {
-      return this.int(subject).phase;
+      return this.look(subject).phase;
     }
     /** Raises (or lowers) a subject's intensity (from the game: recorded). */
     bump(subject, by) {
@@ -4816,7 +4862,7 @@ var Tyrell = (() => {
         if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
         let id = def.id;
         if (def.deck) {
-          const drawn = this.draw(def.deck);
+          const drawn = this.applyDraw(def.deck);
           if (!drawn) continue;
           const d = this.storylets.get(drawn);
           if (!d || !this.eligible(d)) continue;
@@ -4826,8 +4872,12 @@ var Tyrell = (() => {
         if (id !== def.id) this.st.last[def.id] = w.s.now;
       }
     }
-    /** Draws a card from a deck: shuffled, no repeat of the last one. */
+    /** Draws a card from a deck (from the game: recorded): shuffled, no repeat of the last one. */
     draw(deck) {
+      return this.w.input("draw", [deck]) ?? void 0;
+    }
+    /** Draws a card inside the simulation. */
+    applyDraw(deck) {
       var _a;
       const st = this.st;
       const d = (_a = st.decks)[deck] || (_a[deck] = { cards: [] });
@@ -4896,9 +4946,9 @@ var Tyrell = (() => {
       w.lang.term("afford", (c, a) => c.person ? this.money(c.person.id) >= Number(a) : false);
       w.lang.term("goods", (c, a) => c.person ? this.ofKind(c.person, a) : 0);
       w.lang.effect("pay", (c, a, _op, v) => {
-        if (c.person) this.transfer(c.person.id, a || "world", Number(v ?? 0), "pay");
+        if (c.person) this.applyPay(c.person.id, a || "world", Number(v ?? 0), "pay");
       });
-      w.defineInput("pay", (from, to, amount, why) => this.transfer(from, to, amount, why));
+      w.defineInput("pay", (from, to, amount, why) => this.applyPay(from, to, amount, why));
       w.defineInput("rent", (id, amount, everyDays, to) => {
         this.st.rent[id] = { amount, every: everyDays, next: Math.ceil((w.s.now + everyDays * DAY) / DAY) * DAY, ...to ? { to } : {} };
       });
@@ -4948,8 +4998,8 @@ var Tyrell = (() => {
       const p = this.w.s.people[id];
       p.vars.money = round(Number(p.vars.money ?? 0) + amount, 2);
     }
-    /** Moves money (from the game, call pay()). 'world' is outside the simulation. */
-    transfer(from, to, amount, why) {
+    /** Moves money inside the simulation (from the game, call pay()). 'world' is outside the simulation. */
+    applyPay(from, to, amount, why) {
       if (!amount) return;
       this.add(from, -amount);
       this.add(to, amount);
@@ -4977,15 +5027,13 @@ var Tyrell = (() => {
     // -------------------------------------------------------------------------
     /** How many of an item are in a person's household pantry. */
     pantryCount(id, item) {
-      var _a;
       const purse = this.purseOf(id);
       if (purse.kind !== "household") return 0;
-      return ((_a = this.st).pantry || (_a.pantry = {}))[purse.id]?.[item] ?? 0;
+      return this.st.pantry?.[purse.id]?.[item] ?? 0;
     }
     /** What's in a household's pantry. */
     pantry(household) {
-      var _a;
-      return { ...((_a = this.st).pantry || (_a.pantry = {}))[household] || {} };
+      return { ...this.st.pantry?.[household] || {} };
     }
     takeFromPantry(id, item, n) {
       var _a, _b, _c;
@@ -5046,7 +5094,7 @@ var Tyrell = (() => {
       const a = w.actions.get(d.action);
       if (!a) return;
       const owner = d.place && w.ring.get(d.place)?.owner || "world";
-      if (a.price) this.transfer(p.id, owner, a.price, a.id);
+      if (a.price) this.applyPay(p.id, owner, a.price, a.id);
       if (a.buys && d.place) {
         const st = w.ring.state(d.place);
         for (const item in a.buys) {
@@ -5073,7 +5121,7 @@ var Tyrell = (() => {
       if (wage) {
         const hours = (d.end - d.start) * frac / HOUR;
         const payer = d.place && w.ring.get(d.place)?.owner || "world";
-        if (payer !== p.id) this.transfer(payer, p.id, round(wage * hours, 2), "wages");
+        if (payer !== p.id) this.applyPay(payer, p.id, round(wage * hours, 2), "wages");
       }
       if (a.gives && !interrupted) for (const item in a.gives) p.inv[item] = (p.inv[item] || 0) + a.gives[item];
     }
@@ -5099,7 +5147,7 @@ var Tyrell = (() => {
         const inc = this.st.income[id];
         if (inc.next > now2 + 1e-6) continue;
         inc.next += inc.every * DAY;
-        if (w.s.people[id]?.status === "active") this.transfer(inc.to ?? "world", id, inc.amount, "income");
+        if (w.s.people[id]?.status === "active") this.applyPay(inc.to ?? "world", id, inc.amount, "income");
       }
       for (const id in this.st.rent) {
         const r = this.st.rent[id];
@@ -5108,7 +5156,7 @@ var Tyrell = (() => {
         const p = w.s.people[id];
         if (!p || p.status === "gone") continue;
         if (this.money(id) >= r.amount) {
-          this.transfer(id, r.to ?? "world", r.amount, "rent");
+          this.applyPay(id, r.to ?? "world", r.amount, "rent");
           w.log("rent", id, { paid: r.amount });
         } else {
           w.log("rent", id, { missed: r.amount });
@@ -5268,7 +5316,7 @@ var Tyrell = (() => {
           for (const h of heirs) w.s.people[h].vars.money = round(Number(w.s.people[h].vars.money ?? 0) + share, 2);
         } else if (w.ceres) {
           const hh = w.fellowship?.household(id);
-          if (hh) w.ceres.transfer(id, hh, money, "inheritance");
+          if (hh) w.ceres.applyPay(id, hh, money, "inheritance");
         }
         p.vars.money = 0;
       }

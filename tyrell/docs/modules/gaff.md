@@ -68,7 +68,7 @@ Each subject has an intensity (0..1) and a phase, moving through a cycle every h
 
 Intensity falls by `decay` (0.04) every hour, and rises when storylets fire (`bump`) or when the game bumps it (`gaff.bump(subject, by)`, an input). Give the big events `phase: ['build']` so they come while tension builds, and quiet ones `phase: ['relax']`.
 
-A subject comes into being the first time it's bumped or read. Reading one from the game (`gaff.phase('docks')`) for the first time creates it in the state, outside the input log; bump the subjects you use at setup so they exist from the start.
+A subject comes into being the first time it's bumped. Until then it reads as building from 0 (`gaff.phase('docks')` is `'build'`), and reading it changes nothing.
 
 ## Decks
 
@@ -137,7 +137,8 @@ In `world.s.mod.gaff`:
 | `trigger(id, place = null)` | void | **Input.** Fires a storylet now |
 | `eligible(def)` | boolean | Could it fire now? (Its `when` may draw `chance:` from the world's stream) |
 | `history()` | array | The last 100 firings |
-| `draw(deck)` | id or undefined | **Engine.** Draws a card |
+| `draw(deck)` | id or undefined | **Input.** Draws a card (applies at once): for decks the game deals from itself |
+| `applyDraw(deck)` | id or undefined | **Engine.** The direct version |
 | `unseenPlace(tag)` | id or null | **Engine.** Picks a place nobody sees (draws from the world's stream) |
 | `applyBump(subject, by)` | void | **Engine.** The direct version of `bump` |
 | `config`, `storylets` | | The config and the declared storylets |

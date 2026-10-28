@@ -168,9 +168,15 @@ export declare class Reverie implements Module {
     /**
      * Brings memories to mind: the strongest matching ones (about someone, of
      * a kind). Recalling an important memory often enough can make it a core
-     * memory that changes them.
+     * memory that changes them. From the game: recorded for time walk.
      */
     recall(id: Id, match?: {
+        about?: Id;
+        k?: Id;
+        place?: Id;
+    }, n?: number): Memory[];
+    /** Recalls inside the simulation (copies of the memories recalled). */
+    applyRecall(id: Id, match?: {
         about?: Id;
         k?: Id;
         place?: Id;
@@ -193,14 +199,14 @@ export declare class Reverie implements Module {
     beliefs(id: Id): Belief[];
     /** Is someone's belief true? (null when the world has no fact to check it against) */
     accurate(id: Id, key: string): boolean | null;
-    /** Marks a belief as one they won't pass on (paid or scared off). */
+    /** Marks a belief as one they won't pass on (a promise kept; from the game: recorded). */
     silence(id: Id, key: string, on?: boolean): void;
-    /** The raw belief map (for Wormtongue). */
-    beliefMap(id: Id): Record<string, Omit<Belief, 'key'>>;
+    /** Marks a belief as one they won't pass on, inside the simulation (paid or scared off). */
+    applySilence(id: Id, key: string, on?: boolean): void;
     /** Someone's file on someone else (the player, usually). */
     file(id: Id, subject: Id): PersonFile | undefined;
-    /** Notes a deed in someone's file on someone. */
-    note(id: Id, subject: Id, verb: string, what?: string): void;
+    /** Notes a deed in someone's file on someone, inside the simulation (the game reports deeds with world.did). */
+    applyNote(id: Id, subject: Id, verb: string, what?: string): void;
     candidates(p: PersonState, out: Candidate[]): void;
     consider(p: PersonState, c: Candidate): Array<[string, number]> | void;
     started(p: PersonState, d: Doing): void;

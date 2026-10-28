@@ -306,7 +306,7 @@ Directives outrank jobs and routines (see [Deciding](deciding.md#directives)); f
 
 ## Custom inputs
 
-Some changes have no ready-made input: setting a need when the player feeds someone, changing a person's definition, recalling a memory in dialogue. Define an input, and call it through `world.input`, so Esper records and replays it:
+Some changes have no ready-made input: setting a need when the player feeds someone, changing a person's definition. Define an input, and call it through `world.input`, so Esper records and replays it:
 
 ```js
 world.defineInput('feed', (id, amount) => {

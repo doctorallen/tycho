@@ -42,8 +42,8 @@ export class Ceres implements Module {
     w.lang.term('stock', (c, a) => { const [pl, item] = a.includes('.') ? a.split('.') : [c.place ?? '', a]; return this.stock(pl, item); });
     w.lang.term('afford', (c, a) => (c.person ? this.money(c.person.id) >= Number(a) : false));
     w.lang.term('goods', (c, a) => (c.person ? this.ofKind(c.person, a) : 0));
-    w.lang.effect('pay', (c, a, _op, v) => { if (c.person) this.transfer(c.person.id, a || 'world', Number(v ?? 0), 'pay'); });
-    w.defineInput('pay', (from: Id, to: Id, amount: number, why: string) => this.transfer(from, to, amount, why));
+    w.lang.effect('pay', (c, a, _op, v) => { if (c.person) this.applyPay(c.person.id, a || 'world', Number(v ?? 0), 'pay'); });
+    w.defineInput('pay', (from: Id, to: Id, amount: number, why: string) => this.applyPay(from, to, amount, why));
     w.defineInput('rent', (id: Id, amount: number, everyDays: number, to: Id | null) => {
       this.st.rent[id] = { amount, every: everyDays, next: Math.ceil((w.s.now + everyDays * DAY) / DAY) * DAY, ...(to ? { to } : {}) };
     });
@@ -96,8 +96,8 @@ export class Ceres implements Module {
     p.vars.money = round(Number(p.vars.money ?? 0) + amount, 2);
   }
 
-  /** Moves money (from the game, call pay()). 'world' is outside the simulation. */
-  transfer(from: Id, to: Id, amount: number, why: string): void {
+  /** Moves money inside the simulation (from the game, call pay()). 'world' is outside the simulation. */
+  applyPay(from: Id, to: Id, amount: number, why: string): void {
     if (!amount) return;
     this.add(from, -amount);
     this.add(to, amount);
@@ -127,11 +127,11 @@ export class Ceres implements Module {
   pantryCount(id: Id, item: Id): number {
     const purse = this.purseOf(id);
     if (purse.kind !== 'household') return 0;
-    return (this.st.pantry ||= {})[purse.id]?.[item] ?? 0;
+    return this.st.pantry?.[purse.id]?.[item] ?? 0;
   }
 
   /** What's in a household's pantry. */
-  pantry(household: Id): Record<Id, number> { return { ...((this.st.pantry ||= {})[household] || {}) }; }
+  pantry(household: Id): Record<Id, number> { return { ...(this.st.pantry?.[household] || {}) }; }
 
   takeFromPantry(id: Id, item: Id, n: number): void {
     const purse = this.purseOf(id);
@@ -191,7 +191,7 @@ export class Ceres implements Module {
     const a = w.actions.get(d.action);
     if (!a) return;
     const owner = (d.place && w.ring.get(d.place)?.owner) || 'world';
-    if (a.price) this.transfer(p.id, owner, a.price, a.id);
+    if (a.price) this.applyPay(p.id, owner, a.price, a.id);
     if (a.buys && d.place) {
       const st = w.ring.state(d.place);
       for (const item in a.buys) {
@@ -219,7 +219,7 @@ export class Ceres implements Module {
     if (wage) {
       const hours = ((d.end - d.start) * frac) / HOUR;
       const payer = (d.place && w.ring.get(d.place)?.owner) || 'world';
-      if (payer !== p.id) this.transfer(payer, p.id, round(wage * hours, 2), 'wages');
+      if (payer !== p.id) this.applyPay(payer, p.id, round(wage * hours, 2), 'wages');
     }
     if (a.gives && !interrupted) for (const item in a.gives) p.inv[item] = (p.inv[item] || 0) + a.gives[item];
   }
@@ -247,7 +247,7 @@ export class Ceres implements Module {
       const inc = (this.st.income as Record<Id, Rent>)[id];
       if (inc.next > now + 1e-6) continue;
       inc.next += inc.every * DAY;
-      if (w.s.people[id]?.status === 'active') this.transfer(inc.to ?? 'world', id, inc.amount, 'income');
+      if (w.s.people[id]?.status === 'active') this.applyPay(inc.to ?? 'world', id, inc.amount, 'income');
     }
     for (const id in this.st.rent) {
       const r = this.st.rent[id];
@@ -256,7 +256,7 @@ export class Ceres implements Module {
       const p = w.s.people[id];
       if (!p || p.status === 'gone') continue;
       if (this.money(id) >= r.amount) {
-        this.transfer(id, r.to ?? 'world', r.amount, 'rent');
+        this.applyPay(id, r.to ?? 'world', r.amount, 'rent');
         w.log('rent', id, { paid: r.amount });
       } else {
         w.log('rent', id, { missed: r.amount });

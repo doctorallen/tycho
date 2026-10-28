@@ -34,7 +34,7 @@ Social actions (tagged `'social'`) aimed at someone weigh `clamp(1 + regard × 0
 
 **Compatibility** is hidden and the same both ways: a seeded value in ±`compatSpread` (0.6) for each pair, plus up to 0.3 for shared values (`PersonDef.values`), clamped to -1..1. Some people just get on.
 
-**Attraction** is a second track for romance, -1..1. It grows by half the regard gain when they meet, but only for pairs with compatibility over 0.3, and only while the person has no partner. Cradle can pair people when regard and attraction are both high.
+**Attraction** is a second track for romance, -1..1. It grows by half the regard gain when they meet, but only for pairs with compatibility over 0.3, and only while the person has no partner. The game can change it with `fellowship.attract(a, b, by)` (an input). Cradle can pair people when regard and attraction are both high.
 
 ## Sentiments
 
@@ -127,8 +127,9 @@ In `world.s.mod.fellowship`:
 | `setPartner(a, b)` | void | **Input.** Makes them partners (or ends a's partnership with `null`) |
 | `standing(group, subject)` | `{ fame, infamy, label }` | Standing |
 | `changeStanding(group, subject, fame, infamy)` | void | **Input.** Adds to fame and infamy |
-| `rel(a, b)` | Rel | **Engine.** The record, made if missing |
-| `applyRegard`, `applySentiment`, `applyStanding`, `applyJoin`, `applyPartners` | void | **Engine.** The direct versions of the inputs |
+| `attract(a, b, by)` | void | **Input.** Changes a's attraction to b |
+| `rel(a, b)` | Rel or undefined | A copy of the record a -> b, or `undefined` if there's none |
+| `applyRegard`, `applyAttraction`, `applySentiment`, `applyStanding`, `applyJoin`, `applyPartners` | void | **Engine.** The direct versions of the inputs |
 | `config`, `groups` | | The config and the declared groups |
 
 ## Terms and effects

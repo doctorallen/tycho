@@ -56,6 +56,8 @@ export declare class World {
     private deferred;
     /** Listeners being called (game code): inputs they make wait their turn. */
     private listening;
+    /** The input depth the innermost listener was called at (deeper is engine code it set off). */
+    private listenDepth;
     /** Clock calls running (tick, advanceTo, seek, load). */
     private moving;
     /** Clock calls made while the engine was busy, waiting their turn. */
@@ -220,6 +222,8 @@ export declare class World {
      *    a replay makes them again.
      */
     input(name: string, args: unknown[]): unknown;
+    /** Is the code running now a listener's own (game code), not engine work it set off? */
+    private fromListener;
     private applyInput;
     /**
      * Applies the calls that waited (Entmoot calls this after each event, with
@@ -238,7 +242,11 @@ export declare class World {
     ctx(p?: PersonState, extra?: Partial<Ctx>): Ctx;
     /** The next sequence number (for queue items and doings). */
     nextSeq(): number;
-    /** Writes to the log and tells the game. */
+    /**
+     * Writes to the log and tells the game. Inside the simulation (modules,
+     * effects, input handlers) it writes at once; from the game it's an input,
+     * so the entry is recorded for time walk.
+     */
     log(k: string, who?: Id, d?: Record<string, unknown>): void;
     private makePerson;
     private registerCore;

@@ -48,8 +48,8 @@ export declare class Ceres implements Module {
     /** How much a person can spend. */
     money(id: Id): number;
     private add;
-    /** Moves money (from the game, call pay()). 'world' is outside the simulation. */
-    transfer(from: Id, to: Id, amount: number, why: string): void;
+    /** Moves money inside the simulation (from the game, call pay()). 'world' is outside the simulation. */
+    applyPay(from: Id, to: Id, amount: number, why: string): void;
     /** Pays money from one to another (or 'world'): recorded for time walk. */
     pay(from: Id, to: Id, amount: number, why?: string): void;
     /** Sets up rent: amount every so many days, paid to someone (or the world). */

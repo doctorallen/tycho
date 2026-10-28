@@ -29,7 +29,7 @@ world.ceres.money('pip');      // 200: Pip spends from the household's purse
 
 `ceres.money(id)` is what a person can spend: their household's purse if it shares one, else their own `vars.money`. It takes a person's id; to read a household's purse, ask about one of its members. In conditions, `purse` reads the same thing, while the core `money` term reads only the person's own variable.
 
-Money moves with `transfer` inside the simulation, or `pay` (an input) from the game. `'world'` stands for everything outside the simulation: paying `'world'` makes money vanish, and money from `'world'` appears. Any other id that isn't a person (a household, a business) gets a purse of its own. Nothing stops money going negative: a payment always goes through.
+Money moves with `pay` (an input) from the game, or `applyPay` inside the simulation. `'world'` stands for everything outside the simulation: paying `'world'` makes money vanish, and money from `'world'` appears. Any other id that isn't a person (a household, a business) gets a purse of its own. Nothing stops money going negative: a payment always goes through.
 
 ## Prices, wages and owners
 
@@ -131,7 +131,7 @@ Stock is in each place's state (`world.s.places[id].stock`); a person's own mone
 | `pantry(household)` | object | A household's pantry (a copy) |
 | `pantryCount(id, item)` | number | How many of an item are in a person's household pantry |
 | `ledger(id?)` | array | Recent payments, or those from or to an id |
-| `transfer(from, to, amount, why)` | void | **Engine.** Moves money directly |
+| `applyPay(from, to, amount, why)` | void | **Engine.** The direct version of `pay` (1.0 called it `transfer`) |
 | `takeFromPantry(id, item, n)` | void | **Engine.** Takes goods from a pantry |
 | `goods` | Map | The declared goods |
 

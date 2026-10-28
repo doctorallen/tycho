@@ -107,6 +107,7 @@ export class Cityspeak implements Module {
     w.lang.term('practice', (c, a) => (c.person?.place ? this.activeAt(c.person.place).some((p) => p.id === a) : false));
     w.lang.term('role', (c, a) => (c.person ? this.roleOf(c.person, a) : false));
     w.defineInput('say', (who: Id, opts: { to?: Id; topic?: string }) => this.applySay(who, opts));
+    w.defineInput('social', (act: Id, from: Id, to: Id) => this.applyResolve(act, from, to));
   }
 
   // -------------------------------------------------------------------------
@@ -325,11 +326,14 @@ export class Cityspeak implements Module {
     if (d.kind !== 'act' || interrupted || frac < 0.5 || !d.target) return;
     const a = this.w.actions.get(d.action);
     if (!a?.social) return;
-    this.resolve(a.social, p.id, d.target);
+    this.applyResolve(a.social, p.id, d.target);
   }
 
-  /** Resolves a social act: does the target accept? Applies the outcome. */
-  resolve(actId: Id, from: Id, to: Id): boolean {
+  /** Resolves a social act now (from the game: recorded): does the target accept? Applies the outcome. */
+  resolve(actId: Id, from: Id, to: Id): boolean { return this.w.input('social', [actId, from, to]) === true; }
+
+  /** Resolves a social act inside the simulation. */
+  applyResolve(actId: Id, from: Id, to: Id): boolean {
     const w = this.w;
     const def = this.acts.get(actId);
     const asker = w.s.people[from], target = w.s.people[to];

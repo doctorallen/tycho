@@ -136,7 +136,7 @@ world.action({ id: 'chat', target: 'person', at: 'here', minutes: 20, relieves: 
 
 The act is resolved when an action with `social` and a target ends, if it wasn't interrupted and at least half was done. The outcome is logged as `social` and emitted.
 
-`resolve(act, from, to)` resolves one directly and returns whether it was accepted. It changes state and isn't an input: call it from inside the simulation, or wrap it in a custom input.
+`resolve(act, from, to)` resolves one now (the player asks someone out, say) and returns whether it was accepted. It's an input, recorded for time walk, and applies at once even inside a listener. Inside the simulation, use `applyResolve`.
 
 ## ink
 
@@ -182,7 +182,8 @@ Lines, practices and acts are definitions. Barks' cooldowns live outside the sta
 | `activeAt(place)` | PracticeDef[] | Practices going on at a place now |
 | `roleOf(person, role)` | boolean | Does a person (a PersonState) fill the role where they are? |
 | `room(place)` | number | The mood of the room |
-| `resolve(act, from, to)` | boolean | **Engine.** Resolves a social act |
+| `resolve(act, from, to)` | boolean | **Input.** Resolves a social act now (applies at once) |
+| `applyResolve(act, from, to)` | boolean | **Engine.** The direct version |
 | `bindInk(story)` | void | Binds an ink story |
 | `lines`, `practices`, `acts`, `barkGap`, `barkLength` | | The declared definitions and bark settings |
 

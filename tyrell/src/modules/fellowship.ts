@@ -93,12 +93,13 @@ export class Fellowship implements Module {
     L.effect('regard', (c, a, op, v) => {
       const o = other(c, a);
       if (!c.person || !o) return;
-      const cur = this.rel(c.person.id, o);
+      const cur = this.record(c.person.id, o);
       cur.r = round(clamp(op === '=' ? Number(v) : cur.r + (op === '-=' ? -1 : 1) * Number(v), -1, 1), 4);
     });
     L.effect('fame', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || 'player', (op === '-=' ? -1 : 1) * Number(v), 0); void c; });
     L.effect('infamy', (c, a, op, v) => { const [g, s] = a.split('.'); this.applyStanding(g, s || 'player', 0, (op === '-=' ? -1 : 1) * Number(v)); void c; });
     w.defineInput('regard', (a: Id, b: Id, by: number, why: string | null) => this.applyRegard(a, b, by, why ?? undefined));
+    w.defineInput('attraction', (a: Id, b: Id, by: number) => this.applyAttraction(a, b, by));
     w.defineInput('sentiment', (a: Id, b: Id, label: string, by: number, minutes: number | null) => this.applySentiment(a, b, label, by, minutes ?? undefined));
     w.defineInput('standing', (g: Id, subject: Id, fame: number, infamy: number) => this.applyStanding(g, subject, fame, infamy));
     w.defineInput('join', (g: Id, id: Id, on: boolean) => this.applyJoin(g, id, on));
@@ -142,8 +143,14 @@ export class Fellowship implements Module {
   // Relationships
   // -------------------------------------------------------------------------
 
-  /** The relationship record a -> b (made if missing). */
-  rel(a: Id, b: Id): Rel {
+  /** The relationship record a -> b, or undefined if there's none (a copy: change it through the inputs). */
+  rel(a: Id, b: Id): Rel | undefined {
+    const r = this.st.rel[key(a, b)];
+    return r ? { ...r, s: r.s.map((s) => ({ ...s })) } : undefined;
+  }
+
+  /** The relationship record a -> b, made if missing (inside the simulation). */
+  private record(a: Id, b: Id): Rel {
     const k = key(a, b);
     let r = this.st.rel[k];
     if (!r) r = this.st.rel[k] = { r: 0, a: 0, s: [], met: 0, last: this.w.s.now };
@@ -164,6 +171,13 @@ export class Fellowship implements Module {
   }
 
   attraction(a: Id, b: Id): number { return this.st.rel[key(a, b)]?.a ?? 0; }
+
+  /** Changes a's attraction to b (from the game: recorded). */
+  attract(a: Id, b: Id, by: number): void { this.w.input('attraction', [a, b, by]); }
+  applyAttraction(a: Id, b: Id, by: number): void {
+    const r = this.record(a, b);
+    r.a = round(clamp(r.a + by, -1, 1), 4);
+  }
 
   /** Hidden compatibility of a pair, -1..1 (the same both ways). */
   compat(a: Id, b: Id): number {
@@ -195,7 +209,7 @@ export class Fellowship implements Module {
   /** Changes a's regard for b (from the game: recorded). */
   adjust(a: Id, b: Id, by: number, why?: string): void { this.w.input('regard', [a, b, by, why ?? null]); }
   applyRegard(a: Id, b: Id, by: number, why?: string): void {
-    const r = this.rel(a, b);
+    const r = this.record(a, b);
     r.r = round(clamp(r.r + by, -1, 1), 4);
     if (why) this.w.log('regard', a, { target: b, by, why });
   }
@@ -203,7 +217,7 @@ export class Fellowship implements Module {
   /** Adds a sentiment a holds about b (replaces the weakest past the limit). */
   sentiment(a: Id, b: Id, label: string, by: number, minutes?: number): void { this.w.input('sentiment', [a, b, label, by, minutes ?? null]); }
   applySentiment(a: Id, b: Id, label: string, by: number, minutes?: number): void {
-    const r = this.rel(a, b);
+    const r = this.record(a, b);
     const now = this.w.s.now;
     r.s = r.s.filter((s) => (s.until === undefined || s.until > now) && s.label !== label);
     const s: Sentiment = { label, by: round(by, 4) };
@@ -262,7 +276,7 @@ export class Fellowship implements Module {
   met(a: PersonState, b: PersonState, _place: Id, minutes: number): void {
     const rv = this.w.reverie;
     for (const [x, y] of [[a, b], [b, a]] as const) {
-      const r = this.rel(x.id, y.id);
+      const r = this.record(x.id, y.id);
       const mood = rv ? rv.mood(x.id) - 0.5 : 0;
       const gain = this.config.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) + mood);
       r.r = round(clamp(r.r + clamp(gain, -0.05, 0.08), -1, 1), 4);

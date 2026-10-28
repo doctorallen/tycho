@@ -407,7 +407,7 @@ test('couples form on their own when the game lets them', () => {
   w.place({ id: 'h' });
   w.person('a', { home: 'h', born: -30 * 365 * DAY }); w.person('b', { home: 'h', born: -30 * 365 * DAY });
   w.fellowship.adjust('a', 'b', 0.8); w.fellowship.adjust('b', 'a', 0.8);
-  w.fellowship.rel('a', 'b').a = 0.6; w.fellowship.rel('b', 'a').a = 0.6;
+  w.fellowship.attract('a', 'b', 0.6); w.fellowship.attract('b', 'a', 0.6);
   w.advance(DAY + 1);
   assert.equal(w.fellowship.partner('a'), 'b');
 });

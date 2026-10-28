@@ -88,7 +88,7 @@ A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 | `rent` | `{ paid }` or `{ missed }` | Ceres |
 | `paired`, `born`, `stage` | | Cradle |
 
-The `log:<kind>` effect writes your own entries from inside the simulation. `world.log(kind, who, data)` writes one directly; from game code it isn't recorded for time walk, so prefer the effect, or a custom input.
+The `log:<kind>` effect writes your own entries from inside the simulation. `world.log(kind, who, data)` writes one from the game: it's an input, so the entry is recorded and comes back after a rewind (inside the simulation it writes at once).
 
 The log is in every snapshot and every save, so its size is the biggest lever on Esper's memory (see [Time](time.md#esperconfig-and-memory)). In the chronicle, clock times are rounded down, so a walk ending at 7:20 can show as 07:19.
 

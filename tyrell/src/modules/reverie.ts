@@ -171,6 +171,8 @@ export class Reverie implements Module {
     w.defineInput('believe', (id: Id, key: string, v: Value, src: Belief['src'], from: Id | null, str?: number) => this.applyBelieve(id, key, v, src, from, str));
     w.defineInput('remember', (id: Id, m: Partial<Memory> & { k: Id }) => this.applyRemember(id, m));
     w.defineInput('forget', (id: Id, key: string) => { delete this.st.b[id]?.[key]; });
+    w.defineInput('recollect', (id: Id, match: { about?: Id; k?: Id; place?: Id }, n: number) => this.applyRecall(id, match, n));
+    w.defineInput('hush', (id: Id, key: string, on: boolean) => this.applySilence(id, key, on));
   }
 
   // -------------------------------------------------------------------------
@@ -317,16 +319,21 @@ export class Reverie implements Module {
   /**
    * Brings memories to mind: the strongest matching ones (about someone, of
    * a kind). Recalling an important memory often enough can make it a core
-   * memory that changes them.
+   * memory that changes them. From the game: recorded for time walk.
    */
   recall(id: Id, match: { about?: Id; k?: Id; place?: Id } = {}, n = 3): Memory[] {
+    return (this.w.input('recollect', [id, match, n]) as Memory[] | undefined) ?? [];
+  }
+
+  /** Recalls inside the simulation (copies of the memories recalled). */
+  applyRecall(id: Id, match: { about?: Id; k?: Id; place?: Id } = {}, n = 3): Memory[] {
     const list = (this.st.m[id] || []).filter((m) => (!match.about || m.about === match.about) && (!match.k || m.k === match.k) && (!match.place || m.place === match.place));
     const out = list.sort((a, b) => this.strength(b) - this.strength(a)).slice(0, n);
     for (const m of out) {
       m.recalls++;
       if (!m.core && m.recalls >= 3 && m.imp >= 7) this.maybeCore(id, m);
     }
-    return out;
+    return out.map((m) => ({ ...m }));
   }
 
   private maybeCore(id: Id, m: Memory): void {
@@ -421,14 +428,14 @@ export class Reverie implements Module {
     return this.belief(id, key) === f;
   }
 
-  /** Marks a belief as one they won't pass on (paid or scared off). */
-  silence(id: Id, key: string, on = true): void {
+  /** Marks a belief as one they won't pass on (a promise kept; from the game: recorded). */
+  silence(id: Id, key: string, on = true): void { this.w.input('hush', [id, key, on]); }
+
+  /** Marks a belief as one they won't pass on, inside the simulation (paid or scared off). */
+  applySilence(id: Id, key: string, on = true): void {
     const b = this.st.b[id]?.[key];
     if (b) { if (on) b.silenced = true; else delete b.silenced; }
   }
-
-  /** The raw belief map (for Wormtongue). */
-  beliefMap(id: Id): Record<string, Omit<Belief, 'key'>> { return (this.st.b[id] ||= {}); }
 
   // -------------------------------------------------------------------------
   // Files
@@ -437,8 +444,8 @@ export class Reverie implements Module {
   /** Someone's file on someone else (the player, usually). */
   file(id: Id, subject: Id): PersonFile | undefined { return this.st.files[id]?.[subject]; }
 
-  /** Notes a deed in someone's file on someone. */
-  note(id: Id, subject: Id, verb: string, what?: string): void {
+  /** Notes a deed in someone's file on someone, inside the simulation (the game reports deeds with world.did). */
+  applyNote(id: Id, subject: Id, verb: string, what?: string): void {
     const files = (this.st.files[id] ||= {});
     const now = this.w.s.now;
     const f = (files[subject] ||= { met: 0, first: now, last: now, tally: {}, notes: [] });
@@ -535,14 +542,14 @@ export class Reverie implements Module {
     const target = (data.for ?? data.to ?? data.target) as Id | undefined;
     const deed = this.w.deeds.get(verb);
     if (target && this.w.s.people[target]) {
-      this.note(target, actor, verb, data.what === undefined ? undefined : String(data.what));
+      this.applyNote(target, actor, verb, data.what === undefined ? undefined : String(data.what));
       if (deed?.feeling) this.applyFeel(target, deed.feeling, `${actor} ${verb}`);
       if (deed?.memory) this.applyRemember(target, { k: verb, about: actor, imp: deed.memory, text: `${actor} ${verb}${data.what ? ' ' + data.what : ''}` });
     }
     const seen = Array.isArray(data.seenBy) ? (data.seenBy as unknown as Id[]) : [];
     for (const wid of seen) {
       if (wid === target || !this.w.s.people[wid]) continue;
-      this.note(wid, actor, verb, data.what === undefined ? undefined : String(data.what));
+      this.applyNote(wid, actor, verb, data.what === undefined ? undefined : String(data.what));
       if (deed?.witnessFeeling) this.applyFeel(wid, deed.witnessFeeling, `saw ${actor} ${verb}`);
     }
   }

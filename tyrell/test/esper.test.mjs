@@ -247,6 +247,38 @@ test('saves migrate forward and refuse the future', () => {
   delete Tyrell.MIGRATIONS[0];
 });
 
+test('recall, silence, resolve, attract, draw and log from the game are inputs: a rewind replays them', () => {
+  const w = rocinante();
+  w.reverie.memoryKind({ id: 'betrayed', importance: 9, shifts: { trust: -0.2 } });
+  w.gaff.deck('d', ['a', 'b', 'c']);
+  w.advance(HOUR);
+  w.reverie.remember('kofi', { k: 'betrayed', about: 'sam' });
+  for (let i = 0; i < 10; i++) assert.equal(w.reverie.recall('kofi', { about: 'sam' }).length, 1);
+  w.reverie.believe('ruth', 'secret:x', true, 'saw');
+  w.reverie.silence('ruth', 'secret:x');
+  assert.equal(typeof w.cityspeak.resolve('chat', 'ruth', 'kofi'), 'boolean');
+  w.fellowship.attract('ruth', 'kofi', 0.2);
+  assert.ok(['a', 'b', 'c'].includes(w.gaff.draw('d')));
+  w.log('note', 'kofi', { said: 'hello' });
+  w.advance(HOUR);
+  const h = w.hash();
+  w.rewind(90); // back before all of it
+  w.advance(90);
+  assert.equal(w.hash(), h);
+});
+
+test('reading changes nothing: relationships, intensity, strangers', () => {
+  const w = rocinante();
+  w.strangers.define('main', { perHour: 4, errands: [{ from: 'park', to: 'market', minutes: 10 }] });
+  w.advance(HOUR);
+  const h = w.hash();
+  assert.equal(w.fellowship.rel('ruth', 'nobody'), undefined);
+  assert.equal(w.gaff.phase('docks'), 'build');
+  assert.equal(w.gaff.intensity('docks'), 0);
+  w.strangers.at('main');
+  assert.equal(w.hash(), h);
+});
+
 test('keep: the game\'s own state rewinds with the world', () => {
   const w = rocinante();
   w.advance(HOUR);

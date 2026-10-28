@@ -210,7 +210,7 @@ world.on('*', (e) => { if (e.event === 'report') showToast(`${e.actor} reported 
 | `input(name, args)` | value | Applies and records an input; returns the handler's result (or `undefined` when deferred inside a listener) |
 | `internally(fn)` | fn's result | Runs engine-driven code: inputs inside it are applied, not recorded |
 | `ctx(person?, extra?)` | Ctx | A context for conditions |
-| `log(kind, who?, data?)` | void | **Engine.** Writes a log entry |
+| `log(kind, who?, data?)` | void | Writes a log entry. From the game it's an **input** (`log`), recorded for time walk; inside the simulation (modules, effects, input handlers) it writes at once |
 | `flushDeferred`, `replay`, `nextSeq` | | **Engine** internals |
 
 ## Events
@@ -262,15 +262,16 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `person` | `world.person` |
 | `fact`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at` | The `world` method of the same name |
 | `promote` | `strangers.promote` |
-| `feel`, `believe`, `remember`, `forget` | Reverie |
-| `regard` (`adjust`), `sentiment`, `standing` (`changeStanding`), `join`, `partners` (`setPartner`) | Fellowship |
+| `log` | `world.log`, called from the game |
+| `feel`, `believe`, `remember`, `forget`, `recollect` (`recall`), `hush` (`silence`) | Reverie |
+| `regard` (`adjust`), `attraction` (`attract`), `sentiment`, `standing` (`changeStanding`), `join`, `partners` (`setPartner`) | Fellowship |
 | `silence`, `secret`, `owe`, `heat` (`addHeat`) | Wormtongue |
-| `say` | Cityspeak |
-| `trigger`, `bump` | Gaff |
+| `say`, `social` (`resolve`) | Cityspeak |
+| `trigger`, `bump`, `draw` | Gaff |
 | `pay`, `rent`, `income`, `stock` (`restock`) | Ceres |
 | `birth`, `pair`, `depart` | Cradle |
 
-`person`, `promote`, `say` and `birth` apply at once even inside a listener, because they return a value.
+`person`, `promote`, `say`, `birth`, `recollect`, `social` and `draw` apply at once even inside a listener, because they return a value.
 
 ## Types
 

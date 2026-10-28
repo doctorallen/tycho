@@ -65,13 +65,18 @@ export declare class Fellowship implements Module {
     household(id: Id): Id | undefined;
     join(g: Id, id: Id, on?: boolean): void;
     applyJoin(g: Id, id: Id, on: boolean): void;
-    /** The relationship record a -> b (made if missing). */
-    rel(a: Id, b: Id): Rel;
+    /** The relationship record a -> b, or undefined if there's none (a copy: change it through the inputs). */
+    rel(a: Id, b: Id): Rel | undefined;
+    /** The relationship record a -> b, made if missing (inside the simulation). */
+    private record;
     /** Has a met b (is there a record)? */
     knows(a: Id, b: Id): boolean;
     /** a's regard for b, -1..1, sentiments included. */
     regard(a: Id, b: Id): number;
     attraction(a: Id, b: Id): number;
+    /** Changes a's attraction to b (from the game: recorded). */
+    attract(a: Id, b: Id, by: number): void;
+    applyAttraction(a: Id, b: Id, by: number): void;
     /** Hidden compatibility of a pair, -1..1 (the same both ways). */
     compat(a: Id, b: Id): number;
     /** Everyone a person has a relationship with, best regard first. */

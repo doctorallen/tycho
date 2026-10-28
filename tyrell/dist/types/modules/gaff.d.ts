@@ -74,7 +74,10 @@ export declare class Gaff implements Module {
     /** A number Gaff can read ('metric:<name>' in conditions). */
     defineMetric(name: string, fn: (w: World) => number): this;
     metric(name: string): number;
+    /** A subject's intensity, made if missing (inside the simulation). */
     private int;
+    /** A subject's intensity for reading: one never bumped is building from 0 (and isn't made). */
+    private look;
     intensity(subject?: string): number;
     phase(subject?: string): Phase;
     /** Raises (or lowers) a subject's intensity (from the game: recorded). */
@@ -84,8 +87,10 @@ export declare class Gaff implements Module {
     /** Can a storylet fire now? */
     eligible(def: StoryletDef): boolean;
     hour(): void;
-    /** Draws a card from a deck: shuffled, no repeat of the last one. */
+    /** Draws a card from a deck (from the game: recorded): shuffled, no repeat of the last one. */
     draw(deck: string): Id | undefined;
+    /** Draws a card inside the simulation. */
+    applyDraw(deck: string): Id | undefined;
     /** Makes a storylet fire now (the game can force one: recorded). */
     trigger(id: Id, place?: Id | null): void;
     private fire;

@@ -35,8 +35,7 @@ export class Strangers {
   constructor(private w: World) {
     w.defineInput('promote', (sid: string, given: Id | null, def: PersonDef) => {
       const id = given ?? `p${++w.s.ids}`;
-      const st = this.store();
-      st[sid] = id;
+      (w.s.mod['@strangers'] ||= {})[sid] = id;
       const b = this.find(sid);
       const p = w.input('person', [id, { ...def, place: def.place ?? b?.place ?? b?.travel?.to ?? undefined, data: { ...(b?.data || {}), ...(def.data || {}) }, tags: [...(def.tags || []), 'promoted'] }]);
       w.log('promoted', id, { stranger: sid });
@@ -44,7 +43,8 @@ export class Strangers {
     });
   }
 
-  private store(): Record<string, Id> { return (this.w.s.mod['@strangers'] ||= {}); }
+  /** Who's been promoted (read only: looking at strangers changes nothing). */
+  private store(): Record<string, Id> { return this.w.s.mod['@strangers'] ?? {}; }
 
   /** Declares the passers-by of a region. */
   define(region: string, def: StrangerDef): void { this.defs.set(region, def); }

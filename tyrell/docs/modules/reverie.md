@@ -123,12 +123,13 @@ A `Memory` is `{ k, t, imp, recalls, about?, place?, text?, core? }`: the kind, 
 
 Memories come from deeds (`memory` in a DeedDef), from witnessing (Wormtongue: kind `'saw:<kind>'`), from departures (Cradle: kind `'loss'`), from the `remember:<kind>` effect, and from the game (`reverie.remember`).
 
-`recall` changes state (the recall count, and maybe a core memory) and isn't an input. Call it from inside the simulation (an effect, a storylet), or wrap it in a custom input when the game calls it:
+`recall` changes state (the recall count, and maybe a core memory), so it's an input, recorded for time walk. It applies at once even inside a listener, and returns copies of the memories recalled:
 
 ```js
-world.defineInput('recall', (id, match) => world.reverie.recall(id, match));
-const memories = world.input('recall', ['kofi', { about: 'sam' }]);
+const memories = world.reverie.recall('kofi', { about: 'sam' });   // in dialogue: what he remembers of Sam
 ```
+
+Inside the simulation (an effect, a storylet's `fire`), use `applyRecall`.
 
 ## Beliefs
 
@@ -204,6 +205,8 @@ In `world.s.mod.reverie`, all plain JSON:
 | `remember(id, memory)` | void | **Input.** Adds a memory: `{ k, imp?, about?, place?, text? }` |
 | `believe(id, key, value, src = 'knew', from?, str = 1)` | void | **Input.** Gives a belief |
 | `forget(id, key)` | void | **Input.** Drops a belief |
+| `recall(id, match?, n = 3)` | Memory[] | **Input** (applies at once). Brings memories to mind (may make a core memory); returns copies |
+| `silence(id, key, on = true)` | void | **Input.** Marks a belief as one they won't pass on (a promise kept), or (`false`) lets it go again. For witnesses, `wormtongue.silence` |
 | `feelings(id)` | array | Active feelings: `{ id, label, weight, until, emotion?, cause? }` |
 | `mood(id)` | number | 0..1 (0.5 for nobody) |
 | `emotion(id)` | string | The emotion showing, or `'fine'` |
@@ -221,11 +224,10 @@ In `world.s.mod.reverie`, all plain JSON:
 | `applyFeel(id, feeling, cause?)` | void | **Engine.** Gives a feeling |
 | `addStress(id, amount)` | void | **Engine.** Adds stress |
 | `applyRemember(id, memory)` | void | **Engine.** Adds a memory |
-| `recall(id, match?, n = 3)` | Memory[] | **Engine.** Brings memories to mind (may make a core memory) |
 | `applyBelieve(id, key, value, src, from?, str = 1, hops = 0)` | void | **Engine.** Gives a belief |
-| `silence(id, key, on = true)` | void | **Engine.** Marks a belief as one they won't pass on (use `wormtongue.silence` from the game) |
-| `note(id, subject, verb, what?)` | void | **Engine.** Notes a deed in a file |
-| `beliefMap(id)` | object | **Engine.** The raw belief map |
+| `applyRecall(id, match?, n = 3)` | Memory[] | **Engine.** The direct version of `recall` |
+| `applySilence(id, key, on = true)` | void | **Engine.** The direct version of `silence` |
+| `applyNote(id, subject, verb, what?)` | void | **Engine.** Notes a deed in a file (the game reports deeds with `world.did`) |
 | `config`, `feelingDefs`, `breakDefs`, `memoryKinds` | | The config and the declared definitions |
 
 ## Terms and effects

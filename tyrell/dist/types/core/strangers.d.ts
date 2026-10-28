@@ -25,6 +25,7 @@ export declare class Strangers {
     private w;
     private defs;
     constructor(w: World);
+    /** Who's been promoted (read only: looking at strangers changes nothing). */
     private store;
     /** Declares the passers-by of a region. */
     define(region: string, def: StrangerDef): void;

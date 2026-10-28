@@ -95,6 +95,8 @@ export class World {
   private deferred: Array<[string, unknown[], boolean]> = [];
   /** Listeners being called (game code): inputs they make wait their turn. */
   private listening = 0;
+  /** The input depth the innermost listener was called at (deeper is engine code it set off). */
+  private listenDepth = -1;
   /** Clock calls running (tick, advanceTo, seek, load). */
   private moving = 0;
   /** Clock calls made while the engine was busy, waiting their turn. */
@@ -371,11 +373,13 @@ export class World {
     if (this.replaying) return;
     const a = this.listeners.get(kind), b = kind !== '*' ? this.listeners.get('*') : undefined;
     if (!a?.length && !b?.length) return;
+    const outer = this.listenDepth;
     this.listening++;
+    this.listenDepth = this.depth;
     try {
       for (const fn of a || []) fn(data);
       for (const fn of b || []) fn({ kind, ...data, event: kind });
-    } finally { this.listening--; }
+    } finally { this.listening--; this.listenDepth = outer; }
   }
 
   // -------------------------------------------------------------------------
@@ -455,7 +459,7 @@ export class World {
     const fn = this.inputs.get(name);
     if (!fn) throw new Error(`Tyrell: unknown input '${name}'`);
     if (this.replaying) return this.applyInput(fn, args);
-    const fromGame = this.listening > 0;
+    const fromGame = this.fromListener();
     if (this.depth > 0 && !fromGame) return this.applyInput(fn, args);
     const handling = this.clock.handling;
     if (this.depth > 0 || handling !== null) {
@@ -470,6 +474,9 @@ export class World {
     this.runLater();
     return out;
   }
+
+  /** Is the code running now a listener's own (game code), not engine work it set off? */
+  private fromListener(): boolean { return this.listening > 0 && this.depth === this.listenDepth; }
 
   private applyInput(fn: (...args: any[]) => unknown, args: unknown[]): unknown {
     this.depth++;
@@ -522,8 +529,16 @@ export class World {
   /** The next sequence number (for queue items and doings). */
   nextSeq(): number { return ++this.s.seq; }
 
-  /** Writes to the log and tells the game. */
-  log(k: string, who?: Id, d?: Record<string, unknown>): void { this.westmarch.write(k, who, d); }
+  /**
+   * Writes to the log and tells the game. Inside the simulation (modules,
+   * effects, input handlers) it writes at once; from the game it's an input,
+   * so the entry is recorded for time walk.
+   */
+  log(k: string, who?: Id, d?: Record<string, unknown>): void {
+    const engine = !this.fromListener() && (this.depth > 0 || this.clock.handling !== null || this.replaying);
+    if (engine) this.westmarch.write(k, who, d);
+    else this.input('log', [k, who ?? null, d === undefined ? null : JSON.parse(JSON.stringify(d))]);
+  }
 
   private makePerson(id: Id, def: PersonDef): PersonState {
     const needs: PersonState['needs'] = {};
@@ -669,6 +684,7 @@ export class World {
     });
     this.defineInput('remove', (id: Id, why: string) => this.clock.removePerson(id, why));
     this.defineInput('keep', (key: string, value: unknown) => { this.s.game[key] = value; });
+    this.defineInput('log', (k: string, who: Id | null, d: Record<string, unknown> | null) => this.westmarch.write(k, who ?? undefined, d ?? undefined));
     this.defineInput('at', (t: number, name: string, data: Record<string, Value>) => {
       this.clock.schedule({ t, k: 'timer', ref: name, data });
     });
@@ -676,7 +692,7 @@ export class World {
 }
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
-const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth']);
+const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
 export const MIGRATIONS: Record<number, (s: any) => any> = {

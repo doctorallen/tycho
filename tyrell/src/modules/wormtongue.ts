@@ -204,7 +204,7 @@ export class Wormtongue implements Module {
     const greed = p.def.traits?.greed ?? 0.5, courage = p.def.traits?.courage ?? 0.5, honesty = p.def.traits?.honesty ?? 0.5;
     const pAccept = how === 'pay' ? clamp(greed * 0.6 + Math.min(1, amount / 100) * 0.5 - honesty * 0.4 + 0.1) : clamp((1 - courage) * 0.8 - honesty * 0.2 + 0.1);
     const ok = r.chance(pAccept);
-    if (ok) for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.silence(witness, b.key);
+    if (ok) for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.applySilence(witness, b.key);
     if (how === 'pay' && ok) p.vars.money = Number(p.vars.money ?? 0) + amount;
     if (how === 'scare') {
       rv.applyFeel(witness, 'scared', actor);

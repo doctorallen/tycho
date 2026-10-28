@@ -168,7 +168,7 @@ export class Cradle implements Module {
         for (const h of heirs) w.s.people[h].vars.money = round(Number(w.s.people[h].vars.money ?? 0) + share, 2);
       } else if (w.ceres) {
         const hh = w.fellowship?.household(id);
-        if (hh) w.ceres.transfer(id, hh, money, 'inheritance');
+        if (hh) w.ceres.applyPay(id, hh, money, 'inheritance');
       }
       p.vars.money = 0;
     }

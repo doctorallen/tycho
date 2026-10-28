@@ -144,8 +144,10 @@ export declare class Cityspeak implements Module {
     /** An action that says something on starting (its `says` topic) says it. */
     started(p: PersonState, d: Doing): void;
     ended(p: PersonState, d: Doing, frac: number, interrupted: boolean): void;
-    /** Resolves a social act: does the target accept? Applies the outcome. */
+    /** Resolves a social act now (from the game: recorded): does the target accept? Applies the outcome. */
     resolve(actId: Id, from: Id, to: Id): boolean;
+    /** Resolves a social act inside the simulation. */
+    applyResolve(actId: Id, from: Id, to: Id): boolean;
     met(a: PersonState, b: PersonState): void;
     /**
      * Binds Tyrell to an ink story (inkjs): the story can call

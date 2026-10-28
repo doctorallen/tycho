@@ -333,6 +333,8 @@ function hot(opts = {}) {
   return w;
 }
 const record = (w, kind) => { const out = []; w.on(kind, (e) => out.push(e)); return out; };
+/** To three places: grudges fade by the minute, so a few minutes on they're a hair under. */
+const r3 = (x) => Math.round(x * 1000) / 1000;
 
 test('a sour turn turns talk into an argument, and an argument into a fight; escalation 0 stops it', () => {
   const w = hot();
@@ -446,4 +448,145 @@ test('a fight the game calls a crime is Wormtongue\'s: witnesses, and reports; t
   assert.ok(reports.some((r) => r.actor === 'a' && r.kind === 'fight'));
   assert.ok(w.wormtongue.heat('a') > 0);
   assert.ok(w.wormtongue.witnesses('a').includes('b'), 'the one hit saw it too');
+});
+
+// ---------------------------------------------------------------------------
+// Lasting conflict: grudges, feuds, avoidance, making up
+// ---------------------------------------------------------------------------
+
+test('a bad exchange leaves a grudge, by temper and forgiveness; it colors what comes after', () => {
+  const run = (bree, defs) => {
+    const w = hot({ bree: { escalation: 0, ...bree }, defs });
+    w.bree.kind({ id: 'chat', base: -2.5, turns: 2 });
+    w.bree.start('chat', 'a', 'b');
+    w.advance(10);
+    return w;
+  };
+  const w = run();
+  assert.equal(w.bree.history().at(-1).outcome, 'sour');
+  assert.equal(r3(w.bree.grudge('b', 'a')), 0.1);
+  assert.equal(r3(w.bree.grudge('a', 'b')), 0.1, 'both heard it go sour');
+  assert.equal(w.bree.grudges('b')[0].why, 'chat');
+  assert.equal(r3(run({}, { b: { traits: { temper: 1 } } }).bree.grudge('b', 'a')), 0.15, 'a quick temper holds more');
+  assert.equal(r3(run({}, { b: { traits: { forgiveness: 1 } } }).bree.grudge('b', 'a')), 0.05, 'a forgiving nature less');
+  assert.equal(run({ grudges: 0 }).bree.grudge('b', 'a'), 0, 'grudges 0: none');
+  assert.equal(r3(run({}, { b: { tune: { bree: { grudges: 2 } } } }).bree.grudge('b', 'a')), 0.2, 'their own');
+  const next = w.bree.weigh('chat', 'a', 'b');
+  assert.ok(next.parts.some(([k, v]) => k === 'grudge' && v < 0), 'the grudge colors the next');
+});
+
+test('avoidance: a grudge or a feud weighs places with them there lower, social actions aimed at them lower, a quarrel with them higher', () => {
+  const w = table({ people: ['a', 'b', 'c'] });
+  w.bree.kind({ id: 'argue', tags: ['hostile'], base: -1 });
+  w.place({ id: 'park' });
+  w.link('cafe', 'park', 3);
+  w.action({ id: 'stroll', at: 'park', minutes: 30, base: 0.5 });
+  w.action({ id: 'natter', target: 'person', at: 'here', minutes: 20, base: 0.5, tags: ['social'] });
+  w.action({ id: 'have_it_out', target: 'person', at: 'here', minutes: 20, base: 0.5, interact: 'argue' });
+  w.advance(10);
+  const factor = (id, action, name, place) => {
+    const opts = w.mind.options(w.get(id)).filter((o) => o.id === action && (!place || o.place === place));
+    return opts.map((o) => o.parts.find((x) => x[0] === name)?.[1]);
+  };
+  assert.deepEqual(factor('a', 'sit', 'avoiding b'), [undefined], 'nothing yet');
+  w.bree.grudgeAgainst('a', 'b', 0.5);
+  assert.deepEqual(factor('a', 'sit', 'avoiding b'), [0.7], 'the cafe, with b in it');
+  assert.deepEqual(factor('a', 'stroll', 'avoiding b'), [undefined], 'the park is clear');
+  const aimed = w.mind.options(w.get('a')).filter((o) => o.target === 'b');
+  assert.equal(aimed.find((o) => o.id === 'natter').parts.find((x) => x[0] === 'avoiding b')[1], 0.6);
+  assert.equal(aimed.find((o) => o.id === 'have_it_out').parts.find((x) => x[0] === 'a grudge against b')[1], 1.5);
+  assert.equal(w.mind.options(w.get('c')).find((o) => o.id === 'sit').parts.find((x) => x[0].startsWith('avoiding')), undefined, 'c holds nothing');
+  // a feud between households: every member keeps clear of every member
+  const f = table({ people: ['a', 'b', 'c'], defs: { a: { groups: ['h1'] }, b: { groups: ['h2'] }, c: { groups: ['h2'] } } });
+  f.fellowship.group({ id: 'h1', kind: 'household' });
+  f.fellowship.group({ id: 'h2', kind: 'household' });
+  f.advance(10);
+  f.bree.feud('h1', 'h2', 0.5);
+  const sit = (id) => f.mind.options(f.get(id)).find((o) => o.id === 'sit').parts.filter((x) => x[0].startsWith('avoiding'));
+  assert.equal(sit('a').length, 1);
+  assert.equal(sit('b')[0][0], 'avoiding a', 'both ways');
+  // and people do keep away: over a day, a spends less of it where b is
+  const away = (g) => {
+    const v = table({ people: ['a', 'b'], defs: { b: { routine: [[0, 'cafe', 'sit']] } } });
+    v.place({ id: 'park' });
+    v.link('cafe', 'park', 3);
+    v.action({ id: 'stroll', at: 'park', minutes: 30, base: 0.5 });
+    if (g) v.bree.grudgeAgainst('a', 'b', 0.9);
+    let there = 0;
+    for (let t = 0; t < 12 * 60; t += 15) { v.advance(15); if (v.get('a').place === 'cafe') there++; }
+    return there;
+  };
+  assert.ok(away(true) < away(false), `${away(true)} < ${away(false)}`);
+});
+
+test('making up: an apology eases the grudge by the listener\'s forgiveness; reconciled, a sentiment remembers it', () => {
+  const run = (bree, defs, kind = { id: 'sorry', base: 3.5, mends: 0.2 }) => {
+    const w = table({ bree: { compatWeight: 0, moodWeight: 0, roomWeight: 0, ...bree }, defs });
+    w.bree.kind(kind);
+    w.advance(10);
+    w.bree.grudgeAgainst('b', 'a', 0.4, 'the fence');
+    w.bree.start(kind.id, 'a', 'b');
+    w.advance(10);
+    return w;
+  };
+  const w = run();
+  assert.equal(w.bree.history().at(-1).outcomes.b, 'warm', 'a grudge against them colors even an apology, but this one lands');
+  assert.equal(r3(w.bree.grudge('b', 'a')), 0.1, 'warm: one and a half times its mending');
+  assert.equal(run({}, { b: { traits: { forgiveness: 1 } } }).bree.grudge('b', 'a'), 0, 'a forgiving nature: all of it');
+  assert.equal(r3(run({}, { b: { traits: { forgiveness: 0 } } }).bree.grudge('b', 'a')), 0.25, 'an unforgiving one: a third as much');
+  assert.equal(run({ forgiveness: 0 }).bree.grudge('b', 'a'), 0.4, 'nobody forgives');
+  const made = run({}, { b: { traits: { forgiveness: 1 } } });
+  assert.ok(made.fellowship.sentiments('b', 'a').some((s) => s.label === 'made it up'));
+  assert.ok(made.reverie.feelings('b').some((f) => f.id === 'made_up'));
+  assert.ok(made.reverie.memories('b').some((m) => m.k === 'made_up' && m.about === 'a'));
+  // an apology turned down mends nothing (and sours it more)
+  assert.ok(run({}, {}, { id: 'sorry', base: -1.5, mends: 0.2 }).bree.grudge('b', 'a') >= 0.4);
+  // making up runs both ways
+  const both = table({ bree: { compatWeight: 0, moodWeight: 0, roomWeight: 0 } });
+  both.bree.kind({ id: 'make_up', base: 4.5, mends: 0.6, mutual: true });
+  both.advance(10);
+  both.bree.grudgeAgainst('a', 'b', 0.6);
+  both.bree.grudgeAgainst('b', 'a', 0.6);
+  assert.ok(both.bree.feudBetween('a', 'b') > 0, 'a feud');
+  const mended = record(both, 'bree:mended');
+  both.bree.start('make_up', 'a', 'b');
+  both.advance(10);
+  assert.equal(both.bree.grudge('a', 'b'), 0);
+  assert.equal(both.bree.grudge('b', 'a'), 0);
+  assert.equal(both.bree.feudBetween('a', 'b'), 0, 'and the feud with them');
+  assert.deepEqual(mended.map((e) => e.id).sort(), ['a', 'b']);
+  // the game, a go-between, or an effect can make it up too
+  const g = apart();
+  g.bree.grudgeAgainst('a', 'b', 0.9);
+  g.bree.reconcile('a', 'b');
+  assert.equal(g.bree.grudge('a', 'b'), 0);
+  assert.ok(g.fellowship.sentiments('a', 'b').some((s) => s.label === 'made it up'));
+  g.bree.grudgeAgainst('a', 'b', 0.9);
+  g.lang.apply('grudge-=0.5', g.ctx(g.get('a'), { target: 'b' }));
+  assert.equal(g.bree.grudge('a', 'b'), 0.4);
+});
+
+test('someone who steps in eases their grudges; time does too', () => {
+  const m = hot({ people: ['a', 'b', 'c'], bree: { stepInBase: 1, mediateMends: 0.3 } });
+  for (const x of ['a', 'b']) m.fellowship.adjust('c', x, 0.5);
+  m.bree.grudgeAgainst('b', 'a', 0.5);
+  m.bree.start('chat', 'a', 'b');
+  m.advance(HOUR);
+  assert.equal(m.bree.history().at(-1).why, 'stepped in');
+  assert.ok(m.bree.grudge('b', 'a') < 0.5, `${m.bree.grudge('b', 'a')}`);
+});
+
+test('a fight between people of two households can set the households feuding', () => {
+  const run = (spread) => {
+    const w = hot({ people: ['a', 'b'], bree: { feudSpread: spread }, defs: { a: { groups: ['h1'] }, b: { groups: ['h2'] } } });
+    w.fellowship.group({ id: 'h1', kind: 'household' });
+    w.fellowship.group({ id: 'h2', kind: 'household' });
+    w.bree.start('chat', 'a', 'b');
+    w.advance(HOUR);
+    return w.bree.feuds();
+  };
+  assert.deepEqual(run(0).filter((f) => f.a.startsWith('h')), [], 'off by default');
+  const feuds = run(0.4).filter((f) => f.a.startsWith('h'));
+  assert.equal(feuds.length, 1);
+  assert.deepEqual([feuds[0].a, feuds[0].b, r3(feuds[0].strength), feuds[0].why], ['h1', 'h2', 0.4, 'fight']);
 });

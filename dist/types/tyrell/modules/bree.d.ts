@@ -1,5 +1,5 @@
 import type { Module } from '../core/module';
-import type { Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
+import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY } from '../core/util';
 import type { LandRules } from './landing';
@@ -482,6 +482,8 @@ export declare class Bree implements Module {
      */
     witnesses: ((ex: ExchangeView, world: World) => Id[]) | null;
     private w;
+    /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
+    private foeCache;
     constructor(cfg?: Partial<BreeConfig>);
     private get st();
     private mut;
@@ -521,6 +523,20 @@ export declare class Bree implements Module {
     grudgeAgainst(a: Id, b: Id, by: number, why?: string): void;
     /** Changes a grudge inside the simulation. */
     applyGrudge(a: Id, b: Id, by: number, why: string): void;
+    /** How much of a grudge someone holds: their knob, more for a quick temper, less for a forgiving nature. */
+    private grudging;
+    /**
+     * Something mends: the holder's grudge against the other eases by this
+     * much (and a feud between them: a person's in full, their groups' by
+     * feudMends). A grudge eased to nothing is made up.
+     */
+    private mend;
+    /** A grudge made up: it ends, and a sentiment remembers it, with a feeling and a memory. */
+    private reconciled;
+    /** Two people make it up (from the game: recorded): grudges both ways and a feud between them end, and each keeps a sentiment for it. */
+    reconcile(a: Id, b: Id, why?: string): void;
+    /** Makes it up inside the simulation. */
+    applyReconcile(a: Id, b: Id, why: string): void;
     /** A feud's strength now (it fades from when it was last set). */
     private feudStrength;
     /** Is a person in a party (themselves, or a group they belong to)? */
@@ -638,6 +654,14 @@ export declare class Bree implements Module {
     private finish;
     /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */
     private leave;
+    /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
+    private foes;
+    /**
+     * Avoidance: someone with a grudge or in a feud weighs what they might do
+     * where the other is lower, and anything social aimed at them lower still;
+     * a hostile interaction aimed at them weighs more.
+     */
+    consider(p: PersonState, cand: Candidate): Array<[string, number]> | void;
     /** Two people spend time together: now and then one strikes up an exchange. */
     met(a: PersonState, b: PersonState, _place: Id, minutes: number): void;
     /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */

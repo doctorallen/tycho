@@ -18,11 +18,17 @@
 //                  someone there steps in, or the one hurt walks off; whoever
 //                  is about sees it, remembers it and gossips it, and a fight
 //                  can be a crime they report (RimWorld's social fights)
+//   grudges        one person's against another, with a reason and a strength
+//                  that fades at a set pace, coloring what comes after (Dwarf
+//                  Fortress); feuds between two people or two households,
+//                  both ways (Dune's kanly, Crusader Kings' rivalries); people
+//                  keep away from those they have something against; and
+//                  making up: an apology, a gift, a go-between, or time
 //
 // State is made with the first exchange or grudge (world.s.mod.bree), so a
 // world that declares nothing for it is exactly the world it was.
 import type { Module } from '../core/module';
-import type { Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
+import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, HOUR, Stream, clamp, round } from '../core/util';
 import { landing } from './landing';
@@ -636,6 +642,8 @@ export class Bree implements Module {
    */
   witnesses: ((ex: ExchangeView, world: World) => Id[]) | null = null;
   private w!: World;
+  /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
+  private foeCache: { st: State; key: string; list: Array<{ id: Id; a: number }> } | null = null;
 
   constructor(cfg: Partial<BreeConfig> = {}) { this.config = { ...DEFAULT_BREE, ...cfg }; }
 
@@ -692,6 +700,15 @@ export class Bree implements Module {
     w.defineInput('bree.witness', (exchange: number, seenBy: Id[]) => this.applyWitnessed(exchange, seenBy));
     w.defineInput('bree.grudge', (a: Id, b: Id, by: number, why: string | null) => this.applyGrudge(a, b, by, why ?? 'the game'));
     w.defineInput('bree.feud', (a: Id, b: Id, s: number | null, why: string | null) => this.applyFeud(a, b, s, why ?? 'the game'));
+    w.defineInput('bree.reconcile', (a: Id, b: Id, why: string | null) => this.applyReconcile(a, b, why ?? 'the game'));
+    L.effect('grudge', (c, a, op, v) => {
+      const o = other(c, a);
+      if (!c.person || !o) return;
+      const n = Number(v) || 0;
+      const by = op === '-=' ? -n : op === '=' ? n - this.grudge(c.person.id, o) : n;
+      this.applyGrudge(c.person.id, o, by, c.action ?? 'an effect');
+    });
+    L.effect('reconcile', (c, a) => { const o = other(c, a); if (c.person && o) this.applyReconcile(c.person.id, o, c.action ?? 'an effect'); });
   }
 
   // -------------------------------------------------------------------------
@@ -795,6 +812,64 @@ export class Bree implements Module {
     // grudges both ways, strong enough: a feud
     const c = this.c;
     if (by > 0 && s >= c.feudAt && this.grudge(b, a) >= c.feudAt && !st.feuds[pairKey(a, b)]) this.applyFeud(a, b, Math.min(s, this.grudge(b, a)), why);
+  }
+
+  /** How much of a grudge someone holds: their knob, more for a quick temper, less for a forgiving nature. */
+  private grudging(p: PersonState): number {
+    const c = this.c;
+    return this.knob('grudges', p.id) * Math.max(0, 1 + (this.nature(p, 'temper') - 0.5) * 2 * c.grudgeTemper) * Math.max(0, 1 - (this.nature(p, 'forgiveness') - 0.5) * 2 * c.grudgeForgive);
+  }
+
+  /**
+   * Something mends: the holder's grudge against the other eases by this
+   * much (and a feud between them: a person's in full, their groups' by
+   * feudMends). A grudge eased to nothing is made up.
+   */
+  private mend(holder: Id, other: Id, amount: number, why: string): void {
+    if (!(amount > 0)) return;
+    const st = this.st;
+    if (!st) return;
+    const c = this.c;
+    const had = this.grudge(holder, other);
+    if (had > 0) {
+      this.applyGrudge(holder, other, -amount, why);
+      if (this.grudge(holder, other) <= 0) this.reconciled(holder, other, why);
+    }
+    for (const k of Object.keys(st.feuds)) {
+      const f = st.feuds[k];
+      const persons = (f.a === holder && f.b === other) || (f.a === other && f.b === holder);
+      const groups = !persons && ((this.inParty(holder, f.a) && this.inParty(other, f.b)) || (this.inParty(holder, f.b) && this.inParty(other, f.a)));
+      if (!persons && !groups) continue;
+      const s = this.feudStrength(f) - amount * (persons ? 1 : c.feudMends);
+      this.applyFeud(f.a, f.b, s > 0 ? s : null, why);
+    }
+  }
+
+  /** A grudge made up: it ends, and a sentiment remembers it, with a feeling and a memory. */
+  private reconciled(holder: Id, other: Id, why: string): void {
+    const w = this.w, c = this.c, st = this.mut();
+    const g = st.g[holder];
+    if (g?.[other]) { delete g[other]; if (!Object.keys(g).length) delete st.g[holder]; st.v++; }
+    w.fellowship?.applySentiment(holder, other, c.reconcileLabel, c.reconcileSentiment);
+    const rv = w.reverie;
+    if (rv && c.reconcileFeeling) rv.applyFeel(holder, c.reconcileFeeling, other);
+    if (rv && c.reconcileMemory >= 1) rv.applyRemember(holder, { k: 'made_up', about: other, imp: c.reconcileMemory, text: `made it up with ${w.s.people[other]?.name ?? other}` });
+    const pair = st.pairs[pairKey(holder, other)];
+    if (pair) pair.mended = w.s.now;
+    w.log('mended', holder, { with: other, why });
+    w.emit('bree:mended', { id: holder, with: other, why });
+  }
+
+  /** Two people make it up (from the game: recorded): grudges both ways and a feud between them end, and each keeps a sentiment for it. */
+  reconcile(a: Id, b: Id, why?: string): void { this.w.input('bree.reconcile', [a, b, why ?? null]); }
+
+  /** Makes it up inside the simulation. */
+  applyReconcile(a: Id, b: Id, why: string): void {
+    if (a === b || !this.w.s.people[a] || !this.w.s.people[b]) return;
+    const st = this.mut();
+    this.reconciled(a, b, why);
+    this.reconciled(b, a, why);
+    if (st.feuds[pairKey(a, b)]) this.applyFeud(a, b, null, why);
   }
 
   /** A feud's strength now (it fades from when it was last set). */
@@ -1191,6 +1266,15 @@ export class Bree implements Module {
     // Wormtongue's witnesses (the other one too), who may report it
     if (crime) wt?.sensed({ kind: def.crime as string, actor: by, what: other, place: ex.place, seenBy: [other, ...seers] });
     this.witness(ex, seers, crime);
+    // a fight between two households can set them feuding
+    const c = this.c, fs = this.w.fellowship;
+    if (def.crime && c.feudSpread > 0 && fs) {
+      const ha = fs.household(by), hb = fs.household(other);
+      if (ha && hb && ha !== hb) {
+        const f = this.mut().feuds[pairKey(ha, hb)];
+        this.applyFeud(ha, hb, (f ? this.feudStrength(f) : 0) + c.feudSpread, def.id);
+      }
+    }
   }
 
   /** Who's about to see what happens in an exchange: the game's own say (bree.witnesses), or everyone at the place, awake, not in it. */
@@ -1374,11 +1458,27 @@ export class Bree implements Module {
         if (d.sentiment && fs && (x !== starter || d.sentiment.both)) fs.applySentiment(x, y, d.sentiment.label, d.sentiment.by ?? c.regard[o] ?? 0, d.sentiment.minutes);
         if (d.then) w.lang.applyAll(d.then, ctx);
       }
+      // a bad one leaves a grudge, more for a quick temper, less for a forgiving nature
+      for (const z of who) {
+        if (z === x || (!group && z !== y)) continue;
+        const g = (c.grudge[o] ?? 0) * (def.grudge ?? 1) * share * this.grudging(p);
+        if (g > 0) this.applyGrudge(x, z, round(g, 4), ex.kind);
+        // whoever stepped in eased it
+        if (ex.mediator && c.mediateMends > 0) this.mend(x, z, c.mediateMends * this.forgiving(x), 'a go-between');
+      }
       // the needs it meets, by how much of it they had
       if (def.relieves) for (const need in def.relieves) {
         if (!w.needs.has(need)) continue;
         w.mind.setLevel(p, need, w.mind.level(p, need) - def.relieves[need] * frac);
       }
+    }
+    // an apology, a gift, making up: the other's grudge against the one who began it eases (both ways, making up)
+    if (def.mends) {
+      const [a, b] = who;
+      const mb = c.mends[outcomes[b]] ?? 0;
+      if (mb > 0) this.mend(b, a, def.mends * mb * this.forgiving(b), ex.kind);
+      const ma = def.mutual ? c.mends[outcomes[a]] ?? 0 : 0;
+      if (ma > 0) this.mend(a, b, def.mends * ma * this.forgiving(a), ex.kind);
     }
     // what the kind does when it goes well for the other: a deed, a gift, a favor owed, a lesson
     const other = w.s.people[who[1]];
@@ -1399,6 +1499,66 @@ export class Bree implements Module {
   // -------------------------------------------------------------------------
   // Hooks
   // -------------------------------------------------------------------------
+
+  /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
+  private foes(p: PersonState): Array<{ id: Id; a: number }> {
+    const st = this.st as State, w = this.w;
+    const key = `${p.id}@${w.s.now}@${w.s.seq}@${st.v}`;
+    const hit = this.foeCache;
+    if (hit && hit.st === st && hit.key === key) return hit.list;
+    const ids = new Set<Id>(Object.keys(st.g[p.id] || {}));
+    const fs = w.fellowship;
+    for (const k of Object.keys(st.feuds)) {
+      const f = st.feuds[k];
+      for (const [mine, theirs] of [[f.a, f.b], [f.b, f.a]]) {
+        if (!this.inParty(p.id, mine)) continue;
+        if (w.s.people[theirs]) ids.add(theirs);
+        else if (fs) for (const m of fs.members(theirs)) ids.add(m);
+      }
+    }
+    const from = this.c.avoidFrom;
+    const list: Array<{ id: Id; a: number }> = [];
+    for (const id of [...ids].sort()) { if (id === p.id) continue; const a = this.animosity(p.id, id); if (a >= from) list.push({ id, a }); }
+    list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
+    this.foeCache = { st, key, list };
+    return list;
+  }
+
+  /**
+   * Avoidance: someone with a grudge or in a feud weighs what they might do
+   * where the other is lower, and anything social aimed at them lower still;
+   * a hostile interaction aimed at them weighs more.
+   */
+  consider(p: PersonState, cand: Candidate): Array<[string, number]> | void {
+    const st = this.st;
+    if (!st || (!st.g[p.id] && !Object.keys(st.feuds).length)) return;
+    const foes = this.foes(p);
+    if (!foes.length) return;
+    const w = this.w, c = this.c;
+    const out: Array<[string, number]> = [];
+    const name = (id: Id): string => w.s.people[id]?.name ?? id;
+    if (cand.target) {
+      const f = foes.find((x) => x.id === cand.target);
+      const a = cand.kind === 'action' ? w.actions.get(cand.id) : undefined;
+      if (f && a) {
+        const k = a.interact ? this.kinds.get(a.interact) : undefined;
+        if (k?.tags?.includes('hostile')) out.push([`a grudge against ${name(f.id)}`, round(1 + f.a * c.hostilePull, 4)]);
+        else if (a.interact || a.tags?.includes('social')) out.push([`avoiding ${name(f.id)}`, round(Math.max(c.avoidFloor, 1 - f.a * c.avoidTarget), 4)]);
+      }
+    }
+    const place = cand.place ?? p.place;
+    if (place) {
+      const root = w.ring.root(place);
+      for (const f of foes) {
+        if (f.id === cand.target) continue;
+        const q = w.s.people[f.id];
+        if (!q || q.status !== 'active' || !q.place || q.doing?.kind === 'travel' || w.ring.root(q.place) !== root) continue;
+        out.push([`avoiding ${name(f.id)}`, round(Math.max(c.avoidFloor, 1 - f.a * c.avoidPlace), 4)]);
+        break;
+      }
+    }
+    return out;
+  }
 
   /** Two people spend time together: now and then one strikes up an exchange. */
   met(a: PersonState, b: PersonState, _place: Id, minutes: number): void {

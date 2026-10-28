@@ -39,14 +39,14 @@ world.on('timer:rain-stops', () => world.fact('raining', false));
 | `cooldown` | none | Minutes before it can fire again |
 | `phase` | any | Fires only in these phases of its subject's intensity: `'build'`, `'peak'`, `'fade'`, `'relax'`, or a list |
 | `subject` | `'world'` | The intensity subject it reads and bumps (`'player'`, `'docks'`...) |
-| `bump` | 0.2 | How much firing raises the subject's intensity |
+| `bump` | `config.bump` (0.2) | How much firing raises the subject's intensity (times the headline knob `intensity`) |
 | `deck` | none | When it comes up, a card is drawn from this deck and fired instead |
 | `unseen` | none | A tag: fired without a place, it fires at a place with this tag that nobody is at |
 | `fire` | required | What happens: `(world, { place, subject, id }) => void` |
 
 ## When storylets fire
 
-Gaff checks its storylets every game hour, on the hour, in the order they were declared. Each storylet that's eligible (not cooling down, in one of its phases, its `when` holds) fires with probability `1 - exp(-60 / mtb)`, so on average once every `mtb` minutes of eligible time. Firing:
+Gaff checks its storylets every game hour, on the hour, in the order they were declared. Each storylet that's eligible (not cooling down, in one of its phases, its `when` holds) fires with probability `1 - exp(-60 × events / mtb)`, so on average once every `mtb` minutes of eligible time; `events` is the headline knob (1; 2 is twice as often, 0 never on their own). Firing:
 
 1. records the time (for the cooldown) and the firing (the last 100, `history()`);
 2. bumps its subject's intensity by `bump`;
@@ -63,7 +63,7 @@ Each subject has an intensity (0..1) and a phase, moving through a cycle every h
 |---|---|
 | `build` | intensity reaches `peakAt` (0.7): to `peak` |
 | `peak` | `peakMinutes` (4 hours) have passed: to `fade` |
-| `fade` | intensity drops under 0.4 × `peakAt` (0.28): to `relax` |
+| `fade` | intensity drops under 0.4 × `peakAt` (0.28; `relaxAt` is the 0.4): to `relax` |
 | `relax` | `relaxMinutes` (12 hours) have passed: to `build` |
 
 Intensity falls by `decay` (0.04) every hour, and rises when storylets fire (`bump`) or when the game bumps it (`gaff.bump(subject, by)`, an input). Give the big events `phase: ['build']` so they come while tension builds, and quiet ones `phase: ['relax']`.
@@ -173,6 +173,12 @@ Log entry: `director` (`{ storylet, place }`).
 | `peakMinutes` | 240 | Minutes a peak lasts |
 | `relaxMinutes` | 720 | Minutes of relaxing after the fade |
 | `decay` | 0.04 | Intensity lost per hour |
+| `events` | 1 | Headline knob: how often storylets fire on their own (0: never; `trigger` still fires them) |
+| `intensity` | 1 | Headline knob: how much a firing raises its subject's intensity |
+| `bump` | 0.2 | A storylet's `bump` when it gives none |
+| `relaxAt` | 0.4 | A fade turns to relaxing under this share of `peakAt` |
+
+Gaff's knobs are the world's only: storylets aren't anyone's. See [Tuning](../tuning.md#gaff); during play, `world.tune('gaff', { ... })`.
 
 ## With other modules
 

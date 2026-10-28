@@ -63,9 +63,9 @@ When anything is declared, Delos takes over Cradle's inheritance: a child born t
 
 Rare changes, kept in the genome's `mut` list and logged and emitted as `mutated`:
 
-- a gene with `mutate`: with that chance per child, one copy turns into another allele, drawn by `weights`;
-- a trait jump: with `config.jump.chance` (0.12) per child, one trait moves by `jump.by` (0.35), up or down;
-- a gift: with `config.gift.chance` (0.1) per child, one talent rises by `gift.by` (0.4).
+- a gene with `mutate`: with that chance per child (times the headline knob `mutation`), one copy turns into another allele, drawn by `weights`;
+- a trait jump: with `config.jump.chance` (0.12) per child (times `mutation`), one trait moves by `jump.by` (0.35), up or down;
+- a gift: with `config.gift.chance` (0.1) per child (times `mutation`), one talent rises by `gift.by` (0.4).
 
 ## State
 
@@ -138,6 +138,11 @@ Log entries: `mutated`.
 |---|---|---|
 | `jump` | `{ chance: 0.12, by: 0.35 }` | A child's chance that one trait jumps, up or down |
 | `gift` | `{ chance: 0.1, by: 0.4 }` | A child's chance that one talent rises |
+| `mutation` | 1 | Headline knob: how often genomes mutate (trait jumps, gifts, every gene's `mutate`); 0: never |
+| `variation` | 1 | Headline knob: how far children stray (every blended value's `noise`, times it); 0: a child is exactly the blend |
+| `traitBlend`, `talentBlend`, `instinctBlend`, `lookBlend` | the defaults by kind (above) | Each kind's founders, bounds, cross and noise, for a value that doesn't say its own: give any of them (`{ noise: 0.2 }`), the rest stay |
+
+Delos's knobs are the world's only (a child's genome is made before they're anyone). See [Tuning](../tuning.md#delos); during play, `world.tune('delos', { ... })`.
 
 ## With other modules
 

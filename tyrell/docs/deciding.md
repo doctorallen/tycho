@@ -31,11 +31,13 @@ world.need({ id: 'fun', rise: 0.05, urgent: 1.1, emotion: 'bored' });   // never
 |---|---|---|---|
 | `id` | string | required | The need's id, used in `relieves`, `rates`, `need.<id>` conditions |
 | `rise` | number | required | How much the level rises per game hour (0 calm to 1 desperate). 0.06 means empty to desperate in about 17 hours |
-| `start` | number | 0.2 | The level new people start at (a person's `needs` overrides it) |
-| `curve` | Curve | `'pow1.5'` | Turns the level into urgency when weighing relief. See [curves](#considerations-and-curves) |
-| `urgent` | number | `config.urgent` (0.85) | Above this level the need is urgent and can lift an option above the routine; at `max(urgent, 0.97)` it's desperate and lifts above work. Set it above 1 for needs that should never break a routine (fun, company, hygiene) |
+| `start` | number | `config.needStart` (0.2) | The level new people start at (a person's `needs` overrides it) |
+| `curve` | Curve | `config.needCurve` (`'pow1.5'`) | Turns the level into urgency when weighing relief. See [curves](#considerations-and-curves) |
+| `urgent` | number | `config.urgent` (0.85) | Above this level the need is urgent and can lift an option above the routine; at `max(urgent, config.desperate)` (0.97) it's desperate and lifts above work. Set it above 1 for needs that should never break a routine (fun, company, hygiene) |
 | `label` | string | none | For your own UI; the engine doesn't read it |
-| `emotion` | string | none | With Reverie: the emotion it shows as when the level is above 0.7 ('tired', 'lonely', 'irritable') |
+| `emotion` | string | none | With Reverie: the emotion it shows as when the level is above 0.7, Reverie's `needEmotion` ('tired', 'lonely', 'irritable') |
+
+How fast every need rises can be scaled at once with the headline knob `config.needs` (and a person's own, `tune: { core: { needs } }`): see [Tuning](tuning.md).
 
 A need's level is computed, not ticked: the stored value plus `rise` times the hours since it was stored, clamped to 0..1. While someone is doing an action that relieves the need, the level drops gradually through the action (by the fraction done), and the full relief is applied when the action ends. While someone is doing an action with `rates`, the need rises at `rise × rate` instead.
 
@@ -74,7 +76,7 @@ Every field of `ActionDef`:
 | `considerations` | Consideration[] | none | Extra factors multiplied into the weight |
 | `cooldown` | minutes | none | Minutes before the same person may choose it again (after it ends) |
 | `tags` | string[] | none | Free labels. The engine reads `'sleep'` (exempt from the repeat penalty; Voight-Kampff's sleep check), `'social'` (Fellowship's regard factor), `'illegal'` (Mentat's cost), and any tag a Reverie feeling `boost`s |
-| `target` | `'person'` | none | Aimed at someone: one option per suitable person at the place (up to six) |
+| `target` | `'person'` | none | Aimed at someone: one option per suitable person at the place (up to `config.targets`, six) |
 | `targetIf` | Cond[] | none | Conditions on the target: `ctx.target` is the candidate (`'regard>0.2'`, `'target.is:child'`) |
 | `pose` | string | `'idle'` | What the body shows while doing it ('sit', 'work', 'sleep') |
 | `says` | string | none | A line topic said when it starts (Cityspeak): the person's best line on that topic, to the target if there is one, as with `cityspeak.say` (remembered, its `then` applied, a `say` event) |
@@ -115,7 +117,7 @@ Every option has a **rank**. Only options at the highest rank available are cons
 | leader's rank | `follow` | Someone following a leader (`world.follow`) |
 | -1 | `idle` | Waiting with nothing to do |
 
-The numbers in `urgentRank` (1.5) and `desperateRank` (2.5) are [config](#config).
+The numbers are [config](#config): `storyRank` (3), `jobRank` (2), `routineRank` (1), `urgentRank` (1.5), `desperateRank` (2.5), and Reverie's `breakRank` (4).
 
 What a person is doing carries its rank (`world.get(id).doing.rank`). While they're busy, they only switch to something new if it outranks what they're doing, or if the routine entry, shift or directive that started it has run out.
 
@@ -196,7 +198,7 @@ world.person('dev', {
 | `days` | Days of the week the shift applies, by the day the shift starts on. Default every day |
 | `wage` | Pay per hour of the job's action (Ceres), paid by the place's owner |
 
-On shift, the job's action is required at rank 2, until the shift ends, and fills the shift. Only a desperate need (or a break or a directive) takes them off it.
+On shift, the job's action is required at rank 2 (`config.jobRank`), until the shift ends, and fills the shift. Only a desperate need (or a break or a directive) takes them off it.
 
 **Staff in a closed place.** A place that's closed (by its `hours` or a `closed:<id>` fact) turns everyone away, except for actions that name the person's job (`job: 'grocer'`) at their job's place. So give work actions `job`, or a baker whose shift starts before the bakery opens will be turned away at the door. This only works for actions: a job whose `action` is a task is blocked like anyone else.
 
@@ -228,10 +230,10 @@ A directive is active while it isn't done (or repeats) and `until` hasn't passed
 
 ## Urgent and desperate needs
 
-An option that's chosen freely (not required) gets its rank lifted when it meets an urgent need, but only if it really meets it: the action must relieve that need by 0.3 or more (the middle of its range times the place's `quality`).
+An option that's chosen freely (not required) gets its rank lifted when it meets an urgent need, but only if it really meets it: the action must relieve that need by `config.liftRelief` (0.3) or more (the middle of its range times the place's `quality`).
 
 - Level at arrival at or above `urgent` (default 0.85): rank `config.urgentRank` (1.5), above routines.
-- Level at or above `max(urgent, 0.97)`: rank `config.desperateRank + (level - 0.97) × 10` (2.5 to 2.8), above work. So someone starving wakes up even when exhausted.
+- Level at or above `max(urgent, config.desperate)` (0.97): rank `config.desperateRank + (level - config.desperate) × config.desperateSlope` (2.5 to 2.8), above work. So someone starving wakes up even when exhausted.
 
 The level checked is the level when they'd arrive, so a long walk counts. Needs with `urgent` above 1 never lift anything: use that for needs that should color a day without ever breaking it.
 
@@ -245,7 +247,7 @@ For each option that isn't ruled out, the weight is built up in parts. `world.wh
 
 ```
 base = action.base
-     + sum over relieved needs: curve(level at arrival) × min(relief × quality, max(level, 0.05))
+     + sum over relieved needs: curve(level at arrival) × min(relief × quality, max(level, config.reliefFloor))
 ```
 
 Relief beyond what the person needs counts for nothing (eating when barely hungry is worth little). A required option (from a routine, job or directive) adds 1 to `max(base, 0)`, so it's always worth something. An option with a base of 0 or less is ruled out ("nothing in it for them").
@@ -257,14 +259,14 @@ Relief beyond what the person needs counts for nothing (eating when barely hungr
 | considerations | Each consideration's output, compensated for how many there are (see below). A zero vetoes the option |
 | `habit` | The person's habit for this action (1 when they've none) |
 | `instinct` | Their inborn taste for it: `PersonDef.instincts` (see [Instincts](#instincts)) |
-| `had enough of <kind>` | For a pastime that palls: `1 - penalty × tolerance`, once the tolerance is over 0.05 (see [Pastimes that pall](#pastimes-that-pall)) |
+| `had enough of <kind>` | For a pastime that palls: `1 - penalty × tolerance`, once the tolerance is over `config.pallFrom` (0.05) (see [Pastimes that pall](#pastimes-that-pall)) |
 | `wish: <label>`, `dream: <label>` | A wish or a dream that pulls toward it: its `pull` (1.35). At most one of each counts (see [Wishes and dreams](#wishes-and-dreams)) |
 | `travel` | `1 / (1 + minutes / config.travelScale)`; 30 minutes away halves it |
-| `did it last` | `config.repeat` (0.75) for a free choice that's the same as the last thing they did, ended under 90 minutes ago (actions tagged `'sleep'`, and pastimes that pall, are exempt) |
+| `did it last` | `config.repeat` (0.75) for a free choice that's the same as the last thing they did, ended under `config.repeatWindow` (90) minutes ago (actions tagged `'sleep'`, and pastimes that pall, are exempt) |
 | `carrying on` | `config.inertia` (1.15) for what they're doing now, at the same place |
 | Reverie | A feeling's `boost` for the action's tags; `against <value>` for actions against values they hold |
-| Fellowship | `regard` for `'social'` actions with a target: `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)` |
-| Ceres | `price`: `clamp(1 - share × (0.4 + thrift × 0.8), 0.05, 1)`, where share is price over money |
+| Fellowship | `regard` for `'social'` actions with a target: `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)` (its `socialRegard`, `socialCompat`, `socialMin`, `socialMax`) |
+| Ceres | `price`: `clamp(1 - share × (0.4 + thrift × 0.8) × prices, 0.05, 1)`, where share is price over money (its `priceShare`, `priceThrift`, `priceFloor`, and the knob `prices`) |
 | Cityspeak | `<practice>: <role>`: the practice's `boost` (1.5) for role actions of people filling the role |
 | your modules | Whatever `consider` returns |
 
@@ -343,7 +345,7 @@ A plan that was set aside for something urgent is picked up again at the next de
 
 Each person keeps a habit weight per action, two numbers (fast and slow) whose average multiplies the action's weight. Everyone starts at 1.
 
-After an action ends with more than 20% of it done, the habit learns from how it went: the relief actually got (each need weighted by its urgency) against the relief expected. Better than expected nudges the fast weight up, worse nudges it down; the fast weight is pulled slowly back toward 1, and the slow weight follows the fast one. Both stay between `habitMin` (0.25) and `habitMax` (4).
+After an action ends with more than `config.habitDone` (20%) of it done, the habit learns from how it went: the relief actually got (each need weighted by its urgency) against the relief expected (counted as at most `habitBest`, twice as good). Better than expected nudges the fast weight up (by `habitFast`), worse nudges it down; the fast weight is pulled slowly back toward 1 (`habitDrift`), and the slow weight follows the fast one (`habitSlow`). Both stay between `habitMin` (0.25) and `habitMax` (4). The headline knob `config.habits` scales all three paces (0 freezes habits), for everyone or, in a person's `tune`, for them.
 
 The game can reward or discourage a choice directly. This is an input, so it's recorded:
 
@@ -379,10 +381,10 @@ world.person('mara', { talents: { baking: 1.4 }, skills: { baking: 0.3 }, job: {
 | `id` | required | The skill's id. Actions can train a skill that wasn't declared; it gets the defaults |
 | `label` | none | A readable name |
 | `max` | 1 | The top of the scale |
-| `rate` | 0.02 | Level gained per hour of practice at talent 1, from nothing |
+| `rate` | `config.skillRate` (0.02) | Level gained per hour of practice at talent 1, from nothing (times the headline knob `config.learning`, and a person's own) |
 | `diminish` | 1 | How much harder each step is: progress is scaled by `(1 - level / max) ** diminish`. 0 for none |
 | `decay` | 0 | Level lost per day without practice, once `grace` days have gone by |
-| `grace` | 3 | Days before a skill starts to slip |
+| `grace` | `config.skillGrace` (3) | Days before a skill starts to slip |
 | `floor` | 0 | Forgetting never takes a level below this |
 | `start` | 0 | Where people start, unless their own `skills` says otherwise |
 | `levels` | none | `[[at, name], ...]`, lowest first |
@@ -402,7 +404,7 @@ world.action({ id: 'cider', at: 'tag:drink', minutes: 60, relieves: { fun: 0.35 
 world.action({ id: 'darts', at: 'tag:drink', minutes: 30, relieves: { fun: 0.3 }, palls: true });
 ```
 
-Each go (an action of the kind that ends with more than 20% done) adds `gain` (0.35) to the person's tolerance for the kind, up to 1; it wears off by `decay` (0.08) an hour. While it's over 0.05, every action of the kind weighs `1 - penalty × tolerance` (the part `had enough of <label>`): at full tolerance, 40% of what it would. So people ring the changes, and come back to an old favorite after a few hours. A pastime that palls is exempt from the plain `did it last` penalty, which this replaces. `tolerance:<kind>` reads it in conditions; `world.describe` lists what they've had enough of. The defaults are `config.pallGain`, `pallDecay` and `pallPenalty`; a `pastime` declaration overrides them for its kind.
+Each go (an action of the kind that ends with more than `config.pallDone`, 20%, done) adds `gain` (0.35) to the person's tolerance for the kind, up to 1; it wears off by `decay` (0.08) an hour. While it's over 0.05, every action of the kind weighs `1 - penalty × tolerance` (the part `had enough of <label>`): at full tolerance, 40% of what it would. So people ring the changes, and come back to an old favorite after a few hours. A pastime that palls is exempt from the plain `did it last` penalty, which this replaces. `tolerance:<kind>` reads it in conditions; `world.describe` lists what they've had enough of. The defaults are `config.pallGain`, `pallDecay` and `pallPenalty`; a `pastime` declaration overrides them for its kind.
 
 ## Wishes and dreams
 
@@ -446,7 +448,7 @@ Read them with `world.wishesOf(id)` (each `{ id, label, t, until?, x?, dream?, p
 
 ## Config
 
-Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, not state: don't change the decision settings mid-run (a rewind replays with the current values). `minutesPerSecond` and `budgetMs` are safe to change at any time.
+Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, not state: don't change them by hand mid-run (a rewind replays with the current values); to change them during play, use `world.tune('core', { ... })`, an input ([Tuning](tuning.md#during-play)). `minutesPerSecond` and `budgetMs` are safe to change directly at any time. The headline knobs (`needs`, `habits`, `learning`, `wishes`, `crowds`) and the finer numbers are at the end; [Tuning](tuning.md#core) has every field with which way to turn it.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -480,6 +482,24 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `wishChance` | 0.5 | The chance of one at each of those hours |
 | `wishMinutes` | 2160 | Minutes before an unmet wish fades |
 | `wishPull` | 1.35 | How much more a wish's `toward` options weigh |
+| `storyRank`, `jobRank`, `routineRank` | 3, 2, 1 | The ranks of the [layered stack](#the-layered-stack) |
+| `needs` | 1 | Knob: how fast every need rises |
+| `habits` | 1 | Knob: how fast habits form and fade |
+| `learning` | 1 | Knob: how fast skills are learned |
+| `wishes` | 1 | Knob: how often wishes and dreams come |
+| `crowds` | 1 | Knob: how many strangers pass |
+| `traitDefault` | 0.5 | The trait someone has when their definition doesn't give it |
+| `needStart`, `needCurve` | 0.2, `'pow1.5'` | A need's `start` and `curve` when it gives none |
+| `reliefFloor` | 0.05 | Relief counts as at most the need's level, but at least this |
+| `liftRelief` | 0.3 | Relief an option needs to give for an urgent need to lift it |
+| `desperate`, `desperateSlope` | 0.97, 10 | Where a need turns desperate, and the rank a point past it adds |
+| `habitDrift`, `habitBest`, `habitDone`, `nudgeSlow` | 0.02, 2, 0.2, 0.25 | Habits: the pull back to neutral, the best a go counts as, the share done to learn, a reward's share to the slow weight |
+| `pallFrom`, `pallDone` | 0.05, 0.2 | Pastimes: the tolerance they start to pall at, the share done to count |
+| `repeatWindow` | 90 | Minutes `did it last` lasts |
+| `targets` | 6 | Most people an aimed action is weighed against |
+| `meetMax`, `meetMinutes` | 3, 3 | Most people met on starting something; the least time together that counts |
+| `awayNeeds` | 0.4 | Needs on coming back from away, at most |
+| `skillRate`, `skillGrace` | 0.02, 3 | A skill's `rate` and `grace` when it gives none |
 
 ## Asking why
 

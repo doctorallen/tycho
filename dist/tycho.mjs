@@ -290,12 +290,419 @@ var Governor = class {
   }
 };
 
+// src/shell/save.ts
+var save_exports = {};
+__export(save_exports, {
+  Store: () => Store,
+  get: () => get,
+  keys: () => keys,
+  raw: () => raw,
+  remove: () => remove,
+  set: () => set
+});
+function get(key, fallback = null) {
+  try {
+    const raw2 = localStorage.getItem(key);
+    return raw2 === null ? fallback : JSON.parse(raw2);
+  } catch (e) {
+    return fallback;
+  }
+}
+function set(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function raw(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+function remove(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+  }
+}
+function keys(prefix = "") {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) out.push(k);
+    }
+  } catch (e) {
+  }
+  return out;
+}
+var Store = class {
+  constructor(o) {
+    this.data = null;
+    /** True once wiped: nothing more is written. */
+    this.wiped = false;
+    /** True if a save was there but couldn't be read (and was kept aside). */
+    this.unread = false;
+    /** True if `load()` found this game's save. */
+    this.loaded = false;
+    this.refused = false;
+    this.o = o;
+  }
+  /** The stored save as it is (renamed ids put right), or null. */
+  read() {
+    const r = raw(this.o.key);
+    if (r === null) return null;
+    return JSON.parse(this.renamed(r));
+  }
+  renamed(text) {
+    for (const [a, b] of this.o.renamed || []) text = typeof a === "string" ? text.split(a).join(b) : text.replace(a, b);
+    return text;
+  }
+  /** Reads the save into `data`: the stored one over a fresh one, or a fresh
+   * one. Old keys are deleted first. Returns `data`. */
+  load() {
+    for (const k of this.o.old || []) remove(k);
+    const fresh = this.o.fresh();
+    let stored = null, r = null;
+    try {
+      r = raw(this.o.key);
+      stored = r === null ? null : JSON.parse(this.renamed(r));
+    } catch (e) {
+      if (this.o.keepUnread && r !== null) {
+        try {
+          if (!raw(this.o.key + ".unread")) localStorage.setItem(this.o.key + ".unread", r);
+        } catch (e2) {
+        }
+      }
+      this.unread = r !== null;
+      stored = null;
+    }
+    this.loaded = !!stored && (!this.o.accept || this.o.accept(stored, fresh));
+    this.data = this.loaded ? Object.assign(fresh, stored) : fresh;
+    if (this.o.clean) this.o.clean(this.data);
+    return this.data;
+  }
+  /** Stores the save; false if storage refused it (said once by onRefused). */
+  write(data = this.data) {
+    if (this.wiped || !data) return false;
+    if (set(this.o.key, data)) return true;
+    if (!this.refused) {
+      this.refused = true;
+      if (this.o.onRefused) this.o.onRefused();
+    }
+    return false;
+  }
+  /** Writes one field into the stored save at once, leaving the rest as last
+   * stored (or the whole save, if none is stored yet). */
+  writeField(name) {
+    if (this.wiped || !this.data) return;
+    try {
+      const r = raw(this.o.key);
+      if (r === null) {
+        this.write();
+        return;
+      }
+      const stored = JSON.parse(r);
+      stored[name] = this.data[name];
+      localStorage.setItem(this.o.key, JSON.stringify(stored));
+    } catch (e) {
+    }
+  }
+  /** Deletes the save and stops writing (until the page loads again). */
+  wipe() {
+    this.wiped = true;
+    remove(this.o.key);
+  }
+  /** Starting over: every key starting with `prefix` is deleted, and the
+   * save becomes `next` (a fresh one, perhaps with settings kept). Nothing
+   * more is written after. */
+  startOver(prefix, next) {
+    this.wiped = true;
+    for (const k of keys(prefix)) remove(k);
+    if (next) set(this.o.key, next);
+  }
+};
+
+// src/shell/pwa.ts
+var pwa_exports = {};
+__export(pwa_exports, {
+  Pwa: () => Pwa,
+  start: () => start
+});
+var Pwa = class {
+  constructor(o) {
+    this.reg = null;
+    /** The browser's install prompt, while it can be shown. */
+    this.prompt = null;
+    /** The live build, from version.json at start (null until known). */
+    this.live = null;
+    /** A newer build that has taken over, waiting for the game to load it. */
+    this.newer = null;
+    this.reloading = false;
+    this.o = o;
+  }
+  /** Starts it all: the install prompt, the live build, the worker. Only
+   * over http(s): opened from a file there's no worker. */
+  start() {
+    const o = this.o;
+    addEventListener("beforeinstallprompt", (e) => {
+      this.prompt = e;
+      if (o.onInstallable) o.onInstallable();
+    });
+    if (o.canAsk) {
+      const ask = () => {
+        if (!this.prompt || this.installed() || !o.canAsk()) return;
+        const key = o.askedKey || "tycho.installAsked";
+        let last = 0;
+        try {
+          last = +(localStorage.getItem(key) || 0) || 0;
+        } catch (e) {
+        }
+        if (Date.now() - last < (o.askEvery ?? 3 * 864e5)) return;
+        try {
+          localStorage.setItem(key, String(Date.now()));
+        } catch (e) {
+        }
+        this.install();
+      };
+      addEventListener("pointerup", ask);
+      addEventListener("keyup", ask);
+    }
+    addEventListener("appinstalled", () => {
+      this.prompt = null;
+      if (o.onInstalled) o.onInstalled();
+    });
+    if (!/^https?:$/.test(location.protocol)) return this;
+    this.version().then((v) => {
+      this.live = v;
+    });
+    if (!("serviceWorker" in navigator)) return this;
+    let claimed = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!claimed) {
+        claimed = true;
+        return;
+      }
+      if (this.reloading || this.newer) return;
+      this.version().then((v) => {
+        if (v && v === o.build) return;
+        this.newer = v || "a new version";
+        if (o.onNewer) o.onNewer(this.newer);
+      });
+    });
+    navigator.serviceWorker.register(o.sw || "sw.js", { updateViaCache: "none" }).then((reg) => {
+      this.reg = reg;
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) this.check();
+      });
+      setInterval(() => this.check(), o.every ?? 15 * 60 * 1e3);
+    }).catch(() => {
+    });
+    return this;
+  }
+  /** The live build from version.json, or null. */
+  version() {
+    return fetch("version.json", { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((v) => v && v.build || null).catch(() => null);
+  }
+  /** Looks for a new deploy now. */
+  check() {
+    if (this.reg) this.reg.update().catch(() => {
+    });
+  }
+  /** Loads the page again onto the new build, remembering it was an update. */
+  reload() {
+    this.reloading = true;
+    try {
+      sessionStorage.setItem(this.o.updatedKey || "tycho.updated", this.newer || "1");
+    } catch (e) {
+    }
+    location.reload();
+  }
+  /** After a reload onto a new build: what it was (once), or null. */
+  updated() {
+    const key = this.o.updatedKey || "tycho.updated";
+    let was = null;
+    try {
+      was = sessionStorage.getItem(key);
+      sessionStorage.removeItem(key);
+    } catch (e) {
+    }
+    return was;
+  }
+  installed() {
+    return matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone === true;
+  }
+  ios() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+  /** Shows the browser's install prompt, if it can. */
+  install() {
+    if (!this.prompt) return;
+    const p = this.prompt;
+    p.prompt();
+    p.userChoice.finally(() => {
+      this.prompt = null;
+      if (this.o.onInstallable) this.o.onInstallable();
+    });
+  }
+};
+function start(o) {
+  return new Pwa(o).start();
+}
+
+// src/shell/dev.ts
+var dev_exports = {};
+__export(dev_exports, {
+  Flags: () => Flags,
+  query: () => query
+});
+function query(name, search = typeof location !== "undefined" ? location.search : "") {
+  return new RegExp("[?&]" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(search);
+}
+var Flags = class {
+  constructor(key, defaults) {
+    this.key = key;
+    this.s = Object.assign({}, defaults);
+  }
+  load() {
+    Object.assign(this.s, get(this.key, {}) || {});
+    if (query("dev") && !this.s.shown) {
+      this.s.shown = true;
+      this.save();
+    }
+    return this;
+  }
+  save() {
+    set(this.key, this.s);
+  }
+  shown() {
+    return query("dev") || !!this.s.shown;
+  }
+};
+
+// src/shell/loader.ts
+var loader_exports = {};
+__export(loader_exports, {
+  Tasks: () => Tasks,
+  afterPaint: () => afterPaint
+});
+var chan = null;
+var queue = [];
+function afterPaint(fn) {
+  if (!chan && typeof MessageChannel !== "undefined" && typeof document !== "undefined") {
+    chan = new MessageChannel();
+    chan.port1.onmessage = () => {
+      const q = queue.splice(0);
+      for (const f of q) f();
+    };
+  }
+  if (!chan) {
+    setTimeout(fn, 0);
+    return;
+  }
+  queue.push(fn);
+  chan.port2.postMessage(0);
+}
+var Tasks = class {
+  constructor(o = {}) {
+    this.jobs = [];
+    this.sliceAt = 0;
+    this.slice = o.slice ?? 12;
+    this.onError = o.onError || (() => {
+    });
+    this.onFrame = o.onFrame || null;
+  }
+  /** Runs the tasks: the side lane at once, the main lane one after another.
+   * Resolves when all are done or skipped. */
+  async run(tasks) {
+    this.jobs = tasks.filter(Boolean).map((t) => Object.assign({ k: 0, n: 0, f: 0, line: t.label, state: "wait", ms: 0 }, t));
+    const side = this.jobs.filter((j) => j.side).map((j) => this.runOne(j));
+    for (const j of this.jobs) if (!j.side) await this.runOne(j);
+    await Promise.all(side);
+  }
+  async runOne(j) {
+    const t0 = performance.now();
+    j.state = "run";
+    const job = this.jobFor(j);
+    try {
+      await this.yield(true);
+      const r = j.fn(job);
+      if (typeof r === "function") {
+        for (; ; ) {
+          if (r(job) === true) break;
+          await this.yield();
+        }
+      } else if (r && typeof r.then === "function") await r;
+      j.state = "ok";
+    } catch (e) {
+      j.state = "skip";
+      this.onError(e, j);
+    }
+    j.f = 1;
+    j.ms = performance.now() - t0;
+  }
+  jobFor(j) {
+    return {
+      at(k, n, f) {
+        j.k = k;
+        j.n = n;
+        j.f = f !== void 0 ? f : n ? Math.min(1, k / n) : 0;
+      },
+      say(text) {
+        j.line = text;
+      },
+      yield: (now) => this.yield(now)
+    };
+  }
+  /** Waits for the next frame once this slice's time is spent (or at once,
+   * with `now`): the bar is drawn, and a frame shown, between slices. */
+  yield(now) {
+    if (!now && performance.now() - this.sliceAt < this.slice) return Promise.resolve();
+    return new Promise((res) => {
+      const go = () => {
+        this.sliceAt = performance.now();
+        if (this.onFrame) this.onFrame();
+        res();
+      };
+      if (typeof document === "undefined" || document.hidden || typeof requestAnimationFrame === "undefined") setTimeout(go, 0);
+      else requestAnimationFrame(() => afterPaint(go));
+    });
+  }
+  /** How far, 0..1: each task's share by its weight. */
+  progress() {
+    let w = 0, d = 0;
+    for (const j of this.jobs) {
+      w += j.weight;
+      d += j.weight * (j.state === "ok" || j.state === "skip" ? 1 : j.f);
+    }
+    return w ? d / w : 1;
+  }
+  /** A step function that runs fn on each of a list, a slice at a time. */
+  each(job, list, fn) {
+    let i = 0;
+    return () => {
+      const t0 = performance.now();
+      while (i < list.length && performance.now() - t0 < this.slice) fn(list[i++], i - 1);
+      job.at(i, list.length);
+      return i >= list.length;
+    };
+  }
+};
+
 // src/index.ts
 var VERSION = "2.0.0";
 export {
   VERSION,
   color_exports as color,
+  dev_exports as dev,
+  loader_exports as loader,
   loop_exports as loop,
   math_exports as math,
+  pwa_exports as pwa,
+  save_exports as save,
   seed_exports as seed
 };

@@ -53,7 +53,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Pixels | sprite, figure, paint, view, gpu, light, post, fx, life, sky | Moving in |
 | World | grid, shapes, space, collide, move, path, gen, liquid, tilelight | Planned |
 | Play | input, interact, items, craft, trade, build, mine, guide | Planned |
-| Shell | ui, hud, map, save, pwa, loader, audio, dev, inspect | Planned |
+| Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices); then ui, hud, map, audio, inspect | Partly in |
 
 The move is planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and recorded in [docs/move.md](docs/move.md). [docs/](docs/README.md) has a page for each part that's in.
 

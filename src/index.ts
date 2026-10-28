@@ -11,10 +11,14 @@ import * as seed from './core/seed';
 import * as math from './core/math';
 import * as color from './core/color';
 import * as loop from './core/loop';
+import * as save from './shell/save';
+import * as pwa from './shell/pwa';
+import * as dev from './shell/dev';
+import * as loader from './shell/loader';
 
 declare const __VERSION__: string;
 
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export const VERSION: string = __VERSION__;
 
-export { seed, math, color, loop };
+export { seed, math, color, loop, save, pwa, dev, loader };

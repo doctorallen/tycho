@@ -5,7 +5,7 @@
 | Name | What it does |
 |---|---|
 | `tick(list, dt)` | Each one's time left (`t`) counted down by dt, those run out (t <= 0) dropped, in place (Lodestar's lists of rings, decals, flares...). Returns the list |
-| `age(list, dt, life)` | Each one's age (`t`) counted up, those past their life (each one's `life`, or the one given) dropped, in place (the White Dragon's puffs and splashes) |
+| `age(list, dt, life)` | Each one's age (`t`) counted up, those past their life (each one's `life`, or the one given) dropped, in place (the White Dragon's puffs and splashes, Merryfolk's sky lanterns) |
 | `move(q, dt, { bounce, slide })` | One particle moved: `drag` (speed times e^(-drag·dt)), then gravity `g`, then motion; landing on its `floor` while falling, it keeps `bounce` of its fall (0.35) and `slide` of its slide (0.6) |
 | `new Particles({ max, keep, bounce, slide })` | A list (`list`) that moves and runs out: `add(p)`, `step(dt)` (each loses dt of its time, those left move), `cap()` (past `max`, 260, the oldest go until `keep`, 200, are left), `length` |
 | `sparks(x, y, n, draw, o)` | n sparks thrown up and falling, each its own speed, life and a hot color from orange to yellow (`c`): the White Dragon's (`spread` 160, `up` 40 + `upMore` 110, `life` 0.25 + `lifeMore` 0.35, `g` 400) |

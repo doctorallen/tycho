@@ -105,7 +105,7 @@ export class Mentat implements Module {
         if (step.startsWith('get:')) {
           const item = step.slice(4);
           if (w.have(p, item) > 0) continue;
-          const route = this.acquire(p, item, this.config.depth, new Set());
+          const route = this.route(p, item, this.config.depth, new Set());
           if (!route) return this.fail(p, `no way to get ${item}`);
           plan.stack.push({ task: 'get:' + item, method: -1, steps: route.steps, i: 0 });
           w.log('route', p.id, { item, steps: route.steps.map((s) => (typeof s === 'string' ? s : s.action)), cost: round(route.cost, 1) });
@@ -252,8 +252,10 @@ export class Mentat implements Module {
     return out;
   }
 
-  /** The cheapest way for a person to get an item: steps and cost, or null. */
-  acquire(p: PersonState, item: Id, depth: number, seen: Set<Id>): Route | null {
+  /** The cheapest way for a person to get an item: steps and cost, or null. Changes nothing. */
+  acquire(p: PersonState, item: Id, depth: number, seen: Set<Id>): Route | null { return this.w.peek(() => this.route(p, item, depth, seen)); }
+
+  private route(p: PersonState, item: Id, depth: number, seen: Set<Id>): Route | null {
     if (depth <= 0 || seen.has(item)) return null;
     seen = new Set(seen).add(item);
     const w = this.w;
@@ -293,7 +295,7 @@ export class Mentat implements Module {
       const steps: Step[] = [];
       let subOk = true;
       for (const n of needs) {
-        const sub = this.acquire(p, n, depth - 1, seen);
+        const sub = this.route(p, n, depth - 1, seen);
         if (!sub) { subOk = false; break; }
         steps.push(...sub.steps);
         cost += sub.cost;

@@ -79,7 +79,7 @@ world.on('bark', ({ a, b, lines }) => {
 });
 ```
 
-Barks never change the world: they're chosen with a stream that changes nothing, and their cooldowns (each line's `cooldown`, or 60 minutes) are kept outside the state, so they aren't saved or rewound. A watched day hashes the same as an unwatched one, as long as no line's conditions use `chance:` (see [Conditions](../conditions.md#rewind-safety)). `world.cityspeak.barkGap` and `barkLength` can be changed.
+Barks never change the world: they're chosen with a stream that changes nothing, and their cooldowns (each line's `cooldown`, or 60 minutes) are kept outside the state, so they aren't saved or rewound. A watched day hashes the same as an unwatched one, `chance:` in lines' conditions included (choosing a line is a look: see [Conditions](../conditions.md#rewind-safety)). `world.cityspeak.barkGap` and `barkLength` can be changed.
 
 ## Practices and the room
 

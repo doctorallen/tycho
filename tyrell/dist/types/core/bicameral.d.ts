@@ -87,6 +87,7 @@ export declare class Bicameral {
     };
     /** Thinks: weighs every option, picks one, and records the decision. */
     decide(p: PersonState): Decision;
-    /** Weighs one action or task now for the inspector, even if it wasn't considered. */
+    /** Weighs one action or task now for the inspector, even if it wasn't considered. Changes nothing. */
     explain(p: PersonState, id: Id): Candidate[];
+    private explainNow;
 }

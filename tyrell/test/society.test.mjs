@@ -433,6 +433,27 @@ test('Joi: the written line without a provider; the model when there is one; nev
   assert.equal(w.hash(), before, 'nothing changed');
 });
 
+test('looking never draws: chance: in lines and inspected conditions changes nothing', async () => {
+  const w = rocinante({ start: 8 * HOUR });
+  w.cityspeak.line({ key: 'maybe', topic: 'greet', when: ['chance:0.5'], text: 'Maybe.' });
+  w.cityspeak.line({ key: 'chancer', topic: 'chat', when: ['chance:0.5'], text: 'Feeling lucky.' });
+  w.action({ id: 'gamble', at: 'bar', minutes: 30, base: 0.1, if: ['chance:0.5'] });
+  w.gaff.storylet({ id: 'coin', mtb: Infinity, when: ['chance:0.5'], fire: () => {} });
+  const h = w.hash();
+  for (let i = 0; i < 5; i++) {
+    w.cityspeak.choose('ruth', { topic: 'greet' });
+    w.cityspeak.converse('ruth', 'kofi');
+    w.whyNot('ruth', 'gamble');
+    w.describe('ruth');
+    w.mind.explain(w.get('ruth'), 'gamble');
+    w.gaff.eligible(w.gaff.storylets.get('coin'));
+    w.mentat.acquire(w.get('ruth'), 'food', 3, new Set());
+    w.peek(() => w.lang.test('chance:0.5', w.ctx(w.get('ruth'))));
+    await w.joi.speak('ruth', { topic: 'greet' });
+  }
+  assert.equal(w.hash(), h, 'nobody\'s stream moved');
+});
+
 test('Joi falls back when the model is slow or fails', async () => {
   const w = rocinante();
   w.joi.setProvider(() => new Promise((res) => setTimeout(() => res('too late'), 200)));

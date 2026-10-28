@@ -561,8 +561,10 @@ export class Bicameral {
     return dec;
   }
 
-  /** Weighs one action or task now for the inspector, even if it wasn't considered. */
-  explain(p: PersonState, id: Id): Candidate[] {
+  /** Weighs one action or task now for the inspector, even if it wasn't considered. Changes nothing. */
+  explain(p: PersonState, id: Id): Candidate[] { return this.w.peek(() => this.explainNow(p, id)); }
+
+  private explainNow(p: PersonState, id: Id): Candidate[] {
     const kind = this.w.tasks.has(id) ? 'task' : 'action';
     const def = kind === 'task' ? this.w.tasks.get(id) : this.w.actions.get(id);
     if (!def) return [];

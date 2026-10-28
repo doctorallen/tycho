@@ -114,8 +114,9 @@ export declare class Cityspeak implements Module {
         topic?: string;
         skip?: (l: LineDef, i: number) => boolean;
     }): Said | null;
-    /** The line choose() would pick, with its index. */
+    /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
     private pick;
+    private pickNow;
     /** Says something on purpose (the game asks): chosen, remembered, its effects applied. */
     say(who: Id, opts?: {
         to?: Id;

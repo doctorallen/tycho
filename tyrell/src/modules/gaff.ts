@@ -141,8 +141,10 @@ export class Gaff implements Module {
   // Storylets
   // -------------------------------------------------------------------------
 
-  /** Can a storylet fire now? */
-  eligible(def: StoryletDef): boolean {
+  /** Could a storylet fire now? (Looking only: changes nothing.) */
+  eligible(def: StoryletDef): boolean { return this.w.peek(() => this.ready(def)); }
+
+  private ready(def: StoryletDef): boolean {
     const w = this.w, now = w.s.now;
     const last = this.st.last[def.id];
     if (def.cooldown && last !== undefined && now - last < def.cooldown) return false;
@@ -160,14 +162,14 @@ export class Gaff implements Module {
     this.stepPhases();
     const r = w.worldStream('gaff');
     for (const def of this.storylets.values()) {
-      if (!this.eligible(def)) continue;
+      if (!this.ready(def)) continue;
       if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
       let id = def.id;
       if (def.deck) {
         const drawn = this.applyDraw(def.deck);
         if (!drawn) continue;
         const d = this.storylets.get(drawn);
-        if (!d || !this.eligible(d)) continue;
+        if (!d || !this.ready(d)) continue;
         id = drawn;
       }
       this.fire(id, null);

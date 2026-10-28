@@ -46,7 +46,9 @@ export class Palantir {
   history(id: Id): Decision[] { return this.decisions.get(id)?.slice() ?? []; }
 
   /** Why someone isn't doing something: weighs it now and says what stops it or what beat it. */
-  whyNot(id: Id, action: Id): string {
+  whyNot(id: Id, action: Id): string { return this.w.peek(() => this.whyNotNow(id, action)); }
+
+  private whyNotNow(id: Id, action: Id): string {
     const w = this.w;
     const p = w.s.people[id];
     if (!p) return `${id} isn't in the world`;
@@ -69,7 +71,9 @@ export class Palantir {
   parts(c: Candidate): string { return c.parts.map(([n, v]) => `${n} ${round(v, 3)}`).join(' x '); }
 
   /** A readable account of a person: what they're doing and why, needs, mood, plan, beliefs. */
-  describe(id: Id): string {
+  describe(id: Id): string { return this.w.peek(() => this.describeNow(id)); }
+
+  private describeNow(id: Id): string {
     const w = this.w;
     const p = w.s.people[id];
     if (!p) return `${id}: not in the world`;

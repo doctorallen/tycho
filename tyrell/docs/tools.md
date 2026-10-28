@@ -40,7 +40,7 @@ A `Decision` is `{ t, who, picked, candidates, reason }`. The candidates kept ar
 
 Decisions aren't part of the world's state: they don't save, they aren't recorded while Esper replays, and a seek or a load clears them. Each decision also emits `decided` (`{ who, picked, place }`, with `picked` the id or `null`).
 
-`whyNot` evaluates the action's conditions; a `chance:` condition draws from the person's stream, so inspecting can change what happens next. Keep `chance:` out of conditions you inspect, or inspect only in debug builds.
+`whyNot` and `describe` change nothing: they evaluate conditions as a look, so a `chance:` condition draws from a stream that leaves the person's own alone.
 
 ## Westmarch
 

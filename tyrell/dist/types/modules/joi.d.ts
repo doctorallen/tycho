@@ -40,6 +40,7 @@ export declare class Joi implements Module {
         to?: Id;
         topic?: string;
     }): string;
+    private promptNow;
     /**
      * Speaks: asks the provider, or falls back to the written line. Never
      * changes the world.

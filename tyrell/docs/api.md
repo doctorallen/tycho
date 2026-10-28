@@ -207,6 +207,7 @@ world.on('*', (e) => { if (e.event === 'report') showToast(`${e.actor} reported 
 | `stream(person)` | Stream | The person's next stream (advances their counter) |
 | `worldStream(name)` | Stream | The world's next stream (advances its counter) |
 | `worldStreamPeek(...parts)` | Stream | A stream that changes nothing |
+| `peek(fn)` | fn's result | Runs `fn` as a look: `chance:` conditions inside draw from a stream that changes nothing |
 | `input(name, args)` | value | Applies and records an input; returns the handler's result (or `undefined` when deferred inside a listener) |
 | `internally(fn)` | fn's result | Runs engine-driven code: inputs inside it are applied, not recorded |
 | `ctx(person?, extra?)` | Ctx | A context for conditions |

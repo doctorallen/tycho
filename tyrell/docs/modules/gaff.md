@@ -135,7 +135,7 @@ In `world.s.mod.gaff`:
 | `phase(subject = 'world')` | Phase | A subject's phase |
 | `bump(subject, by)` | void | **Input.** Raises (or lowers) a subject's intensity |
 | `trigger(id, place = null)` | void | **Input.** Fires a storylet now |
-| `eligible(def)` | boolean | Could it fire now? (Its `when` may draw `chance:` from the world's stream) |
+| `eligible(def)` | boolean | Could it fire now? Changes nothing (a `chance:` in its `when` is a look) |
 | `history()` | array | The last 100 firings |
 | `draw(deck)` | id or undefined | **Input.** Draws a card (applies at once): for decks the game deals from itself |
 | `applyDraw(deck)` | id or undefined | **Engine.** The direct version |

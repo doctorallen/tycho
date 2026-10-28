@@ -142,8 +142,12 @@ export class Cityspeak implements Module {
     return this.pick(who, opts)?.said ?? null;
   }
 
-  /** The line choose() would pick, with its index. */
+  /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
   private pick(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
+    return this.w.peek(() => this.pickNow(who, opts));
+  }
+
+  private pickNow(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return null;
@@ -384,10 +388,10 @@ export class Cityspeak implements Module {
   bindInk(story: { BindExternalFunction: (name: string, fn: (...args: any[]) => unknown, lookahead?: boolean) => void }): void {
     const w = this.w;
     story.BindExternalFunction('tyrell_fact', (k: string) => w.s.facts[k] ?? null, true);
-    story.BindExternalFunction('tyrell_thinks', (who: Id, k: string) => w.reverie?.thinks(who, k) ?? w.s.facts[k] ?? null, true);
+    story.BindExternalFunction('tyrell_thinks', (who: Id, k: string) => w.peek(() => w.reverie?.thinks(who, k) ?? w.s.facts[k] ?? null), true);
     story.BindExternalFunction('tyrell_regard', (a: Id, b: Id) => w.fellowship?.regard(a, b) ?? 0, true);
     story.BindExternalFunction('tyrell_mood', (who: Id) => w.reverie?.mood(who) ?? 0.5, true);
-    story.BindExternalFunction('tyrell_test', (who: Id, cond: string) => { const p = w.s.people[who]; return p ? w.lang.test(cond, w.ctx(p)) : false; }, true);
+    story.BindExternalFunction('tyrell_test', (who: Id, cond: string) => { const p = w.s.people[who]; return p ? w.peek(() => w.lang.test(cond, w.ctx(p))) : false; }, true);
     story.BindExternalFunction('tyrell_did', (actor: Id, verb: string, target: Id) => { w.did(actor, verb, target ? { for: target } : {}); return true; }, false);
   }
 }

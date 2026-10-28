@@ -46,7 +46,9 @@ export class Joi implements Module {
   allow(flags: string[]): this { for (const f of flags) this.allowed.add(f); return this; }
 
   /** The prompt for a person speaking (useful to look at, or to send yourself). */
-  prompt(who: Id, opts: { to?: Id; topic?: string } = {}): string {
+  prompt(who: Id, opts: { to?: Id; topic?: string } = {}): string { return this.w.peek(() => this.promptNow(who, opts)); }
+
+  private promptNow(who: Id, opts: { to?: Id; topic?: string }): string {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return '';

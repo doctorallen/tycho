@@ -106,7 +106,7 @@ Joi has no state, terms, effects, events or config.
 - **Reverie** supplies mood, emotion, feelings, memories and the file on the listener.
 - **Fellowship** supplies the speaker's regard for the listener.
 
-Joi reads the world through Cityspeak's `choose`, so a line whose conditions use `chance:` would advance the speaker's stream: keep `chance:` out of lines (see [Conditions](../conditions.md#rewind-safety)).
+Joi reads the world through Cityspeak's `choose`, which only looks: a line whose conditions use `chance:` changes nothing (see [Conditions](../conditions.md#rewind-safety)).
 
 ## Example
 

@@ -24,7 +24,7 @@ This describes Tyrell 1.0.0 (save schema 1).
 
 ## Invariants
 
-1. **Determinism.** The same seed and the same inputs give the same `world.hash()`. Never use `Math.random`, `Date.now` or `performance.now` in anything the engine calls (conditions, effects, considerations, terms, storylets' `when` and `fire`, Cradle's `namer` and `template`, metrics, custom module hooks). Use `world.stream(person)`, `world.worldStream(name)` or `ctx.world.worldStreamPeek(...)`.
+1. **Determinism.** The same seed and the same inputs give the same `world.hash()`. Never use `Math.random`, `Date.now` or `performance.now` in anything the engine calls (conditions, effects, considerations, terms, storylets' `when` and `fire`, Cradle's `namer` and `template`, metrics, custom module hooks). Use `world.stream(person)`, `world.worldStream(name)` or `ctx.world.worldStreamPeek(...)`. Game code that tests conditions just to look wraps it in `world.peek(() => ...)`, so a `chance:` there changes nothing.
 2. **State is the engine's.** All state is plain JSON in `world.s`. Game code never writes to it, to a `PersonState`, or to module state, and never calls engine-side methods (`world.mind.setLevel`, `world.lang.apply`, the modules' `apply...` methods such as `reverie.applyFeel`, `fellowship.applyRegard` or `ceres.applyPay`, `world.ring.claim`/`release`). Every change from the game is an input: a public API mutator (list below) or a custom input (`world.defineInput` + `world.input`).
 3. **Definitions every start.** Needs, places, links, actions, tasks, deeds, module content, custom terms, effects and inputs, listeners, the shell and config are not saved. Declare them on every start, identically, before or after `world.load`.
 4. **People are state.** `world.person(id, def)` adds a person or returns the existing (saved) one, ignoring `def`. Their `PersonDef` (routine, job, traits...) is saved with them.
@@ -191,7 +191,6 @@ console.log(world.describe('mo'));
 | Changing a person's routine in code | Saved people keep their saved definition | A custom input that patches `world.get(id).def`, run once per content version ([saving.md](saving.md#changing-content-under-existing-saves)) |
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
-| `chance:` in line conditions or inspected conditions | Looking (`choose`, barks, `whyNot`, Joi) advances a person's stream: watched and unwatched worlds differ | Use line `weight`s; keep `chance:` to actions' `if` |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |
 | Relying on `step` for every change | Idling (nothing to do) emits no `step` | Refresh from `world.body(id)` when `world.now >= body.end` |
 | A task whose methods' conditions can all fail | `no-plan`, the person idles 20 minutes and picks it again | Give the task `if` conditions, or a last method with none |

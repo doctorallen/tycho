@@ -101,7 +101,7 @@ Always available. "The person" is the context's person.
 | `doing` | What they're doing (while walking, the action they're walking to); `doing:<action>` is true if it's that |
 | `with:<id>` | The other person is in the same outermost place as the person, and neither is walking |
 | `topic:<x>` | The context's topic is `x` (lines) |
-| `chance:<p>` | A random draw, true with probability `p`, from the person's stream (or the world's). See [rewind safety](#rewind-safety) |
+| `chance:<p>` | A random draw, true with probability `p`, from the person's stream (or the world's); when only looking, from a stream that changes nothing. See [rewind safety](#rewind-safety) |
 | `target` | The target's id (or `null`) |
 | `target.<term>` | Any term evaluated for the target, with the person as their target: `target.trait.honesty>0.5`, `target.is:child`, `target.regard>0` (the target's regard for the person) |
 | `person` | The person's id |
@@ -277,5 +277,5 @@ Every string condition and effect is safe across rewinds as long as it reads and
 
 - **`fact:` falling back to `shell.check`.** When a fact isn't set, `fact:<key>` asks the game live, and a replay sees the game as it is now, not as it was. Push facts with `world.fact` instead.
 - **Function conditions and custom terms that read game state** that isn't kept in the world (the player's position, a game flag). Read facts or kept values instead.
-- **`chance:`** is deterministic (it draws from the person's seeded stream), but drawing advances the stream. In decisions that's fine. In calls that only look (`world.whyNot`, `world.mind.explain`, `cityspeak.choose`, `joi.speak`) and in barks (which only happen near the player), it changes the world, so the result depends on what the game looked at. Use line weights instead of `chance:` in lines.
+- **`chance:`** is deterministic: in a decision it draws from the person's seeded stream, which advances it. Calls that only look (`world.whyNot`, `world.describe`, `world.mind.explain`, `cityspeak.choose` and `say`, barks, Joi, `gaff.eligible`, `mentat.acquire`, the ink bridge) draw from a stream that changes nothing instead, so looking never changes the world. When game code tests conditions itself, wrap it the same way: `world.peek(() => world.lang.test(cond, ctx))`.
 - **Calling `world.lang.apply` (or any effect function) from game code** changes the state without an input. Use an input instead.

@@ -45,8 +45,9 @@ export declare class Mentat implements Module {
     resume(p: PersonState, pick: Candidate | null): Candidate | null;
     /** Every action that gives an item. */
     providers(item: Id): ActionDef[];
-    /** The cheapest way for a person to get an item: steps and cost, or null. */
+    /** The cheapest way for a person to get an item: steps and cost, or null. Changes nothing. */
     acquire(p: PersonState, item: Id, depth: number, seen: Set<Id>): Route | null;
+    private route;
     /** What an action costs a person, in minutes of effort: time, money by thrift, risk by honesty. */
     cost(p: PersonState, a: ActionDef): number;
 }

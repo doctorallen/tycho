@@ -84,8 +84,9 @@ export declare class Gaff implements Module {
     bump(subject: string, by: number): void;
     applyBump(subject: string, by: number): void;
     private stepPhases;
-    /** Can a storylet fire now? */
+    /** Could a storylet fire now? (Looking only: changes nothing.) */
     eligible(def: StoryletDef): boolean;
+    private ready;
     hour(): void;
     /** Draws a card from a deck (from the game: recorded): shuffled, no repeat of the last one. */
     draw(deck: string): Id | undefined;

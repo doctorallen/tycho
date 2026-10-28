@@ -101,6 +101,8 @@ export class World {
   private moving = 0;
   /** Clock calls made while the engine was busy, waiting their turn. */
   private later: Array<() => void> = [];
+  /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
+  private looking = 0;
   private _speed = 1;
 
   constructor(opts: Options, modules: Module[]) {
@@ -436,6 +438,16 @@ export class World {
   /** A random stream that changes nothing (for choices that only look, like a line to show). */
   worldStreamPeek(...parts: Array<string | number>): Stream { return new Stream(this.s.seed, 'peek', ...parts); }
 
+  /**
+   * Runs fn as a look: `chance:` conditions inside it draw from a stream
+   * that changes nothing, so looking leaves the world as it was. The
+   * engine's own looks (cityspeak.choose, whyNot, describe, Joi...) do this.
+   */
+  peek<T>(fn: () => T): T {
+    this.looking++;
+    try { return fn(); } finally { this.looking--; }
+  }
+
   // -------------------------------------------------------------------------
   // Inputs (recorded for Esper)
   // -------------------------------------------------------------------------
@@ -595,7 +607,10 @@ export class World {
       return !!(c.person?.place && o?.place && o.doing?.kind !== 'travel' && this.ring.root(o.place) === this.ring.root(c.person.place));
     });
     L.term('topic', (c, a) => c.topic === a);
-    L.term('chance', (c, a) => (c.person ? this.stream(c.person).chance(Number(a)) : this.worldStream('chance').chance(Number(a))));
+    L.term('chance', (c, a) => {
+      if (this.looking > 0) return this.worldStreamPeek('chance', c.person?.id ?? 'world', c.person?.n ?? this.s.n, this.s.now, c.action ?? '', c.place ?? '', a).chance(Number(a));
+      return c.person ? this.stream(c.person).chance(Number(a)) : this.worldStream('chance').chance(Number(a));
+    });
     L.term('target', (c, a) => {
       if (!c.target) return null;
       if (!a) return c.target;

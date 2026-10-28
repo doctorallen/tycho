@@ -62,6 +62,8 @@ export declare class World {
     private moving;
     /** Clock calls made while the engine was busy, waiting their turn. */
     private later;
+    /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
+    private looking;
     private _speed;
     constructor(opts: Options, modules: Module[]);
     /** Minutes since the world began. */
@@ -207,6 +209,12 @@ export declare class World {
     worldStream(name: string): Stream;
     /** A random stream that changes nothing (for choices that only look, like a line to show). */
     worldStreamPeek(...parts: Array<string | number>): Stream;
+    /**
+     * Runs fn as a look: `chance:` conditions inside it draw from a stream
+     * that changes nothing, so looking leaves the world as it was. The
+     * engine's own looks (cityspeak.choose, whyNot, describe, Joi...) do this.
+     */
+    peek<T>(fn: () => T): T;
     /** Registers an input handler: a change from outside that Esper records and replays. */
     defineInput(name: string, fn: (...args: any[]) => unknown): void;
     /**

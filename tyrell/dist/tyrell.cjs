@@ -1083,8 +1083,11 @@ var Bicameral = class {
     this.w.palantir.record(dec);
     return dec;
   }
-  /** Weighs one action or task now for the inspector, even if it wasn't considered. */
+  /** Weighs one action or task now for the inspector, even if it wasn't considered. Changes nothing. */
   explain(p, id) {
+    return this.w.peek(() => this.explainNow(p, id));
+  }
+  explainNow(p, id) {
     const kind = this.w.tasks.has(id) ? "task" : "action";
     const def = kind === "task" ? this.w.tasks.get(id) : this.w.actions.get(id);
     if (!def) return [];
@@ -2059,6 +2062,9 @@ var Palantir = class {
   }
   /** Why someone isn't doing something: weighs it now and says what stops it or what beat it. */
   whyNot(id, action) {
+    return this.w.peek(() => this.whyNotNow(id, action));
+  }
+  whyNotNow(id, action) {
     const w = this.w;
     const p = w.s.people[id];
     if (!p) return `${id} isn't in the world`;
@@ -2082,6 +2088,9 @@ var Palantir = class {
   }
   /** A readable account of a person: what they're doing and why, needs, mood, plan, beliefs. */
   describe(id) {
+    return this.w.peek(() => this.describeNow(id));
+  }
+  describeNow(id) {
     const w = this.w;
     const p = w.s.people[id];
     if (!p) return `${id}: not in the world`;
@@ -2272,6 +2281,8 @@ var World = class {
     this.moving = 0;
     /** Clock calls made while the engine was busy, waiting their turn. */
     this.later = [];
+    /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
+    this.looking = 0;
     this._speed = 1;
     this.config = { ...DEFAULT_CONFIG, ...opts.config || {} };
     this.shell = opts.shell || {};
@@ -2711,6 +2722,19 @@ var World = class {
   worldStreamPeek(...parts) {
     return new Stream(this.s.seed, "peek", ...parts);
   }
+  /**
+   * Runs fn as a look: `chance:` conditions inside it draw from a stream
+   * that changes nothing, so looking leaves the world as it was. The
+   * engine's own looks (cityspeak.choose, whyNot, describe, Joi...) do this.
+   */
+  peek(fn) {
+    this.looking++;
+    try {
+      return fn();
+    } finally {
+      this.looking--;
+    }
+  }
   // -------------------------------------------------------------------------
   // Inputs (recorded for Esper)
   // -------------------------------------------------------------------------
@@ -2888,7 +2912,10 @@ var World = class {
       return !!(c.person?.place && o?.place && o.doing?.kind !== "travel" && this.ring.root(o.place) === this.ring.root(c.person.place));
     });
     L.term("topic", (c, a) => c.topic === a);
-    L.term("chance", (c, a) => c.person ? this.stream(c.person).chance(Number(a)) : this.worldStream("chance").chance(Number(a)));
+    L.term("chance", (c, a) => {
+      if (this.looking > 0) return this.worldStreamPeek("chance", c.person?.id ?? "world", c.person?.n ?? this.s.n, this.s.now, c.action ?? "", c.place ?? "", a).chance(Number(a));
+      return c.person ? this.stream(c.person).chance(Number(a)) : this.worldStream("chance").chance(Number(a));
+    });
     L.term("target", (c, a) => {
       if (!c.target) return null;
       if (!a) return c.target;
@@ -4201,8 +4228,11 @@ var Cityspeak = class {
   choose(who, opts = {}) {
     return this.pick(who, opts)?.said ?? null;
   }
-  /** The line choose() would pick, with its index. */
+  /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
   pick(who, opts) {
+    return this.w.peek(() => this.pickNow(who, opts));
+  }
+  pickNow(who, opts) {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return null;
@@ -4433,12 +4463,12 @@ var Cityspeak = class {
   bindInk(story) {
     const w = this.w;
     story.BindExternalFunction("tyrell_fact", (k) => w.s.facts[k] ?? null, true);
-    story.BindExternalFunction("tyrell_thinks", (who, k) => w.reverie?.thinks(who, k) ?? w.s.facts[k] ?? null, true);
+    story.BindExternalFunction("tyrell_thinks", (who, k) => w.peek(() => w.reverie?.thinks(who, k) ?? w.s.facts[k] ?? null), true);
     story.BindExternalFunction("tyrell_regard", (a, b) => w.fellowship?.regard(a, b) ?? 0, true);
     story.BindExternalFunction("tyrell_mood", (who) => w.reverie?.mood(who) ?? 0.5, true);
     story.BindExternalFunction("tyrell_test", (who, cond) => {
       const p = w.s.people[who];
-      return p ? w.lang.test(cond, w.ctx(p)) : false;
+      return p ? w.peek(() => w.lang.test(cond, w.ctx(p))) : false;
     }, true);
     story.BindExternalFunction("tyrell_did", (actor, verb, target) => {
       w.did(actor, verb, target ? { for: target } : {});
@@ -4517,7 +4547,7 @@ var Mentat = class {
         if (step.startsWith("get:")) {
           const item = step.slice(4);
           if (w.have(p, item) > 0) continue;
-          const route = this.acquire(p, item, this.config.depth, /* @__PURE__ */ new Set());
+          const route = this.route(p, item, this.config.depth, /* @__PURE__ */ new Set());
           if (!route) return this.fail(p, `no way to get ${item}`);
           plan.stack.push({ task: "get:" + item, method: -1, steps: route.steps, i: 0 });
           w.log("route", p.id, { item, steps: route.steps.map((s) => typeof s === "string" ? s : s.action), cost: round(route.cost, 1) });
@@ -4652,8 +4682,11 @@ var Mentat = class {
     for (const a of this.w.actions.values()) if ((a.gives?.[item] ?? 0) > 0 || (a.buys?.[item] ?? 0) > 0) out.push(a);
     return out;
   }
-  /** The cheapest way for a person to get an item: steps and cost, or null. */
+  /** The cheapest way for a person to get an item: steps and cost, or null. Changes nothing. */
   acquire(p, item, depth, seen) {
+    return this.w.peek(() => this.route(p, item, depth, seen));
+  }
+  route(p, item, depth, seen) {
     if (depth <= 0 || seen.has(item)) return null;
     seen = new Set(seen).add(item);
     const w = this.w;
@@ -4698,7 +4731,7 @@ var Mentat = class {
       const steps = [];
       let subOk = true;
       for (const n of needs) {
-        const sub = this.acquire(p, n, depth - 1, seen);
+        const sub = this.route(p, n, depth - 1, seen);
         if (!sub) {
           subOk = false;
           break;
@@ -4840,8 +4873,11 @@ var Gaff = class {
   // -------------------------------------------------------------------------
   // Storylets
   // -------------------------------------------------------------------------
-  /** Can a storylet fire now? */
+  /** Could a storylet fire now? (Looking only: changes nothing.) */
   eligible(def) {
+    return this.w.peek(() => this.ready(def));
+  }
+  ready(def) {
     const w = this.w, now2 = w.s.now;
     const last = this.st.last[def.id];
     if (def.cooldown && last !== void 0 && now2 - last < def.cooldown) return false;
@@ -4858,14 +4894,14 @@ var Gaff = class {
     this.stepPhases();
     const r = w.worldStream("gaff");
     for (const def of this.storylets.values()) {
-      if (!this.eligible(def)) continue;
+      if (!this.ready(def)) continue;
       if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
       let id = def.id;
       if (def.deck) {
         const drawn = this.applyDraw(def.deck);
         if (!drawn) continue;
         const d = this.storylets.get(drawn);
-        if (!d || !this.eligible(d)) continue;
+        if (!d || !this.ready(d)) continue;
         id = drawn;
       }
       this.fire(id, null);
@@ -5406,6 +5442,9 @@ var Joi = class {
   }
   /** The prompt for a person speaking (useful to look at, or to send yourself). */
   prompt(who, opts = {}) {
+    return this.w.peek(() => this.promptNow(who, opts));
+  }
+  promptNow(who, opts) {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return "";

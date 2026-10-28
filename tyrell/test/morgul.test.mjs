@@ -486,6 +486,28 @@ test('a fight with the player: the character answers each harm (fight back, flee
   assert.equal(said[said.length - 1].id, 'cy');
 });
 
+test('only harm face to face is a fight: a trap or a dose between a character and the player makes nobody answer; the player can spring a trap', () => {
+  const w = brawlers();
+  const said = events(w, 'morgul:respond'), sprung = events(w, 'morgul:sprung');
+  w.morgul.harm({ to: 'player', by: 'cy', kind: 'poison', severity: 0.2, via: 'dose' });
+  w.morgul.harm({ to: 'bo', by: 'player', kind: 'cut', severity: 0.2, via: 'trap' });
+  assert.equal(said.length, 0);
+  w.morgul.harm({ to: 'bo', by: 'player', kind: 'cut', severity: 0.1, via: 'throw' });
+  assert.equal(said.length, 1);
+  // Cy's snare in the barn catches the player on screen: a harm to the player, the snare spent, Cy far off and silent
+  const t = w.morgul.set('snare', { by: 'cy', place: 'barn', seenBy: [] });
+  w.morgul.spring(t, 'player');
+  assert.equal(sprung.length, 1);
+  assert.equal(sprung[0].id, 'player');
+  const h = w.morgul.harms().at(-1);
+  assert.equal(h.to, 'player');
+  assert.equal(h.by, 'cy');
+  assert.equal(h.via, 'trap');
+  assert.equal(h.cause, t);
+  assert.equal(w.morgul.traps().length, 0);
+  assert.equal(said.length, 1);
+});
+
 // ---------------------------------------------------------------------------
 // Choosing harm
 // ---------------------------------------------------------------------------

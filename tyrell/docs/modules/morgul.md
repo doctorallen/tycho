@@ -115,7 +115,7 @@ The effect `set:<trap>` sets one where the person is, with them as its setter an
 
 **Off screen**, whenever someone starts something at a trap's place (its outermost), it may catch them: with its `catch`, less for the careful (`careful`), less again if it isn't hidden (`seenCatch`; whoever it doesn't catch then sees it). Never someone who knows it's there, or its setter; a trap set for someone catches only them. It's a harm (`via: 'trap'`, its `cause` the trap's id, by its setter), and uses one of its `uses`. Events `morgul:set`, `morgul:sprung`, `morgul:disarmed`.
 
-**On screen**, the game draws it as a trigger and says when it springs (`morgul.spring(trap, id)`); traps in the regions the game has said are near (`morgul.near(regions)`, by default the regions in focus) aren't sprung off screen, so nobody is caught twice. The effect `disarm` (or `disarm:<kind>`) disarms the traps someone knows of where they are; `morgul.disarm(trap, by)` does it from the game.
+**On screen**, the game draws it as a trigger and says when it springs (`morgul.spring(trap, id)`, a character or `'player'`: the harm to the player, and the trap spent); traps in the regions the game has said are near (`morgul.near(regions)`, by default the regions in focus) aren't sprung off screen, so nobody is caught twice. The effect `disarm` (or `disarm:<kind>`) disarms the traps someone knows of where they are; `morgul.disarm(trap, by)` does it from the game.
 
 ## Poison
 
@@ -154,7 +154,7 @@ A Bree exchange of a kind in `fights` (the starter set's `fight`) is a fight by 
 
 ## Fights with the player
 
-Harm by `'player'` (or by a character to the player) makes the character answer, as the fight starts and after each harm between them: **fight back**, **flee**, **yield** or **call for help**, drawn by how appealing each is, from their nerve and temper, their hurt and their odds against the player (whose might is the game's fact, `playerMight`, default `might:player`, 1 when unset), and whether anyone about likes them enough to help (`helpFrom`); `respond` scales each. It's emitted as `morgul:respond` (`{ id, to, act, odds, hurt, start, help?, weights }`; `start` for the first harm between them in `fightGap` minutes), and `respond(id)` looks without changing anything. A character who flees wants to get away for `fleeMinutes` (fleeing actions weigh more). The fight itself the game plays in frames.
+Harm by `'player'` (or by a character to the player) face to face (a `direct` way: a blow, a throw, a shot, a cast; not a trap or a dose, which nobody fights) makes the character answer, as the fight starts and after each harm between them: **fight back**, **flee**, **yield** or **call for help**, drawn by how appealing each is, from their nerve and temper, their hurt and their odds against the player (whose might is the game's fact, `playerMight`, default `might:player`, 1 when unset), and whether anyone about likes them enough to help (`helpFrom`); `respond` scales each. It's emitted as `morgul:respond` (`{ id, to, act, odds, hurt, start, help?, weights }`; `start` for the first harm between them in `fightGap` minutes), and `respond(id)` looks without changing anything. A character who flees wants to get away for `fleeMinutes` (fleeing actions weigh more). The fight itself the game plays in frames.
 
 ## Choosing harm
 
@@ -170,7 +170,7 @@ The terms: `hurt`, `wounded:<kind>`, `hurt_by:<id>`, `afraid_of:<id>`, `danger`,
 
 ## On screen and off
 
-Tyrell has no coordinates, so off screen Morgul settles harm by numbers. On screen the game plays it out with [Tycho.harm](../../../docs/harm.md) and reports each harm (`morgul.harm`, with `seenBy` from its sight) and each trap sprung (`morgul.spring`). A fight between characters goes on by numbers wherever it is; near the player the game shows it as a scuffle from its turns. Traps in the regions the game has said are near (`morgul.near`) are the game's to spring: it's an input, recorded, so a rewind replays it as it was (focus itself isn't state). The bridge does the handing over.
+Tyrell has no coordinates, so off screen Morgul settles harm by numbers. On screen the game plays it out with [Tycho.harm](../../../docs/harm.md) and reports each harm (`morgul.harm`, with `seenBy` from its sight) and each trap sprung (`morgul.spring`). A fight between characters goes on by numbers wherever it is; near the player the game shows it as a scuffle from its turns. Traps in the regions the game has said are near (`morgul.near`) are the game's to spring: it's an input, recorded, so a rewind replays it as it was (focus itself isn't state). The bridge does the handing over ([Harm in the bridge](../../../docs/minds.md#harm)): the means declared to both halves, a hit on screen as a harm, the scuffle in step with a fight's turns, a character's answer to the player as what their fighter does, and the traps near and far.
 
 ## State
 
@@ -199,7 +199,7 @@ Lying down, getting up, stopping to fight and dying are module timers in the wor
 | `means(def)`, `wound(def)`, `trap(def)` | this | Declarations |
 | `harm(h)` | HarmView or null | **Input** (applies at once). A harm |
 | `set(kind, { by?, place, for?, seenBy? })` | trap id or null | **Input.** Sets a trap |
-| `spring(trap, id, seenBy?)` | void | **Input.** A trap caught someone on screen |
+| `spring(trap, id, seenBy?)` | void | **Input.** A trap caught someone on screen, or the player |
 | `disarm(trap, by?)` | void | **Input.** A trap is disarmed |
 | `taint(def)` | taint id or null | **Input.** `{ course, place? or person? or owner?, item?, n?, by?, for?, severity?, what?, seenBy? }` |
 | `tend(id, by?)` | void | **Input.** Someone tends someone: their wounds, and up if down |

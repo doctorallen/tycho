@@ -10201,8 +10201,10 @@ var Morgul = class {
     const view = this.view(rec);
     w.emit("morgul:harm", view);
     if (p) this.check(p, rec);
-    if (by === "player" && p) this.respondTo(p, "player", rec);
-    else if (h.to === "player" && by && w.s.people[by]) this.respondTo(w.s.people[by], "player", rec);
+    if (c.direct.includes(via)) {
+      if (by === "player" && p) this.respondTo(p, "player", rec);
+      else if (h.to === "player" && by && w.s.people[by]) this.respondTo(w.s.people[by], "player", rec);
+    }
     return { ...view, hurt: p ? this.hurt(p.id) : 0 };
   }
   view(rec) {
@@ -10505,16 +10507,16 @@ var Morgul = class {
     const root = place ? this.w.ring.root(place) : null;
     return Object.keys(traps).sort().map((k) => traps[k]).filter((t) => !root || this.w.ring.root(t.place) === root).map((t) => ({ id: t.id, kind: t.kind, place: t.place, by: t.by, ...t.for ? { for: t.for } : {}, uses: t.uses, t: t.t, known: t.known.slice() }));
   }
-  /** A trap caught someone on screen (from the game: recorded). */
+  /** A trap caught someone on screen, or the player (from the game: recorded). */
   spring(trap, id, seenBy) {
     this.w.input("morgul.spring", [trap, id, seenBy ?? null]);
   }
-  /** A trap catches someone, inside the simulation: the harm, and it's spent a use. */
+  /** A trap catches someone (or the player), inside the simulation: the harm, and it's spent a use. */
   applySpring(trap, id, seenBy) {
     const w = this.w, st = this.st;
     const rec = st?.traps[trap];
     const p = w.s.people[id];
-    if (!rec || !p || p.status !== "active") return null;
+    if (!rec || id !== "player" && (!p || p.status !== "active")) return null;
     const def = this.trapDef(rec.kind);
     rec.uses--;
     if (rec.uses <= 0) delete st.traps[trap];

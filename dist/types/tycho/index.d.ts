@@ -9,6 +9,8 @@ import * as save from './shell/save';
 import * as pwa from './shell/pwa';
 import * as dev from './shell/dev';
 import * as loader from './shell/loader';
+import * as audio from './shell/audio';
+import * as inspect from './shell/inspect';
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export declare const VERSION: string;
-export { seed, math, color, loop, gpu, light, post, save, pwa, dev, loader };
+export { seed, math, color, loop, gpu, light, post, save, pwa, dev, loader, audio, inspect };

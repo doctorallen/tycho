@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.title and page.url != "/" %}{{ page.title }} · {% endif %}{{ site.title }}</title>
+<meta name="description" content="{{ site.description }}">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="{{ '/images/favicon.svg' | relative_url }}" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap">
+<link rel="stylesheet" href="{{ '/assets/site.css' | relative_url }}">
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to the page</a>
+<header class="site-header">
+  <a class="brand" href="{{ '/' | relative_url }}" aria-label="Tycho docs, home">
+    <img src="{{ '/images/wordmark.svg' | relative_url }}" alt="Tycho" width="145" height="35">
+  </a>
+  <div class="brand-text">
+    <p class="eyebrow">Tycho / Docs</p>
+    <p class="tagline">{{ site.description }}</p>
+  </div>
+  <nav class="site-links" aria-label="Tycho">
+    <a href="{{ '/docs/' | relative_url }}">Engine</a>
+    <a href="{{ '/tyrell/' | relative_url }}">Tyrell</a>
+    <a href="{{ '/tyrell/docs/tuning.html' | relative_url }}">Tuning</a>
+    <a href="https://github.com/{{ site.repository }}">GitHub</a>
+  </nav>
+</header>
+<div class="layout">
+  <nav class="toc" aria-label="Pages">
+    {% for group in site.nav %}
+    <p class="toc-group">{{ group.title }}</p>
+    <ul>
+      {% for item in group.pages %}
+      <li><a href="{{ item.url | relative_url }}"{% if page.url == item.url %} class="is-current" aria-current="page"{% endif %}>{{ item.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </nav>
+  <main id="content" class="content">
+    {{ content }}
+  </main>
+</div>
+<footer class="site-footer">
+  <p>Tycho and Tyrell are released under the MIT License. These pages are <a href="https://github.com/{{ site.repository }}/tree/main/docs">docs</a> and <a href="https://github.com/{{ site.repository }}/tree/main/tyrell/docs">tyrell/docs</a> in the repository, and read the same on GitHub.</p>
+</footer>
+{% if content contains 'language-mermaid' %}
+<script type="module">
+  // A ```mermaid fence reads as code on GitHub and as a diagram here: each
+  // highlighted block is swapped for the bare source Mermaid draws. Only a
+  // page with a diagram loads the script.
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs';
+  document.querySelectorAll('.language-mermaid').forEach(function (block) {
+    var diagram = document.createElement('pre');
+    diagram.className = 'mermaid';
+    diagram.textContent = block.textContent;
+    block.replaceWith(diagram);
+  });
+  mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+  await mermaid.run({ querySelector: '.mermaid' });
+</script>
+{% endif %}
+</body>
+</html>

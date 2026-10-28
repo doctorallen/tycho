@@ -26,7 +26,7 @@ Always run `npm test` and commit `dist/` with any change to the sources. CI fail
 - `testkit/`: the Node test kit (`dist/testkit.cjs`): launch, serve, open, waitFor, golden, diff, finish. Uses the game's Playwright, or puppeteer-core with `$CHROME`.
 - `test/`: the engine's node:test suites against the built `dist/`, and what needs a page, through the test kit: `browser.js` (what needs a real canvas) and `audio.js` (the sound against Lodestar's, its originals in `fixtures/`).
 - `scripts/build.mjs`: the build. `scripts/layers.mjs`: the layers' rule, checked by the build.
-- `docs/`: a page for each part, and `move.md`, the record of moving the games onto Tycho.
+- `docs/`: a page for each part, and `move.md`, the record of moving the games onto Tycho. They and `tyrell/docs/` are also the docs site (`.github/workflows/docs.yml`: `scripts/stage-docs.mjs` stages them with `docs/site`'s layout, Jekyll builds it, GitHub Pages serves it), so keep them plain Markdown with relative `.md` links.
 
 ## Rules
 

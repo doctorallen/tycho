@@ -1,0 +1,69 @@
+# The Tycho docs site, built by .github/workflows/docs.yml: the README,
+# docs/, Tyrell's README and tyrell/docs/, staged at their own paths by
+# scripts/stage-docs.mjs with this folder beside them. The pages stay plain
+# Markdown that reads on GitHub; Jekyll (as GitHub Pages runs it) turns each
+# README.md into its folder's index and each `.md` link into a link to its page.
+title: Tycho
+description: "An engine and a shelf of game features for small, phone-first pixel games in the browser, with Tyrell, a minds engine for games full of people, inside it."
+url: https://doctorallen.github.io
+baseurl: /tycho
+repository: doctorallen/tycho
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+# The side navigation: the engine's parts, then Tyrell's guides and modules.
+nav:
+  - title: Tycho
+    pages:
+      - { title: Overview, url: / }
+      - { title: All the parts, url: /docs/ }
+      - { title: The core, url: /docs/core.html }
+      - { title: The renderer, url: /docs/renderer.html }
+      - { title: Sprites, url: /docs/sprite.html }
+      - { title: The painter, url: /docs/paint.html }
+      - { title: Effects, url: /docs/fx.html }
+      - { title: The world, url: /docs/world.html }
+      - { title: Play, url: /docs/play.html }
+      - { title: The shell, url: /docs/shell.html }
+      - { title: Sound, url: /docs/audio.html }
+      - { title: The interface kit, url: /docs/ui.html }
+      - { title: The inspector, url: /docs/inspect.html }
+      - { title: The bridge, url: /docs/minds.html }
+      - { title: Installable games, url: /docs/installable.html }
+      - { title: The test kit, url: /docs/testkit.html }
+      - { title: The move onto Tycho, url: /docs/move.html }
+  - title: Tyrell
+    pages:
+      - { title: Overview, url: /tyrell/ }
+      - { title: The guides, url: /tyrell/docs/ }
+      - { title: Getting started, url: /tyrell/docs/getting-started.html }
+      - { title: Concepts, url: /tyrell/docs/concepts.html }
+      - { title: Deciding, url: /tyrell/docs/deciding.html }
+      - { title: Places and strangers, url: /tyrell/docs/places.html }
+      - { title: Time and time walk, url: /tyrell/docs/time.html }
+      - { title: Saving, url: /tyrell/docs/saving.html }
+      - { title: Conditions and effects, url: /tyrell/docs/conditions.html }
+      - { title: Integration, url: /tyrell/docs/integration.html }
+      - { title: Tuning, url: /tyrell/docs/tuning.html }
+      - { title: Recipes, url: /tyrell/docs/recipes.html }
+      - { title: Tools, url: /tyrell/docs/tools.html }
+      - { title: API reference, url: /tyrell/docs/api.html }
+      - { title: For AI agents, url: /tyrell/docs/for-ai.html }
+  - title: Tyrell's modules
+    pages:
+      - { title: Reverie, url: /tyrell/docs/modules/reverie.html }
+      - { title: Fellowship, url: /tyrell/docs/modules/fellowship.html }
+      - { title: Wormtongue, url: /tyrell/docs/modules/wormtongue.html }
+      - { title: Cityspeak, url: /tyrell/docs/modules/cityspeak.html }
+      - { title: Voice, url: /tyrell/docs/modules/voice.html }
+      - { title: Mentat, url: /tyrell/docs/modules/mentat.html }
+      - { title: Gaff, url: /tyrell/docs/modules/gaff.html }
+      - { title: Ceres, url: /tyrell/docs/modules/ceres.html }
+      - { title: Cradle, url: /tyrell/docs/modules/cradle.html }
+      - { title: Delos, url: /tyrell/docs/modules/delos.html }
+      - { title: Athelas, url: /tyrell/docs/modules/athelas.html }
+      - { title: Joi, url: /tyrell/docs/modules/joi.html }

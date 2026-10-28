@@ -55,7 +55,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Play | `input` (the controls: a stick, buttons and keys holding actions, presses taken once, edges, a test's bot, blocking and the tap guard; drag, pinch and tap for maps), `items` (bags by count, things of their own, slots, gear, counted views), `guide` (a tutorial's steps); then interact, craft, trade, build, mine | Partly in |
 | Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell), `ui` (toasts, lines rising over the world, buttons wired by data attributes, a screen's acts); then hud, map | Partly in |
 
-The move of the three games onto Tycho was planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and is recorded in [docs/move.md](docs/move.md), with what's next. [docs/](docs/README.md) has a page for each part that's in.
+The move of the three games onto Tycho was planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and is recorded in [docs/move.md](docs/move.md), with what's next. [docs/](docs/README.md) has a page for each part that's in; the docs, Tyrell's too, are also a site at [doctorallen.github.io/tycho](https://doctorallen.github.io/tycho/), built from the same files.
 
 Two rules hold everywhere:
 

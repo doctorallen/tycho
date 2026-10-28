@@ -1,0 +1,79 @@
+name: Docs
+
+# Builds the docs into the GitHub Pages site at doctorallen.github.io/tycho:
+# the README, docs/, Tyrell's README and tyrell/docs/, staged at their own
+# paths by scripts/stage-docs.mjs (links that leave the docs pointed at
+# GitHub) with docs/site's layout, stylesheet and config beside them, then run
+# through the Jekyll GitHub Pages uses, which turns each README.md into its
+# folder's index and each `.md` link into a link to its page. The pages stay
+# plain Markdown that reads on GitHub.
+#
+# Pages must be set once, in the repository's Settings > Pages, to deploy
+# from GitHub Actions.
+#
+# A push to main that touches the docs builds and publishes; a pull request
+# builds the same site and stops there, so a page that breaks the build is
+# caught before anything goes public.
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - docs/**
+      - tyrell/README.md
+      - tyrell/docs/**
+      - scripts/stage-docs.mjs
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - README.md
+      - docs/**
+      - tyrell/README.md
+      - tyrell/docs/**
+      - scripts/stage-docs.mjs
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# Each job asks for what it needs: the build reads the source, and only the
+# deployment may write to Pages.
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Stage the docs and the site's layout
+        run: node scripts/stage-docs.mjs site "https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}"
+      - uses: actions/configure-pages@v5
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    # Only main publishes; one deployment at a time, never cancelled.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

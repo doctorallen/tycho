@@ -88,7 +88,7 @@ function puppeteerish(p) {
   return p;
 }
 async function launch(o = {}) {
-  const args = ["--allow-file-access-from-files", "--no-sandbox", "--autoplay-policy=no-user-gesture-required"].concat(o.gl ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] : ["--disable-gpu"], o.args || []);
+  const args = ["--allow-file-access-from-files", "--no-sandbox", "--autoplay-policy=no-user-gesture-required"].concat(o.gl ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : ["--disable-gpu"], o.args || []);
   const pp = find("puppeteer-core"), pw = find("playwright");
   let driver = o.driver || process.env.TYCHO_DRIVER;
   if (!driver) driver = process.env.CHROME && pp ? "puppeteer" : pw ? "playwright" : "puppeteer";

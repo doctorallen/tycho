@@ -75,7 +75,7 @@ export interface Kit {
  * puppeteer-core with whatever Chrome is installed. */
 export async function launch(o: { gl?: boolean; args?: string[]; driver?: 'playwright' | 'puppeteer' } = {}): Promise<Kit> {
   const args = ['--allow-file-access-from-files', '--no-sandbox', '--autoplay-policy=no-user-gesture-required']
-    .concat(o.gl ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu'], o.args || []);
+    .concat(o.gl ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : ['--disable-gpu'], o.args || []);
   const pp = find('puppeteer-core'), pw = find('playwright');
   let driver = o.driver || (process.env.TYCHO_DRIVER as Kit['driver'] | undefined);
   if (!driver) driver = process.env.CHROME && pp ? 'puppeteer' : pw ? 'playwright' : 'puppeteer';

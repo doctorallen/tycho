@@ -606,7 +606,7 @@ void main() { o = vec4(texelFetch(uScene, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); 
      * [size of a cell in view px, strength] each (at most four). */
     resize(w, h, bloom = this.bloomSpec) {
       const gl = this.gl;
-      if (!this.on || this.w === w && this.h === h && bloom === this.bloomSpec) return;
+      if (!this.on || this.w === w && this.h === h && (bloom === this.bloomSpec || JSON.stringify(bloom) === JSON.stringify(this.bloomSpec))) return;
       this.w = w;
       this.h = h;
       this.bloomSpec = bloom;

@@ -199,7 +199,7 @@ export declare class Gpu {
     atlasInit(pages: number): void;
     private place;
     private upload;
-    private rebuild;
+    rebuild(need: number): void;
     /** Where a canvas (or image) is on the pages, placing it the first time. */
     pic(src: Source): Pic | null;
     /** Pictures onto the pages ahead of their first frame (while loading). */

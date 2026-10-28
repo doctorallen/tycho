@@ -301,7 +301,7 @@ export class Gpu {
    * [size of a cell in view px, strength] each (at most four). */
   resize(w: number, h: number, bloom: [number, number][] = this.bloomSpec): void {
     const gl = this.gl;
-    if (!this.on || (this.w === w && this.h === h && bloom === this.bloomSpec)) return;
+    if (!this.on || (this.w === w && this.h === h && (bloom === this.bloomSpec || JSON.stringify(bloom) === JSON.stringify(this.bloomSpec)))) return;
     this.w = w; this.h = h; this.bloomSpec = bloom;
     const target = (texs: WebGLTexture[]) => {
       const fb = gl.createFramebuffer()!;
@@ -361,7 +361,7 @@ export class Gpu {
   }
   // The pages built again from the pictures drawn lately (the rest let go),
   // with a page more if they still don't fit.
-  private rebuild(need: number) {
+  rebuild(need: number): void {
     const A = this.o.atlas;
     const keep = this.entries.filter((e) => this.frame - e.used < this.o.keep && !e.dead);
     for (const e of this.entries) if (!keep.includes(e)) e.dead = true;

@@ -104,7 +104,7 @@
     about: (ctx) => (ctx.world.fellowship ? ctx.world.fellowship.friends(ctx.person.id, 1)[0] : undefined),
   });
   w.wish({ id: 'master_baker', label: 'Become an expert baker', dream: true, if: ['job:baker'], toward: ['bake'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8 });
-  w.wish({ id: 'master_mechanic', label: 'Become a master mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
+  w.wish({ id: 'master_mechanic', label: 'Become an expert mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({

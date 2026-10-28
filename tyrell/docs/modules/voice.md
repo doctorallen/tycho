@@ -106,6 +106,8 @@ A beat's `line`, the greeting (`config.greet`), their goodbye (`bye`), their clo
 
 The speaker's words (answers, openers) are returned as they're written; when the speaker is a person with lines on a topic of that name, their line is chosen instead.
 
+Voice keeps its own record of the lines said in talks (for freshness); Cityspeak's `once` and `cooldown` still count only lines said with `cityspeak.say`, and they still rule lines out in talks.
+
 ## What a talk leaves
 
 Effects in beats, answers and threads run with the person talked to as the person and the speaker as the target, so any module's effects work: `feel:<feeling>` (Reverie), `regard+=0.05` (their regard for the speaker), `believe:<key>`, `need.company-=0.2`, `var.x+=1`. Voice adds:

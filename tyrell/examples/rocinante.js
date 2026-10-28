@@ -9,9 +9,12 @@
 //
 // Options: `tuned` (a town tuned to taste: docs/tuning.md), `bree` (Bree's
 // interactions: people strike up chats, jokes, arguments and apologies, hold
-// grudges and make up; Sam bears Dev a grudge from the start), `seed`,
-// `start`, `modules`, `config`, `esper` and `moduleConfig` (over its own).
-// Without them, Rocinante runs as it always has.
+// grudges and make up; Sam bears Dev a grudge from the start), `harm`
+// (Morgul, with Bree: a brawl at the Belt comes out blow by blow, Pip sets a
+// snare in the barn, Sam slips nightshade into the cafe's stew; wounds that
+// heal or fester, grudges, fear, suspicion, revenge, and Lena's first aid),
+// `seed`, `start`, `modules`, `config`, `esper` and `moduleConfig` (over its
+// own). Without them, Rocinante runs as it always has.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.buildRocinante = factory;
@@ -23,13 +26,24 @@
   // knobs for everyone, and a few people's own (their `tune`, below). Without
   // it, Rocinante runs as it always has.
   const tuned = !!opts.tuned;
+  // With opts.harm, harm between them (Morgul), which needs Bree's interactions too
+  const harm = !!opts.harm;
   // With opts.bree, Bree's interactions between the townsfolk, and the natures they read
-  const bree = !!opts.bree;
+  const bree = !!opts.bree || harm;
   const own = { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } };
   if (tuned) {
     own.fellowship = { friendship: 1.5, fading: 0.5 };   // friendships form half as fast again, and fade half as fast
     own.wormtongue = { gossip: 0.8, cooling: 2 };        // a discreet town, and the Watch forgets quickly
     own.reverie = { breaks: 0.5 };                       // people keep it together twice as long
+  }
+  if (harm) {
+    // might in a fight: how strong, and nerve; the crimes harm is; first aid tends better
+    own.morgul = {
+      might: [{ name: 'strength', input: 'trait.strength', out: [0.6, 1.5] }, { name: 'nerve', input: 'trait.courage', out: [0.8, 1.2] }],
+      crimes: { meant: 'assault', careless: 'negligence', killed: 'murder' },
+    };
+    own.athelas = { tendSkill: 'first_aid' };
+    own.bree = { escalation: 1.6 };   // words come to blows a little sooner
   }
   const moduleConfig = {};
   for (const k of [...new Set([...Object.keys(own), ...Object.keys(opts.moduleConfig || {})])]) moduleConfig[k] = Object.assign({}, own[k], (opts.moduleConfig || {})[k]);
@@ -45,6 +59,16 @@
   const tune = (t) => (tuned ? { tune: t } : {});
   // a person's nature as Bree reads it (temper, warmth, humor, patience, forgiveness), with the bree option (none otherwise)
   const nature = (t) => (bree ? t : {});
+  // with the harm option: how strong they are, what they carry, and their own pace (none otherwise)
+  const body = (strength) => (harm ? { strength } : {});
+  const kit = (o) => (harm ? o : {});
+  const carry = (inv) => (harm ? { inv } : {});
+  // a person's own knobs: the tuned town's, and the harm option's, together
+  const knobsOf = (t, h) => {
+    const out = {};
+    for (const [on, k] of [[tuned, t], [harm, h]]) if (on && k) for (const m of Object.keys(k)) out[m] = Object.assign(out[m] || {}, k[m]);
+    return Object.keys(out).length ? { tune: out } : {};
+  };
 
   // ---- needs: 0 is fine, 1 is desperate; rise is per game hour --------------
   w.need({ id: 'hunger', rise: 0.065, start: 0.3, emotion: 'irritable' });
@@ -57,16 +81,20 @@
   // ---- places ---------------------------------------------------------------
   const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
   for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
-  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30, flour: 12 }, restock: { flour: [8, 24] } });
+  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara',
+    stock: { bread: 30, flour: 12, ...kit({ stew: 16 }) }, restock: { flour: [8, 24], ...kit({ stew: [12, 24] }) } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
   w.place({ id: 'bar', name: 'The Belt', tags: ['social', 'drink'], region: 'main', hours: [17, 2], slots: { stool: 6, bar: 1 }, owner: 'ines' });
   w.place({ id: 'park', name: 'Ring Park', tags: ['outdoors', 'fun', 'social'], region: 'main', slots: { bench: 6 } });
   w.place({ id: 'workshop', name: 'Tomas\'s Workshop', tags: ['work', 'repairs'], region: 'river', hours: [8, 18], slots: { bench: 2 }, owner: 'tomas' });
   w.place({ id: 'clinic', name: 'The Clinic', tags: ['care'], region: 'river', hours: [9, 17], slots: { desk: 1, chair: 3 } });
   w.place({ id: 'station', name: 'Tram Station', tags: ['edge'], region: 'main' });
+  // (with harm: the old barn by the river, where Tomas keeps his timber and Pip plays)
+  if (harm) w.place({ id: 'barn', name: 'The Old Barn', tags: ['outdoors'], region: 'river' });
   for (const f of apartments) { w.link(f, 'park', 6); w.link(f, 'cafe', 8); }
   w.link('park', 'cafe', 3); w.link('cafe', 'market', 2); w.link('market', 'bar', 3); w.link('cafe', 'bar', 4);
   w.link('park', 'workshop', 9); w.link('workshop', 'clinic', 3); w.link('station', 'cafe', 5);
+  if (harm) { w.link('barn', 'workshop', 4); w.link('barn', 'park', 7); }
 
   // ---- actions --------------------------------------------------------------
   const night = { name: 'night', input: 'hour', range: [0, 24], curve: [[0, 1], [6 / 24, 1], [8 / 24, 0.12], [20 / 24, 0.3], [22.5 / 24, 1], [1, 1]] };
@@ -153,38 +181,39 @@
   const sleepNight = [[7, null, '*'], [23, 'home', 'sleep']];
   w.person('mara', {
     name: 'Mara', home: 'apt_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
-    traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6, ...nature({ warmth: 0.75, patience: 0.6 }) }, values: { honesty: 0.8, family: 0.9 },
+    traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6, ...nature({ warmth: 0.75, patience: 0.6 }), ...body(0.5) }, values: { honesty: 0.8, family: 0.9 },
     skills: { baking: 0.62 }, talents: { baking: 1.2 },
     job: { id: 'baker', place: 'cafe', action: 'bake', shifts: [[6, 14]], wage: 0 },
     routine: [[5.5, 'home', 'shower'], [6, null, '*'], [14.25, 'market', 'buy_food'], [14.5, null, '*'], [22, 'home', 'sleep']],
   });
   w.person('tomas', {
     name: 'Tomas', home: 'apt_1', groups: ['h_okafor'], vars: { money: 60 },
-    traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7, ...nature({ temper: 0.6, patience: 0.7 }) }, values: { honesty: 0.6, craft: 0.9 },
+    traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7, ...nature({ temper: 0.6, patience: 0.7 }), ...body(0.8) }, values: { honesty: 0.6, craft: 0.9 },
     skills: { repair: 0.74 }, talents: { repair: 1.3 },
     job: { id: 'mechanic', place: 'workshop', action: 'fix', shifts: [[8, 17]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
-    routine: [[7, null, '*'], [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
+    // (with harm: timber from the barn first thing)
+    routine: [[7, null, '*'], ...(harm ? [[7.4, 'barn', 'fetch_timber'], [7.7, null, '*']] : []), [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('pip', {
     name: 'Pip', home: 'apt_1', groups: ['h_okafor'], born: -9 * 365 * DAY, tags: ['child'],
-    traits: { talkative: 0.8, courage: 0.4, honesty: 0.7, ...nature({ humor: 0.8, temper: 0.6 }) },
+    traits: { talkative: 0.8, courage: 0.4, honesty: 0.7, ...nature({ humor: 0.8, temper: 0.6 }), ...body(0.2) }, ...carry({ snare: 2 }),
     routine: [[7, 'home', '*'], [10, 'park', 'sit_park'], [11, null, '*'], [15, 'park', 'walk'], [16, null, '*'], [20.5, 'home', 'sleep']],
   });
   w.person('ines', {
     name: 'Ines', home: 'apt_2', groups: ['regulars'], vars: { money: 80 },
-    traits: { thrift: 0.3, honesty: 0.6, talkative: 0.9, courage: 0.8, ...nature({ warmth: 0.8, humor: 0.7, patience: 0.6 }) }, values: { honesty: 0.4 },
+    traits: { thrift: 0.3, honesty: 0.6, talkative: 0.9, courage: 0.8, ...nature({ warmth: 0.8, humor: 0.7, patience: 0.6 }), ...body(0.45) }, values: { honesty: 0.4 },
     job: { id: 'bartender', place: 'bar', action: 'serve', shifts: [[17, 1]], wage: 9 },
     routine: [[2, 'home', 'sleep'], [10, null, '*']],
   });
   w.person('dev', {
     name: 'Dev', home: 'apt_3', vars: { money: 90 },
-    traits: { thrift: 0.8, honesty: 0.7, talkative: 0.5, greed: 0.6, ...nature({ temper: 0.65, patience: 0.4 }) }, values: { honesty: 0.5 },
+    traits: { thrift: 0.8, honesty: 0.7, talkative: 0.5, greed: 0.6, ...nature({ temper: 0.65, patience: 0.4 }), ...body(0.55) }, values: { honesty: 0.5 },
     job: { id: 'grocer', place: 'market', action: 'sell', shifts: [[8, 16]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: sleepNight,
   });
   w.person('ruth', {
     name: 'Ruth', home: 'apt_4', vars: { money: 100 }, inv: { broken_radio: 1 },
-    traits: { thrift: 0.7, honesty: 0.9, talkative: 0.8, memory: 0.5, ...nature({ warmth: 0.75, forgiveness: 0.8, temper: 0.3 }) }, values: { honesty: 0.9, faith: 0.7 },
+    traits: { thrift: 0.7, honesty: 0.9, talkative: 0.8, memory: 0.5, ...nature({ warmth: 0.75, forgiveness: 0.8, temper: 0.3 }), ...body(0.3) }, values: { honesty: 0.9, faith: 0.7 },
     routine: [
       { days: [6], plan: [[8, null, '*'], [11, 'park', 'sit_park'], [12, null, '*'], [22, 'home', 'sleep']] },
       { when: ['fact:raining'], plan: [[8, 'home', '*'], [22, 'home', 'sleep']] },
@@ -194,24 +223,28 @@
   });
   w.person('kofi', {
     name: 'Kofi', home: 'apt_5', vars: { money: 25 },
-    traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5, ...nature({ humor: 0.75 }) }, values: { honesty: 0.5 },
+    traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5, ...nature({ humor: 0.75 }), ...body(0.55) }, values: { honesty: 0.5 },
     talents: { lore: 1.5 }, instincts: { walk: 1.25, read: 1.2 },   // a student who'd rather be outdoors
     ...tune({ fellowship: { friendship: 2 }, cityspeak: { chatter: 1.5 } }), // (tuned: he makes friends fast, and talks)
   });
   w.person('lena', {
     name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],
-    traits: { thrift: 0.5, honesty: 0.9, talkative: 0.4, courage: 0.6, ...nature({ patience: 0.75, warmth: 0.6 }) }, values: { honesty: 0.8 },
+    traits: { thrift: 0.5, honesty: 0.9, talkative: 0.4, courage: 0.6, ...nature({ patience: 0.75, warmth: 0.6 }), ...body(0.4) }, values: { honesty: 0.8 },
+    ...(harm ? { skills: { first_aid: 0.8 } } : {}),
     job: { id: 'doctor', place: 'clinic', action: 'treat', shifts: [[9, 17]], days: [0, 1, 2, 3, 4], wage: 20 },
     routine: [[7, 'home', 'shower'], [7.5, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('sam', {
     name: 'Sam', home: 'apt_3', vars: { money: 4 },
-    traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8, ...nature({ temper: 0.85, forgiveness: 0.2, humor: 0.6 }) }, values: { honesty: 0.05 },
-    ...tune({ wormtongue: { gossip: 1.5, lies: 2 }, reverie: { breaks: 2 } }), // (tuned: a gossip and a liar, quick to snap)
+    traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8, ...nature({ temper: 0.85, forgiveness: 0.2, humor: 0.6 }), ...body(0.6) }, values: { honesty: 0.05 },
+    // (with harm: a knife, a stash of nightshade, and a short fuse)
+    ...carry({ knife: 1, nightshade: 3 }),
+    // (tuned: a gossip and a liar, quick to snap)
+    ...knobsOf({ wormtongue: { gossip: 1.5, lies: 2 }, reverie: { breaks: 2 } }, { bree: { escalation: 1.5, quarrels: 1.5 } }),
   });
   w.person('vance', {
     name: 'Officer Vance', home: 'apt_2', groups: ['watch'], vars: { money: 100 },
-    traits: { thrift: 0.5, honesty: 0.8, talkative: 0.5, courage: 0.9, lawful: 0.9, ...nature({ patience: 0.8, temper: 0.3 }) }, values: { honesty: 0.7, law: 0.9 },
+    traits: { thrift: 0.5, honesty: 0.8, talkative: 0.5, courage: 0.9, lawful: 0.9, ...nature({ patience: 0.8, temper: 0.3 }), ...body(0.75) }, values: { honesty: 0.7, law: 0.9 }, ...carry({ baton: 1 }),
     job: { id: 'officer', place: 'park', action: 'patrol', shifts: [[10, 18]], wage: 15 },
     routine: [[7, null, '*'], [18, 'tag:food', 'eat_cafe'], [19, null, '*'], [23, 'home', 'sleep']],
   });
@@ -396,6 +429,106 @@
     });
     // Kofi has brought a cold back from his lectures, and it may go round
     if (!w.kept('a_cold')) { athelas.afflict('kofi', 'cold'); w.keep('a_cold', true); }
+  }
+
+  // ---- Morgul: harm between the townsfolk (with the harm option) -------------
+  // A brawl at the Belt (Bree's fights, blow by blow, by strength, nerve and
+  // what they carry: Vance's baton, Sam's knife), a snare Pip sets in the
+  // barn as a prank (Tomas fetches timber there every morning), and the
+  // nightshade Sam slips into the cafe's stew when nobody's looking. Bruises
+  // and beatings mend; a cut festers unless someone tends it; nightshade
+  // works quietly for hours before anyone knows. Whoever's hurt bears a
+  // grudge, is afraid, and may want to get even (have it out, or spike their
+  // supper); whoever didn't see it done suspects someone, rightly or not;
+  // Lena's first aid is the best in town. Nobody dies of it (lethality 0).
+  const mg = w.morgul;
+  if (harm && mg && athelas) {
+    w.skill({ id: 'first_aid', label: 'First aid', rate: 0.02 });
+    // what harm is done with: the same means the game's Tycho.harm would play on screen
+    mg.means({ id: 'knife', kinds: ['cut'], use: 'strike', severity: 0.2 });
+    mg.means({ id: 'baton', kinds: ['blunt'], use: 'strike', severity: 0.15 });
+    mg.means({ id: 'snare', kinds: ['cut'], use: 'set', severity: 0.2 });
+    mg.means({ id: 'nightshade', kinds: ['poison'], use: 'dose', course: 'nightshade', severity: 0.45 });
+    mg.trap({ id: 'snare', label: 'a snare', kind: 'cut', severity: 0.2, hidden: true, uses: 1, catch: 0.4 });
+    // what each harm leaves: the first wound that fits
+    mg.wound({ id: 'bruised', kinds: ['blunt'], at: [0, 0.3], course: 'bruised' });
+    mg.wound({ id: 'beaten', kinds: ['blunt'], at: [0.3, 1], course: 'beaten' });
+    mg.wound({ id: 'cut', kinds: ['cut'], course: 'cut' });
+    athelas.course({ id: 'bruised', label: 'Bruised', tags: ['wound'], again: 'worsen', phases: [
+      { id: 'sore', label: 'sore', minutes: [120, 240], weigh: { 'tag:work': 0.8, nap: 1.3 }, feel: 'sore' },
+      { id: 'stiff', label: 'stiff', minutes: [300, 600], hurts: 0.4 },
+    ] });
+    athelas.course({ id: 'beaten', label: 'A beating', tags: ['wound'], again: 'worsen', phases: [
+      { id: 'battered', label: 'battered', minutes: [300, 480], stop: true, rates: { energy: 1.5 }, weigh: { sleep: 1.6, nap: 2, 'tag:work': 0.5, 'tag:social': 0.7 }, feel: 'battered' },
+      { id: 'aching', label: 'aching', minutes: [720, 1440], hurts: 0.5, weigh: { 'tag:work': 0.8 } },
+      { id: 'mending', label: 'mending', minutes: 1440, hurts: 0.15 },
+    ] });
+    // a cut tended heals; untended, it festers, and a bad one can go bad (it would kill, at a lethality above 0)
+    athelas.course({ id: 'cut', label: 'A cut', tags: ['wound'], again: 'worsen', phases: [
+      { id: 'bleeding', label: 'bleeding', minutes: [60, 120], next: [{ if: ['tended:cut'], to: 'healing' }, { to: 'festering' }] },
+      { id: 'festering', label: 'festering', minutes: [600, 1200], hurts: 1.3, rates: { energy: 1.4 }, weigh: { sleep: 1.3, 'tag:work': 0.6 }, feel: 'festering',
+        next: [{ if: ['tended:cut'], to: 'healing' }, { if: ['sev:cut>0.6'], to: 'gone_bad' }, { to: 'healing' }] },
+      { id: 'gone_bad', label: 'gone bad', minutes: [1440, 2880], hurts: 1.5, stop: true, weigh: { sleep: 2, '*': 0.3 }, blocks: ['tag:work'], dies: true, next: 'healing' },
+      { id: 'healing', label: 'healing', minutes: [1440, 2880], hurts: 0.3 },
+    ] });
+    // nightshade works unnoticed for hours, then tells
+    athelas.course({ id: 'nightshade', label: 'Nightshade', tags: ['illness', 'poison'], phases: [
+      { id: 'working', minutes: [180, 360], quiet: true, rates: { hunger: 0.6 } },
+      { id: 'sick', label: 'violently sick', minutes: [600, 1080], tells: true, stop: true, rates: { energy: 1.8, hunger: 0.2 }, weigh: { sleep: 2, nap: 2, '*': 0.4 }, blocks: ['tag:work'], feel: 'poisoned' },
+      { id: 'weak', label: 'weak', minutes: [720, 1440], hurts: 0.3, rates: { energy: 1.3 } },
+    ] });
+    if (rv) {
+      rv.feeling({ id: 'sore', label: 'Sore', weight: -0.05, minutes: 4 * HOUR, emotion: 'sad' });
+      rv.feeling({ id: 'battered', label: 'Battered', weight: -0.15, minutes: DAY, emotion: 'sad' });
+      rv.feeling({ id: 'festering', label: 'A cut gone angry', weight: -0.12, minutes: 12 * HOUR, emotion: 'sad' });
+      rv.feeling({ id: 'poisoned', label: 'Sick as a dog', weight: -0.2, minutes: 12 * HOUR, emotion: 'sad' });
+    }
+    if (w.wormtongue) {
+      w.wormtongue.crime({ kind: 'assault', severity: 0.5, reportTo: 'watch' });
+      w.wormtongue.crime({ kind: 'negligence', severity: 0.2, reportTo: 'watch' });
+      w.wormtongue.crime({ kind: 'murder', severity: 1, reportTo: 'watch' });
+    }
+    // Tomas's timber, and a barn to play in
+    w.action({ id: 'fetch_timber', label: 'fetching timber', at: 'barn', minutes: 15, rank: -1, pose: 'work', tags: ['work'] });
+    w.action({ id: 'play_barn', label: 'playing in the barn', at: 'barn', minutes: 40, relieves: { fun: 0.35 }, who: ['is:child'], tags: ['outdoors'], pose: 'play', palls: 'park' });
+    // mischief: a snare by the barn door, as a prank
+    w.action({ id: 'set_snare', label: 'setting a snare', at: 'barn', minutes: 10, base: 0.08, who: ['is:child', 'nature.humor>0.6'], if: ['has:snare'], then: ['take:snare', 'set:snare'], tags: ['harm', 'mischief'], pose: 'kneel', cooldown: DAY });
+    // nightshade in the stew, when nobody's watching
+    const unwatched = (ctx) => ctx.world.ring.present('cafe').every((id) => id === ctx.person.id);
+    w.action({ id: 'eat_stew', label: 'a bowl of stew', at: 'cafe', slot: 'seat', minutes: [25, 40], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 5, store: 'here', uses: { stew: 1 }, pose: 'sit', tags: ['social', 'food'] });
+    w.action({ id: 'dose_stew', label: 'stirring the stew', at: 'cafe', minutes: 4, base: 0.12, who: ['trait.honesty<0.3'], if: ['has:nightshade', unwatched], then: ['take:nightshade', 'taint:nightshade.stew=2'], tags: ['harm', 'illegal'], pose: 'stand', cooldown: DAY });
+    // a brawl at the Belt: a few drinks, and someone there they've a grudge against
+    w.action({ id: 'pick_a_fight', label: 'picking a fight', target: 'person', at: 'tag:drink', minutes: 20, base: 0.15, who: ['under:ale'], targetIf: ['grudge>0.15'], interact: 'fight', tags: ['harm'], pose: 'stand', cooldown: DAY });
+    // care, and getting away
+    w.action({ id: 'tend', label: 'seeing to someone', target: 'person', at: 'here', minutes: 20, base: 0.05, targetIf: ['target.hurt>0.05'], then: ['tend'], tags: ['care', 'social'], trains: { first_aid: 0.5 }, pose: 'kneel', cooldown: 2 * HOUR });
+    w.action({ id: 'slip_home', label: 'slipping off home', at: 'home', minutes: 30, base: 0.01, if: ['fleeing>0'], tags: ['flee'], pose: 'sit' });
+    // getting even: have it out with them, or spike their supper
+    w.action({ id: 'confront', label: 'having it out', target: 'person', at: 'target', minutes: 15, rank: -1, interact: 'fight', tags: ['harm'], pose: 'stand' });
+    w.action({ id: 'spike', label: 'spiking a supper', target: 'person', at: 'cafe', minutes: 5, rank: -1, if: ['has:nightshade'], then: ['take:nightshade', 'taint:nightshade'], tags: ['harm', 'illegal'], pose: 'stand' });
+    w.action({ id: 'brood', label: 'brooding', at: 'home', minutes: 30, rank: -1, if: ['planning:avenge'], pose: 'sit' });
+    w.task({ id: 'avenge', label: 'getting even', target: 'person', tags: ['harm'], cooldown: DAY, methods: [
+      { name: 'have it out', if: ['odds>0.5'], do: [{ action: 'confront', target: 'target' }] },
+      { name: 'spike their supper', if: ['has:nightshade'], do: [{ action: 'spike', target: 'target' }] },
+      { name: 'let it lie', do: ['brood'] },
+    ] });
+    // Gaff paces it: now and then of an evening, the two at the Belt who like each other least come to blows
+    if (gaff && w.bree) gaff.storylet({
+      id: 'brawl', label: 'A brawl at the Belt', mtb: 6 * HOUR, cooldown: DAY, when: ['hour>=18'],
+      fire: (world) => {
+        const here = world.ring.present('bar').filter((id) => !world.morgul.isDown(id)).sort();
+        let pair = null, low = Infinity;
+        for (const a of here) for (const b of here) {
+          if (a >= b) continue;
+          const r = (world.fellowship ? world.fellowship.regard(a, b) + world.fellowship.regard(b, a) : 0) - world.bree.animosity(a, b) - world.bree.animosity(b, a);
+          if (r < low) { low = r; pair = world.bree.animosity(b, a) > world.bree.animosity(a, b) ? [b, a] : [a, b]; }
+        }
+        if (pair) world.bree.start('fight', pair[0], pair[1]);
+      },
+    });
+    if (cs) cs.addLines([
+      { key: 'bree_fight_reply', topic: 'fight.reply', text: ['Get off me!', '*swings back*'] },
+      { key: 'bree_fight_back', topic: 'fight.back', text: 'That\'s it, then.' },
+    ]);
   }
 
   // ---- Strangers -------------------------------------------------------------

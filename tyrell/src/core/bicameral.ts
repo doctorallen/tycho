@@ -416,6 +416,7 @@ export class Bicameral {
     for (const t of this.w.tasks.values()) {
       if (!t.relieves && !t.base) continue;
       if (t.rank !== undefined && t.rank < 0) continue;
+      if (t.target) continue; // aimed at someone: only when something names who
       const places = t.at !== undefined ? this.w.ring.resolve(t.at, p) : [null];
       for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(t.id + '@' + place)) continue;

@@ -335,6 +335,14 @@ export interface TaskDef {
     considerations?: Consideration[];
     cooldown?: number;
     tags?: string[];
+    /**
+     * Aimed at someone: chosen only when something names who (a directive's
+     * target, a module's option: Morgul's revenge), never freely. The plan
+     * keeps them: its methods' conditions read them as the target, its steps
+     * whose action is aimed at someone are aimed at them, and 'target' as a
+     * place (or a step's target) is where they are (or who they are).
+     */
+    target?: 'person';
     methods: MethodDef[];
 }
 /**
@@ -451,6 +459,8 @@ export interface PlanState {
     started: Minutes;
     rank: number;
     layer: string;
+    /** Who it's aimed at (a task with `target: 'person'`). */
+    target?: Id;
 }
 export interface NeedState {
     v: number;
@@ -777,6 +787,8 @@ export interface Stimulus {
     strength?: number;
     /** 0..1: how well the actor was disguised. Default 0. */
     disguise?: number;
+    /** 0..1: how bad it was, for a crime (Wormtongue): over the crime's own severity, for the witnesses' memories and the heat. */
+    severity?: number;
     data?: Record<string, Value>;
 }
 /** One choice the inspector can explain. */

@@ -1,9 +1,9 @@
 // What a game doesn't use changes nothing. Rocinante as it was in Tyrell
 // 2.0.0 (frozen in fixtures/) runs two days with a few inputs, a birth, a
 // rewind and a replay, and must come out exactly as 2.0.0 made it: with
-// every module (Athelas, Delos, Voice and Bree on but unused), with the White
-// Dragon's set of modules, and with none. The hashes were recorded with the
-// 2.0.0 build.
+// every module (Athelas, Delos, Voice, Bree and Morgul on but unused), with
+// the White Dragon's set of modules, and with none. The hashes were recorded
+// with the 2.0.0 build.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -37,7 +37,7 @@ const DRAGON = { modules: ['reverie', 'fellowship', 'wormtongue', 'cityspeak', '
 test('a 2.0.0 world with every module runs exactly as it did, the new ones on but unused', () => {
   const { out, w } = run({});
   assert.deepEqual(out, ['75fe5159', 'd3243f2c', '400a49d3', 'd3243f2c']);
-  for (const m of ['athelas', 'delos', 'voice', 'bree']) assert.equal(w.s.mod[m], undefined, `${m} keeps nothing`);
+  for (const m of ['athelas', 'delos', 'voice', 'bree', 'morgul']) assert.equal(w.s.mod[m], undefined, `${m} keeps nothing`);
   assert.equal(w.s.mod.ceres.prod, undefined, 'Ceres counts no production');
   for (const p of Object.values(w.s.people)) for (const k of ['skills', 'tol', 'wishes', 'granted']) assert.equal(p[k], undefined);
 });

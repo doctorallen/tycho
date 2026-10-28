@@ -218,6 +218,8 @@ export class Wormtongue implements Module {
     const w = this.w, rv = w.reverie, c = this.c;
     const crime = this.crimes.get(stim.kind);
     const strength = clamp(stim.strength ?? 1);
+    // how bad it was: the stimulus's own (a harm's), else the crime's
+    const severity = stim.severity !== undefined ? clamp(stim.severity) : crime?.severity ?? 0;
     for (const wid of stim.seenBy || []) {
       const p = w.s.people[wid];
       if (!p || p.status !== 'active' || wid === stim.actor) continue;
@@ -228,7 +230,7 @@ export class Wormtongue implements Module {
       const actor = recognized ? stim.actor : 'someone';
       const key = `did:${actor}:${stim.kind}`;
       rv?.applyBelieve(wid, key, stim.what ?? true, 'saw', null, Math.max(c.sawStrength, strength));
-      rv?.applyRemember(wid, { k: 'saw:' + stim.kind, about: recognized ? stim.actor : undefined, place: stim.place ?? undefined, imp: crime ? c.crimeMemory + crime.severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? ' ' + stim.what : ''}` });
+      rv?.applyRemember(wid, { k: 'saw:' + stim.kind, about: recognized ? stim.actor : undefined, place: stim.place ?? undefined, imp: crime ? c.crimeMemory + severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? ' ' + stim.what : ''}` });
       if (crime && rv) rv.applyFeel(wid, crime.feeling ?? 'witnessed', key);
       w.log('witnessed', wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized });
       w.emit('witnessed', { id: wid, actor, kind: stim.kind, recognized });
@@ -241,7 +243,7 @@ export class Wormtongue implements Module {
         const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * this.knob('reporting', wid));
         if (r.chance(pReport)) {
           const [a, b] = c.reportDelay;
-          w.clock.schedule({ t: w.s.now + r.range(a, b), k: 'module', ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null } });
+          w.clock.schedule({ t: w.s.now + r.range(a, b), k: 'module', ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null, ...(stim.severity !== undefined ? { sev: severity } : {}) } });
         }
       }
     }
@@ -256,13 +258,14 @@ export class Wormtongue implements Module {
     if (!p || p.status !== 'active') return;
     const b = w.reverie?.beliefRecord(wid, `did:${actor}:${kind}`);
     if (!b || b.silenced) return; // paid off, scared off, or forgot
-    this.report(wid, actor, kind, item.data?.what as string | undefined);
+    this.report(wid, actor, kind, item.data?.what as string | undefined, typeof item.data?.sev === 'number' ? item.data.sev : undefined);
   }
 
-  private report(wid: Id, actor: Id, kind: string, what?: string): void {
+  private report(wid: Id, actor: Id, kind: string, what?: string, sev?: number): void {
     const w = this.w, c = this.c;
     const crime = this.crimes.get(kind);
     if (!crime) return;
+    const severity = sev ?? crime.severity;
     let to = crime.reportTo;
     if (!to && w.fellowship) for (const g of w.fellowship.groups.values()) if (g.kind === 'authority') { to = g.id; break; }
     const rep: Report = { t: w.s.now, witness: wid, actor, kind };
@@ -270,10 +273,10 @@ export class Wormtongue implements Module {
     if (to) rep.to = to;
     this.st.reports.push(rep);
     if (this.st.reports.length > 200) this.st.reports.shift();
-    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * c.heatPerSeverity) * this.knob('heat', actor), 4);
+    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? severity * c.heatPerSeverity) * this.knob('heat', actor), 4);
     if (w.fellowship) {
-      if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * c.infamyAuthority);
-      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * c.infamyGroups);
+      if (to) w.fellowship.applyStanding(to, actor, 0, severity * c.infamyAuthority);
+      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, severity * c.infamyGroups);
     }
     // the authority now knows too
     if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, 'told', wid, c.toldAuthority, 1);

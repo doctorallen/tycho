@@ -5,8 +5,8 @@
 //
 // The setup file exports a function (Tyrell, { seed, ...options }) => world,
 // as examples/rocinante.js does. `--with bree` passes { bree: true } (any
-// option, as many as you like); `--check interactions` adds a check to the
-// usual ones.
+// option, as many as you like: `--with harm`); `--check interactions` adds a
+// check to the usual ones (`--check harm`).
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -40,6 +40,11 @@ if (ix) {
   console.log(`interactions: ${ix.exchanges} exchanges, ${ix.turns} turns; ` + Object.entries(ix.outcomes).map(([k, v]) => `${k} ${v}`).join(', '));
   console.log(`  ${ix.escalations} escalated, ${ix.walkedOff} walked off, ${ix.steppedIn} stepped in; ${ix.grudges} grudges and ${ix.feuds} feuds at the end`);
   console.log('  most: ' + Object.entries(ix.kinds).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(', '));
+}
+const hm = report.stats.harm;
+if (hm) {
+  console.log(`harm: ${hm.harms} harms (` + Object.entries(hm.via).map(([k, v]) => `${k} ${v}`).join(', ') + `); ${hm.fights} fights, ${hm.blows} blows; ${hm.downs} down, ${hm.killed} killed`);
+  console.log(`  ${hm.set} traps set, ${hm.sprung} sprung; ${hm.tainted} taints, ${hm.doses} doses eaten; ${hm.suspicions} suspicions (${hm.right} right, ${hm.wrong} wrong); ${hm.tended} tendings; ${hm.wounds} wounds open at the end`);
 }
 let failed = !report.passed;
 if (opt('baseline')) {

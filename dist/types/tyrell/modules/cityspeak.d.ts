@@ -17,6 +17,8 @@ export interface LineDef {
     topic?: string;
     /** Among equally specific lines, how likely. Default 1. */
     weight?: number;
+    /** Counts this much more toward how specific it is (a line that should win among its equals). Default 0. */
+    pri?: number;
     /** Minutes before the same speaker says it again. */
     cooldown?: number;
     /** Said only once per speaker. */
@@ -69,6 +71,19 @@ export interface Said {
     topic?: string;
     reply?: string;
 }
+/** How choose() picks a line. */
+export interface ChooseOpts {
+    /** The listener (the target in lines' conditions). */
+    to?: Id;
+    topic?: string;
+    /** Leave out lines with no topic (with a topic given, they'd otherwise count as its least specific lines). */
+    exact?: boolean;
+    /** Pass over lines by key (said lately), unless there's nothing else. */
+    avoid?: (key: string) => boolean;
+    /** Varies the draw among equally specific lines. */
+    salt?: Array<string | number>;
+    skip?: (l: LineDef, i: number) => boolean;
+}
 interface State {
     /** By speaker, by line key (or index, for a line without one): when they last said it. */
     said: Record<Id, Record<string, number>>;
@@ -107,13 +122,14 @@ export declare class Cityspeak implements Module {
     private hasSaid;
     /**
      * What a person would say now, without saying it (nothing changes). The
-     * most specific matching line wins; ties go by weight.
+     * most specific matching line wins; ties go by weight. Options: `to` (the
+     * listener), `topic`; `exact` leaves out lines without a topic; `avoid`
+     * passes over lines by key (said lately) unless every line at the most
+     * specific level is avoided, when the most specific fresh line at any
+     * level wins, and only then a repeat; `salt` varies the draw among equals
+     * (Voice passes the talk's counter).
      */
-    choose(who: Id, opts?: {
-        to?: Id;
-        topic?: string;
-        skip?: (l: LineDef, i: number) => boolean;
-    }): Said | null;
+    choose(who: Id, opts?: ChooseOpts): Said | null;
     /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
     private pick;
     private pickNow;

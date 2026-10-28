@@ -2949,6 +2949,10 @@ var World = class {
   get delos() {
     return this.modules.get("delos");
   }
+  /** Branching conversations: threads of beats, answers with approaches, promises. */
+  get voice() {
+    return this.modules.get("voice");
+  }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
   // -------------------------------------------------------------------------
@@ -3480,7 +3484,7 @@ var World = class {
     });
   }
 };
-var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict"]);
+var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer"]);
 var MIGRATIONS = {
   // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
   // old records are kept apart (it takes the line definitions to read them).
@@ -4676,7 +4680,12 @@ var Cityspeak = class {
   }
   /**
    * What a person would say now, without saying it (nothing changes). The
-   * most specific matching line wins; ties go by weight.
+   * most specific matching line wins; ties go by weight. Options: `to` (the
+   * listener), `topic`; `exact` leaves out lines without a topic; `avoid`
+   * passes over lines by key (said lately) unless every line at the most
+   * specific level is avoided, when the most specific fresh line at any
+   * level wins, and only then a repeat; `salt` varies the draw among equals
+   * (Voice passes the talk's counter).
    */
   choose(who, opts = {}) {
     return this.pick(who, opts)?.said ?? null;
@@ -4693,11 +4702,13 @@ var Cityspeak = class {
     const now2 = w.s.now;
     let best = [];
     let bestSpec = -1;
+    const all = opts.avoid ? [] : null;
     this.lines.forEach((l, i) => {
       if (opts.topic !== void 0 && l.topic !== void 0 && l.topic !== opts.topic) return;
       if (opts.topic === void 0 && l.topic !== void 0) return;
+      if (opts.exact && l.topic === void 0) return;
       if (opts.skip?.(l, i)) return;
-      let spec = l.topic !== void 0 ? 1 : 0;
+      let spec = (l.topic !== void 0 ? 1 : 0) + (l.pri ?? 0);
       if (l.who !== void 0) {
         if (typeof l.who === "string") {
           if (!this.whoMatches(p, l.who)) return;
@@ -4721,13 +4732,25 @@ var Cityspeak = class {
       const last = this.lastSaid(who, l, i);
       if (l.once && last !== void 0) return;
       if (l.cooldown && last !== void 0 && now2 - last < l.cooldown) return;
+      if (all) all.push({ l, i, spec });
       if (spec > bestSpec) {
         bestSpec = spec;
         best = [{ l, i }];
       } else if (spec === bestSpec) best.push({ l, i });
     });
     if (!best.length) return null;
-    const r = w.worldStreamPeek(who, "line", now2);
+    if (all && opts.avoid) {
+      const avoid = opts.avoid;
+      const levels = [...new Set(all.map((x) => x.spec))].sort((a, b) => b - a);
+      for (const lv of levels) {
+        const fresh = all.filter((x) => x.spec === lv && !avoid(lineKey(x.l, x.i)));
+        if (fresh.length) {
+          best = fresh.map(({ l, i }) => ({ l, i }));
+          break;
+        }
+      }
+    }
+    const r = w.worldStreamPeek(who, "line", now2, ...opts.salt || []);
     const pick = r.weighted(best, (x) => x.l.weight ?? 1) || best[0];
     const out = { who, key: pick.l.key };
     if (pick.l.text !== void 0) out.text = Array.isArray(pick.l.text) ? r.pick(pick.l.text) : pick.l.text;
@@ -6659,6 +6682,567 @@ var Delos = class {
   }
 };
 
+// tyrell/src/modules/voice.ts
+var DEFAULT_VOICE = {
+  offers: 3,
+  choices: 3,
+  theirs: 0.3,
+  patience: 8,
+  fresh: 7 * DAY,
+  strong: 2,
+  onWell: [],
+  onBadly: [],
+  greet: "greet",
+  bye: "bye",
+  close: "close",
+  react: "react",
+  deed: null
+};
+var bondKey = (who, by) => who + ">" + by;
+var Voice = class {
+  constructor(cfg = {}) {
+    this.name = "voice";
+    this.approaches = /* @__PURE__ */ new Map();
+    this.threads = /* @__PURE__ */ new Map();
+    this.promiseDefs = /* @__PURE__ */ new Map();
+    /** The warmth a talk starts with (a definition: set it on every start). Default: regard times 3, rounded, -1 to 3 (with Fellowship), else 0. */
+    this.warmth = (ctx) => {
+      const f = ctx.world.fellowship;
+      return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * 3, -1, 3)) : 0;
+    };
+    /** How many beats they'll talk for (a definition). Default config.patience. */
+    this.patience = () => this.config.patience;
+    /** The talk being worked on inside an input (effects add their notes to it). */
+    this.live = null;
+    this.config = { ...DEFAULT_VOICE, ...cfg };
+  }
+  get st() {
+    return this.w.s.mod.voice;
+  }
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).voice || (_a.voice = { talks: {}, bonds: {}, promises: [] });
+  }
+  bond(who, by) {
+    var _a, _b;
+    return (_a = this.mut().bonds)[_b = bondKey(who, by)] || (_a[_b] = { talks: 0, seen: {} });
+  }
+  peekBond(who, by) {
+    return this.st?.bonds[bondKey(who, by)];
+  }
+  attach(w) {
+    this.w = w;
+    const L = w.lang;
+    const by = (c) => c.target ?? null;
+    const talkOf = (c) => {
+      const t = by(c);
+      const talk = t ? this.st?.talks[t] : void 0;
+      return talk && c.person && talk.who === c.person.id ? talk : void 0;
+    };
+    L.term("talks", (c) => c.person && by(c) ? this.peekBond(c.person.id, by(c))?.talks ?? 0 : 0);
+    L.term("familiar", (c) => c.person && by(c) ? this.familiarity(c.person.id, by(c)) : 0);
+    L.term("talking", (c, a) => {
+      if (!c.person) return false;
+      const talks = this.st?.talks || {};
+      return a ? talks[a]?.who === c.person.id : Object.values(talks).some((t) => t.who === c.person?.id);
+    });
+    L.term("warmth", (c) => talkOf(c)?.warmth ?? 0);
+    L.term("patience", (c) => talkOf(c)?.patience ?? 0);
+    L.term("landed", (c) => talkOf(c)?.landed ?? null);
+    L.term("learned", (c, a) => c.person && by(c) ? this.peekBond(c.person.id, by(c))?.known?.[a] ?? false : false);
+    L.term("sore", (c, a) => c.person && by(c) ? (this.peekBond(c.person.id, by(c))?.sore?.[a] ?? -1) > w.s.now : false);
+    L.term("talked", (c, a) => {
+      if (!c.person || !by(c)) return a ? false : null;
+      const b = this.peekBond(c.person.id, by(c));
+      if (a) return b?.seen[a] !== void 0;
+      return b?.last !== void 0 ? round(w.s.now - b.last, 2) : null;
+    });
+    L.term("promise", (c, a) => {
+      if (!c.person) return null;
+      const list = (this.st?.promises || []).filter((x) => x.who === c.person?.id && x.id === a && (!by(c) || x.by === by(c)));
+      return list.length ? list[list.length - 1].state : null;
+    });
+    L.effect("learn", (c, a, _op, v) => {
+      if (c.person && c.target) this.applyLearn(c.person.id, c.target, a, v === null ? true : v);
+    });
+    L.effect("promise", (c, a, _op, v) => {
+      if (c.person && c.target) this.applyPromise(c.person.id, c.target, a, v === null || v === true ? void 0 : Number(v));
+    });
+    L.effect("sore", (c, a, _op, v) => {
+      if (!c.person || !c.target) return;
+      const talk = this.st?.talks[c.target];
+      const thread = a || talk?.thread?.id;
+      if (!thread) return;
+      const b = this.bond(c.person.id, c.target);
+      (b.sore || (b.sore = {}))[thread] = this.w.s.now + (v === null || v === true ? 2 : Number(v)) * DAY;
+    });
+    L.effect("warmth", (c, _a, op, v) => {
+      const talk = c.target ? this.st?.talks[c.target] : void 0;
+      if (!talk || !c.person || talk.who !== c.person.id) return;
+      const n = Number(v);
+      talk.warmth = round(op === "+=" ? talk.warmth + n : op === "-=" ? talk.warmth - n : op === "*=" ? talk.warmth * n : n, 4);
+    });
+    w.defineInput("voice.start", (who, by2) => this.applyStart(who, by2));
+    w.defineInput("voice.answer", (by2, i, id) => this.applyAnswer(by2, i, id));
+    w.defineInput("voice.end", (by2) => this.applyEnd(by2, "left"));
+  }
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+  approach(def) {
+    this.approaches.set(def.id, def);
+    return this;
+  }
+  thread(def) {
+    this.threads.set(def.id, def);
+    return this;
+  }
+  promise(def) {
+    this.promiseDefs.set(def.id, def);
+    return this;
+  }
+  // -------------------------------------------------------------------------
+  // The game's side
+  // -------------------------------------------------------------------------
+  /** Starts a talk with someone (from the game: recorded). Returns what to show, or null if they can't talk. */
+  start(who, by = "player") {
+    return this.w.input("voice.start", [who, by]) ?? null;
+  }
+  /** Chooses one of the talk's answers by its index in current().answers (recorded). Returns what to show next. */
+  answer(i, by = "player") {
+    const opt = this.st?.talks[by]?.options[i];
+    return this.w.input("voice.answer", [by, i, opt?.id ?? null]) ?? null;
+  }
+  /** Ends a talk without a goodbye (walked off; recorded). */
+  end(by = "player") {
+    this.w.input("voice.end", [by]);
+  }
+  /** The talk in progress, as the game shows it, or null. */
+  current(by = "player") {
+    const talk = this.st?.talks[by];
+    return talk ? this.view(talk, false) : null;
+  }
+  /** How well someone knows the speaker: half a point a talk, a point for each thing learned about them. */
+  familiarity(who, by = "player") {
+    const b = this.peekBond(who, by);
+    return b ? round(b.talks * 0.5 + Object.keys(b.known || {}).length, 2) : 0;
+  }
+  /** What the speaker has learned about someone. */
+  learned(who, by = "player") {
+    return { ...this.peekBond(who, by)?.known || {} };
+  }
+  /** Talks so far between them, and when the last ended. */
+  history(who, by = "player") {
+    const b = this.peekBond(who, by);
+    return { talks: b?.talks ?? 0, last: b?.last ?? null, lastThread: b?.lastThread ?? null, seen: { ...b?.seen || {} } };
+  }
+  /** Promises made to someone (or everyone), newest last. */
+  promises(who) {
+    return (this.st?.promises || []).filter((p) => !who || p.who === who).map((p) => ({ ...p }));
+  }
+  // -------------------------------------------------------------------------
+  // Running a talk (inside inputs)
+  // -------------------------------------------------------------------------
+  ctx(talk) {
+    return this.w.ctx(this.w.s.people[talk.who], { target: talk.by });
+  }
+  /** A stream of this talk's own: the same talk draws the same on a replay. */
+  stream(talk) {
+    return new Stream(this.w.s.seed, "voice", talk.who, talk.by, talk.t, talk.n++);
+  }
+  applyStart(who, by) {
+    const w = this.w;
+    const p = w.s.people[who];
+    if (!p || p.status !== "active" || who === by) return null;
+    const st = this.mut();
+    const old = st.talks[by];
+    if (old && old.who === who) return this.view(old, false);
+    if (old) this.applyEnd(by, "left");
+    const talk = { who, by, t: w.s.now, n: 0, warmth: 0, patience: 0, done: [], said: [], lines: [], options: [] };
+    const ctx = this.ctx(talk);
+    talk.warmth = round(Number(this.warmth(ctx)) || 0, 4);
+    talk.patience = Math.max(1, Math.round(Number(this.patience(ctx)) || this.config.patience));
+    st.talks[by] = talk;
+    this.live = talk;
+    try {
+      w.log("talk", who, { by });
+      w.emit("voice:start", { who, by });
+      this.say(talk, "them", this.config.greet);
+      if (!this.theirTurn(talk)) this.refresh(talk);
+    } finally {
+      this.live = null;
+    }
+    return this.view(talk, false);
+  }
+  applyAnswer(by, i, id) {
+    const talk = this.st?.talks[by];
+    if (!talk) return null;
+    const opt = (id !== null ? talk.options.find((o) => o.id === id) : void 0) ?? talk.options[i];
+    if (!opt || !opt.ok) return this.view(talk, false);
+    talk.lines = [];
+    this.live = talk;
+    try {
+      if (opt.kind === "bye") return this.bye(talk);
+      if (opt.kind === "drop") this.finishThread(talk, false);
+      else if (opt.kind === "thread") {
+        const def = this.threads.get(opt.id);
+        if (def) this.enter(talk, def, false);
+      } else if (opt.kind === "answer") {
+        const where = this.chosen(talk, opt);
+        if (where === "bye") return this.bye(talk);
+      }
+      if (!this.st?.talks[by]) return this.view(talk, true);
+      if (!talk.thread && !talk.over && this.theirTurn(talk)) return this.view(talk, false);
+      this.refresh(talk);
+    } finally {
+      this.live = null;
+    }
+    return this.view(talk, false);
+  }
+  /** An answer is chosen: said, its approach lands, its effects, and where it leads. Returns where. */
+  chosen(talk, opt) {
+    const def = talk.thread ? this.threads.get(talk.thread.id) : void 0;
+    const beat = def && talk.thread ? def.beats[talk.thread.beat] : void 0;
+    const a = beat?.answers?.[Number(opt.id.slice(1))];
+    if (!def || !a) {
+      this.finishThread(talk, false);
+      return "end";
+    }
+    this.say(talk, "you", a.say, true);
+    if (a.approach) this.land(talk, a.approach);
+    const ctx = this.ctx(talk);
+    if (a.then) this.w.lang.applyAll(a.then, ctx);
+    let to = "end";
+    if (typeof a.to === "string") to = a.to;
+    else if (Array.isArray(a.to)) {
+      const pick = a.to.find((x) => (!x.if || this.w.lang.all(x.if, ctx)) && (!x.landed || x.landed === talk.landed) && (x.warmth === void 0 || talk.warmth >= x.warmth));
+      to = pick?.to ?? a.to[a.to.length - 1]?.to ?? "end";
+    }
+    if (to === "bye") return "bye";
+    if (to === "end" || !def.beats[to]) this.finishThread(talk, true);
+    else this.runBeat(talk, to);
+    return to;
+  }
+  /** Starts on a subject: the speaker opens it (unless it's theirs), then its first beat. */
+  enter(talk, def, theirs) {
+    const ctx = this.ctx(talk);
+    const label = typeof def.label === "function" ? def.label(ctx) : def.label ?? def.id;
+    talk.thread = { id: def.id, beat: def.start ?? "start", label };
+    if (theirs) talk.thread.theirs = true;
+    talk.done.push(def.id);
+    if (!theirs) {
+      const open = typeof def.open === "string" ? def.open : def.open ? def.approach && def.open[def.approach] || def.open[Object.keys(def.open)[0]] : label;
+      if (open) this.say(talk, "you", open, true);
+      if (def.approach) this.land(talk, def.approach);
+    }
+    this.runBeat(talk, def.start ?? "start");
+  }
+  runBeat(talk, name) {
+    const def = talk.thread ? this.threads.get(talk.thread.id) : void 0;
+    const beat = def?.beats[name];
+    if (!def || !beat || !talk.thread) {
+      this.finishThread(talk, true);
+      return;
+    }
+    talk.thread.beat = name;
+    talk.patience--;
+    if (beat.then) this.w.lang.applyAll(beat.then, this.ctx(talk));
+    const who = beat.who ?? "them";
+    if (beat.line) this.say(talk, who, beat.line, false, beat.text);
+    else if (beat.text !== void 0) this.sayText(talk, who, beat.text);
+    if (beat.end || !beat.answers?.length) this.finishThread(talk, true);
+  }
+  /** A subject is done: talked through (its effects run) or let lie. */
+  finishThread(talk, reached) {
+    const th = talk.thread;
+    if (!th) return;
+    const def = this.threads.get(th.id);
+    const b = this.bond(talk.who, talk.by);
+    b.seen[th.id] = this.w.s.now;
+    b.lastThread = th.id;
+    talk.thread = void 0;
+    if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
+    if (talk.patience <= 0 && !talk.over) {
+      talk.over = true;
+      this.say(talk, "them", this.config.close);
+    }
+  }
+  /** How an approach lands: added to the warmth, and remembered for the lines and answers that follow. */
+  land(talk, id) {
+    const def = this.approaches.get(id);
+    if (!def) return 0;
+    const ctx = this.ctx(talk);
+    let d = def.base ?? 0;
+    if (typeof def.lands === "function") d += Number(def.lands(ctx)) || 0;
+    else for (const r of def.lands || []) if (!r.if || this.w.lang.all(r.if, ctx)) d += r.by;
+    d = round(d, 4);
+    talk.warmth = round(talk.warmth + d, 4);
+    talk.landed = d > 0 ? "well" : d < 0 ? "badly" : "even";
+    if (Math.abs(d) >= this.config.strong) {
+      this.w.lang.applyAll(d > 0 ? this.config.onWell : this.config.onBadly, ctx);
+      const how = d > 0 ? "well" : "badly";
+      if (!this.say(talk, "them", `${this.config.react}.${id}.${how}`, false, void 0, true)) this.say(talk, "them", `${this.config.react}.${how}`, false, void 0, true);
+    }
+    return d;
+  }
+  /** Now and then they raise something of their own. Returns whether they did. */
+  theirTurn(talk) {
+    if (talk.over || talk.thread) return false;
+    const w = this.w, now2 = w.s.now;
+    const b = this.peekBond(talk.who, talk.by);
+    const ctx = this.ctx(talk);
+    const cands = [...this.threads.values()].filter((def2) => {
+      if (!def2.theirs || talk.done.includes(def2.id)) return false;
+      const seen = b?.seen[def2.id];
+      if (seen !== void 0 && now2 - seen < (def2.cooldown ?? 3 * DAY)) return false;
+      return !def2.if || w.peek(() => w.lang.all(def2.if, ctx));
+    }).sort((x, y) => x.id < y.id ? -1 : 1);
+    if (!cands.length) return false;
+    const r = this.stream(talk);
+    if (!r.chance(this.config.theirs)) return false;
+    const def = r.weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
+    if (!def) return false;
+    this.enter(talk, def, true);
+    this.refresh(talk);
+    return true;
+  }
+  weightOf(def, ctx) {
+    return typeof def.weight === "function" ? Number(this.w.peek(() => def.weight(ctx))) || 0 : def.weight ?? 1;
+  }
+  /** The subjects worth raising now, best first. */
+  salient(talk) {
+    const w = this.w, now2 = w.s.now;
+    const b = this.peekBond(talk.who, talk.by);
+    const ctx = this.ctx(talk);
+    const scored = [];
+    for (const def of this.threads.values()) {
+      if (def.theirs || talk.done.includes(def.id)) continue;
+      if (def.if && !w.lang.all(def.if, ctx)) continue;
+      const seen = b?.seen[def.id];
+      const fresh = seen === void 0 ? 1 : 1 - Math.exp(-(now2 - seen) / Math.max(1, def.cooldown ?? 3 * DAY));
+      let s = this.weightOf(def, ctx) * fresh;
+      if ((b?.sore?.[def.id] ?? -1) > now2) s *= 0.1;
+      if (def.reveals && b?.known?.[def.reveals] === void 0) s *= 1.5;
+      if (s < 0.05) continue;
+      s += w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id).next() * 0.2;
+      scored.push([s, def]);
+    }
+    return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, this.config.offers).map(([, d]) => d);
+  }
+  /** Works out what can be said now (kept with the talk, so a replay offers the same). */
+  refresh(talk) {
+    const w = this.w;
+    w.peek(() => {
+      const out = [];
+      const ctx = this.ctx(talk);
+      if (talk.over) {
+        talk.options = [{ kind: "bye", id: "bye", ok: true }];
+        return;
+      }
+      if (talk.thread) {
+        const beat = this.threads.get(talk.thread.id)?.beats[talk.thread.beat];
+        (beat?.answers || []).forEach((a, i) => {
+          if (out.length >= this.config.choices) return;
+          const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === void 0 || talk.warmth >= a.warmth);
+          if (!ok && !a.soft) return;
+          if (ok && !this.isTopic(talk.by, a.say) && talk.said.includes(a.say)) return;
+          const o = { kind: "answer", id: "a" + i, ok, say: a.say };
+          if (a.label) o.label = a.label;
+          if (a.approach) o.approach = a.approach;
+          out.push(o);
+        });
+        out.push({ kind: "drop", id: "drop", ok: true });
+      } else {
+        for (const def of this.salient(talk)) {
+          const o = { kind: "thread", id: def.id, ok: true, label: typeof def.label === "function" ? def.label(ctx) : def.label ?? def.id };
+          if (def.approach) o.approach = def.approach;
+          out.push(o);
+        }
+      }
+      out.push({ kind: "bye", id: "bye", ok: true });
+      talk.options = out;
+    });
+  }
+  bye(talk) {
+    this.say(talk, "them", this.config.bye);
+    const view = this.view(talk, true);
+    this.applyEnd(talk.by, "bye");
+    return view;
+  }
+  /** Ends a talk: what it leaves (a talk counted, when, a deed). */
+  applyEnd(by, why) {
+    const w = this.w;
+    const st = this.st;
+    const talk = st?.talks[by];
+    if (!st || !talk) return;
+    if (talk.thread) this.finishThread(talk, false);
+    delete st.talks[by];
+    const b = this.bond(talk.who, by);
+    b.talks++;
+    b.last = w.s.now;
+    w.log("talked", talk.who, { by, threads: talk.done.slice(), why });
+    w.emit("voice:end", { who: talk.who, by, threads: talk.done.slice(), why });
+    const deed = this.config.deed;
+    if (deed) {
+      const data = { for: talk.who };
+      w.log("did", by, { verb: deed, for: talk.who });
+      for (const m of w.hooks) m.did?.(by, deed, data);
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Words
+  // -------------------------------------------------------------------------
+  /** Does the speaker have lines on this topic (so it's a topic, not words)? */
+  isTopic(speaker, s) {
+    const cs = this.w.cityspeak;
+    return !!cs && !!this.w.s.people[speaker] && cs.lines.some((l) => l.topic === s);
+  }
+  /**
+   * Says something in the talk: a line on a topic, chosen by Cityspeak for
+   * the speaker (passing over what they've said to this listener lately), or
+   * the words given. Returns whether anything was said.
+   */
+  say(talk, who, topicOrWords, words = false, fallback, onlyLine = false) {
+    var _a;
+    const w = this.w;
+    const speaker = who === "them" ? talk.who : who === "you" ? talk.by : null;
+    const listener = who === "them" ? talk.by : talk.who;
+    const cs = w.cityspeak;
+    if (speaker && cs && w.s.people[speaker] && (!words || this.isTopic(speaker, topicOrWords))) {
+      const b = this.peekBond(talk.who, talk.by);
+      const now2 = w.s.now;
+      const said = cs.choose(speaker, {
+        to: listener,
+        topic: topicOrWords,
+        exact: true,
+        salt: [talk.t, talk.n++],
+        avoid: (key2) => talk.said.includes(key2) || b?.said?.[key2] !== void 0 && now2 - b.said[key2] < this.config.fresh
+      });
+      if (said) {
+        const line = { who, key: said.key };
+        if (said.text !== void 0) line.text = said.text;
+        talk.lines.push(line);
+        talk.said.push(said.key);
+        if (who === "them") ((_a = this.bond(talk.who, talk.by)).said || (_a.said = {}))[said.key] = now2;
+        return true;
+      }
+    }
+    if (onlyLine) return false;
+    if (fallback !== void 0) return this.sayText(talk, who, fallback);
+    if (words) {
+      talk.lines.push({ who, text: topicOrWords });
+      talk.said.push(topicOrWords);
+      return true;
+    }
+    if (topicOrWords) {
+      talk.lines.push({ who, key: topicOrWords });
+      return true;
+    }
+    return false;
+  }
+  sayText(talk, who, text) {
+    const list = (Array.isArray(text) ? text : [text]).filter((t2) => t2);
+    if (!list.length) return false;
+    const fresh = list.filter((t2) => !talk.said.includes(t2));
+    const t = this.stream(talk).pick(fresh.length ? fresh : list);
+    talk.lines.push({ who, text: t });
+    talk.said.push(t);
+    return true;
+  }
+  view(talk, ended) {
+    return {
+      who: talk.who,
+      by: talk.by,
+      thread: talk.thread ? { id: talk.thread.id, label: talk.thread.label, beat: talk.thread.beat, theirs: !!talk.thread.theirs } : null,
+      lines: talk.lines.map((l) => ({ ...l })),
+      answers: ended ? [] : talk.options.map((o, i) => ({ ...o, i })),
+      warmth: talk.warmth,
+      patience: talk.patience,
+      landed: talk.landed ?? null,
+      over: !!talk.over,
+      ended
+    };
+  }
+  // -------------------------------------------------------------------------
+  // What a talk leaves: things learned, sore subjects, promises
+  // -------------------------------------------------------------------------
+  /** The speaker learns something about someone (inside the simulation). */
+  applyLearn(who, by, key2, value) {
+    const b = this.bond(who, by);
+    const had = b.known?.[key2] !== void 0;
+    (b.known || (b.known = {}))[key2] = value;
+    const talk = this.live && this.live.who === who && this.live.by === by ? this.live : this.st?.talks[by]?.who === who ? this.st?.talks[by] : void 0;
+    if (talk && !had) talk.lines.push({ who: "note", learned: key2, value });
+    this.w.log("learned", who, { by, key: key2 });
+  }
+  /** A promise is made to someone (inside the simulation). */
+  applyPromise(who, by, id, days) {
+    const st = this.mut();
+    if (st.promises.some((p) => p.who === who && p.by === by && p.id === id && p.state === "open")) return;
+    const def = this.promiseDefs.get(id);
+    const now2 = this.w.s.now;
+    st.promises.push({ who, by, id, t: now2, due: now2 + (days ?? def?.days ?? 3) * DAY, state: "open" });
+    this.w.log("promised", who, { by, promise: id });
+    this.w.emit("promise", { who, by, id, state: "open" });
+  }
+  settle(p, state) {
+    const w = this.w;
+    p.state = state;
+    p.settled = w.s.now;
+    w.log("promise", p.who, { by: p.by, promise: p.id, state });
+    w.emit("promise", { who: p.who, by: p.by, id: p.id, state });
+    const def = this.promiseDefs.get(p.id);
+    const fx = state === "kept" ? def?.onKept : state === "broken" ? def?.onBroken : def?.onLapsed;
+    const person = w.s.people[p.who];
+    if (fx && person) w.lang.applyAll(fx, w.ctx(person, { target: p.by }));
+  }
+  /** Each hour, open promises are checked: kept, broken, or come due. */
+  hour() {
+    const st = this.st;
+    if (!st?.promises.length) return;
+    const w = this.w, now2 = w.s.now;
+    for (const p of st.promises) {
+      if (p.state !== "open") continue;
+      const person = w.s.people[p.who];
+      const def = this.promiseDefs.get(p.id);
+      if (person && def) {
+        const ctx = w.ctx(person, { target: p.by });
+        if (def.kept?.length && w.lang.all(def.kept, ctx)) {
+          this.settle(p, "kept");
+          continue;
+        }
+        if (def.broken?.length && w.lang.all(def.broken, ctx)) {
+          this.settle(p, "broken");
+          continue;
+        }
+      }
+      if (now2 >= p.due) this.settle(p, def?.lapse ?? "lapsed");
+    }
+  }
+  /** Each day, old marks are let go: lines said long ago, promises long settled. */
+  day() {
+    const st = this.st;
+    if (!st) return;
+    const now2 = this.w.s.now;
+    for (const k of Object.keys(st.bonds)) {
+      const said = st.bonds[k].said;
+      if (said) {
+        for (const key2 of Object.keys(said)) if (now2 - said[key2] > 2 * this.config.fresh) delete said[key2];
+      }
+      const sore = st.bonds[k].sore;
+      if (sore) {
+        for (const t of Object.keys(sore)) if (sore[t] <= now2) delete sore[t];
+      }
+    }
+    st.promises = st.promises.filter((p) => p.state === "open" || now2 - (p.settled ?? now2) < 30 * DAY);
+  }
+  removed(p) {
+    const st = this.st;
+    if (!st) return;
+    for (const by of Object.keys(st.talks)) if (st.talks[by].who === p.id || by === p.id) this.applyEnd(by, "gone");
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
   "nobody-starves": {
@@ -6845,7 +7429,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -6860,7 +7444,8 @@ function create(opts = {}) {
     cradle: () => new Cradle(cfg.cradle),
     joi: () => new Joi(),
     athelas: () => new Athelas(),
-    delos: () => new Delos(cfg.delos)
+    delos: () => new Delos(cfg.delos),
+    voice: () => new Voice(cfg.voice)
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -6888,6 +7473,7 @@ export {
   SCHEMA,
   Stream,
   VERSION,
+  Voice,
   VoightKampff,
   World,
   Wormtongue,

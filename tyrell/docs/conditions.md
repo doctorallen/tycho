@@ -78,6 +78,9 @@ Conditions are compiled once and cached, so using them is cheap.
 | `StoryletDef.when` (Gaff) | No person: world terms only |
 | `CoursePhase.scale`, `then` (Athelas) | The person |
 | `CourseDef.contagion.resist` (Athelas) | The one who might catch it; `target` is the carrier |
+| `ThreadDef.if`, `weight`, `label`; `AnswerDef.if`, `to[].if`; beats', answers' and threads' `then` (Voice) | The person talked to; `target` is the speaker |
+| `ApproachDef.lands` (Voice) | The listener; `target` is the speaker |
+| `PromiseDef.kept`, `broken`, `onKept`... (Voice) | The one promised to; `target` is the one who promised |
 | `Consideration.input` | A term (not a condition), read in the option's context |
 
 ## Core terms
@@ -224,6 +227,21 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `gene:<id>` | What the gene shows for the person (`null` without a genome) |
 | `carries:<gene>.<allele>` | They carry the allele, showing or not |
 
+### Voice
+
+The person talked to is the person, and the speaker (`'player'`) the target.
+
+| Term | Value |
+|---|---|
+| `talks` | How many talks they've had with the target (counted as each ends) |
+| `familiar` | Half a point a talk, a point for each thing learned |
+| `talking`, `talking:<by>` | The person is in a talk (with anyone, or with that speaker) |
+| `warmth`, `patience`, `landed` | The talk in progress with the target: its warmth, patience left, how the last approach landed (`'well'`, `'badly'`, `'even'`, or `null`) |
+| `learned:<key>` | What the target has learned about them (`false` if nothing) |
+| `sore:<thread>` | The subject is sore just now |
+| `talked:<thread>` | They've talked of it; `talked` alone is minutes since their last talk ended (`null` if never) |
+| `promise:<id>` | The state of the latest promise of that kind to them: `'open'`, `'kept'`, `'broken'`, `'lapsed'`, or `null` |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.
@@ -260,6 +278,10 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
 | `afflict:<course>` | Athelas | Afflicts the person (caught from the context's target, if any) |
 | `cure:<course>`, `cure` | Athelas | Ends the course, or every course |
+| `learn:<key>=v`, `learn:<key>` | Voice | The target (the speaker) learns something about the person (`true` without a value) |
+| `promise:<id>=days`, `promise:<id>` | Voice | A promise to the person, from the target |
+| `sore:<thread>=days`, `sore` | Voice | A subject best left a while (the current one, two days, by default) |
+| `warmth+=n`, `-=`, `=` | Voice | The warmth of the talk in progress |
 
 ## Functions
 

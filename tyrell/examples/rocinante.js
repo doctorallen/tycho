@@ -18,7 +18,7 @@
     modules: opts.modules,
     config: Object.assign({ minutesPerSecond: 1 }, opts.config || {}),
     esper: opts.esper,
-    moduleConfig: { cradle: { autoPair: null } },
+    moduleConfig: { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } },
   });
 
   // ---- needs: 0 is fine, 1 is desperate; rise is per game hour --------------
@@ -207,6 +207,7 @@
   w.deed('fixed', { feeling: 'helped', regard: 0.2, memory: 6, fame: 0.05 });
   w.deed('cheated', { feeling: 'wronged', regard: -0.3, memory: 7, infamy: 0.1 });
   w.deed('paid', { regard: 0.02 });
+  w.deed('talked', { regard: 0.01 });
 
   // ---- Fellowship: groups --------------------------------------------------
   const fs = w.fellowship;
@@ -258,9 +259,50 @@
       { key: 'bar_cheers', topic: 'chat', who: 'job:bartender', when: ['at:bar'], text: 'What\'ll it be?' },
       { key: 'mara_bread', topic: 'greet', who: 'mara', when: ['at:cafe'], text: 'Bread\'s fresh this morning.', cooldown: 6 * HOUR },
     ]);
+    // the words of the player's talks (Voice): a beat names a topic, the most specific line wins
+    cs.addLines([
+      { key: 'how_fine', topic: 'how', text: ['Not bad, thanks.', 'Getting along.'] },
+      { key: 'how_hungry', topic: 'how', when: ['need.hunger>0.6'], text: 'Starving, if I\'m honest.' },
+      { key: 'how_tired', topic: 'how', when: ['need.energy>0.7'], text: 'Dead on my feet.' },
+      { key: 'how_low', topic: 'how', when: ['mood<0.4'], text: 'Could be better.' },
+      { key: 'how_cold', topic: 'how', when: ['under:cold=sniffles'], pri: 1, text: '*sniff* Full of cold.' },
+      { key: 'radio', topic: 'radio', text: 'My radio\'s packed in, and the quiz is on tonight.' },
+      { key: 'radio_thanks', topic: 'radio.thanks', text: 'Would you? You\'re a dear.' },
+      { key: 'radio_tomas', topic: 'radio.tomas', text: 'Tomas? I suppose I could take it to him.' },
+      { key: 'bye_talk', topic: 'bye', text: ['See you around.', 'Take care.'] },
+      { key: 'close_talk', topic: 'close', text: 'Anyway, I should get on.' },
+      { key: 'react_badly', topic: 'react.badly', text: 'Hm.' },
+      { key: 'react_jest_well', topic: 'react.jest.well', text: 'Ha! Cheek.' },
+    ]);
     cs.practice({ id: 'dinner', at: 'cafe', hours: [17, 21], roles: { cook: { job: 'baker', actions: ['bake'] }, diner: { actions: ['eat_cafe', 'chat'] } }, tone: 0.05 });
     cs.practice({ id: 'last_orders', at: 'bar', hours: [0, 1], roles: { drinker: { actions: ['drink'] } }, boost: 1.3 });
     cs.act({ id: 'chat', accept: [{ name: 'regard', input: 'regard', range: [-1, 1], out: [0.2, 1] }], feelings: { refused: 'lonely' }, regard: [0.03, -0.02] });
+  }
+
+  // ---- Voice: the player's talks -----------------------------------------------
+  const vo = w.voice;
+  if (vo) {
+    vo.approach({ id: 'warm', base: 1, lands: [{ if: ['trait.talkative<0.4'], by: -1 }] });
+    vo.approach({ id: 'jest', lands: [{ if: ['trait.courage>0.6'], by: 2 }, { if: ['trait.honesty>0.85'], by: -1 }, { if: ['mood<0.4'], by: -2 }] });
+    vo.thread({
+      id: 'how', label: 'How are you?', weight: 1.2, cooldown: DAY,
+      beats: { start: { line: 'how', answers: [
+        { say: 'Glad to hear it.', approach: 'warm' },
+        { say: 'You look like you need a holiday.', approach: 'jest' },
+      ] } },
+    });
+    vo.thread({
+      id: 'radio', label: 'Is everything all right?', if: ['has:broken_radio'], reveals: 'radio', weight: 1.5,
+      beats: {
+        start: { line: 'radio', then: ['learn:radio=broken'], answers: [
+          { say: 'I could fix it for you.', approach: 'warm', then: ['promise:fix_radio'], to: 'thanks' },
+          { say: 'Tomas fixes radios.', then: ['believe:fixes:tomas=true'], to: 'tomas' },
+        ] },
+        thanks: { line: 'radio.thanks', end: true },
+        tomas: { line: 'radio.tomas', end: true },
+      },
+    });
+    vo.promise({ id: 'fix_radio', label: 'You said you\'d fix my radio', days: 2, kept: ['has:radio'], onKept: ['regard+=0.1', 'feel:helped'], onBroken: ['regard-=0.15'], lapse: 'broken' });
   }
 
   // ---- Gaff: storylets -------------------------------------------------------

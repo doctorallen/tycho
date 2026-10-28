@@ -42,12 +42,13 @@ world.cityspeak.addLines([
 | `to` | none | Conditions about the listener. The speaker is still `person`; the listener is `target` (`'friend'`, `'regard>0.5'`, `'target.is:child'`, `'file:target.fixed>0'`). A line with `to` needs a listener |
 | `topic` | none | The topic it answers: `'greet'`, `'bye'`, `'rumor'`... |
 | `weight` | 1 | Among equally specific lines, how likely |
+| `pri` | 0 | Counts this much more toward how specific it is: a line that should win among its equals |
 | `cooldown` | none | Minutes before the same speaker says it again |
 | `once` | false | Said only once per speaker |
 | `then` | none | Effects when said on purpose (`say`), not when barked |
 | `reply` | none | What the listener answers with: a line key, or `'topic:<x>'` for the listener's best line on that topic |
 
-**The most specific line wins.** Among the lines that match, the one with the most specificity is chosen: +1 for a topic, +2 for a `who` string, +1 per condition in `who`, `when` and `to`. Ties are drawn by `weight` from a stream that changes nothing.
+**The most specific line wins.** Among the lines that match, the one with the most specificity is chosen: +1 for a topic, +2 for a `who` string, +1 per condition in `who`, `when` and `to`, plus its `pri`. Ties are drawn by `weight` from a stream that changes nothing.
 
 **Topics.** Asked with a topic, a line matches if it has that topic or no topic (topical lines win, being more specific). Asked without a topic, only lines without a topic match.
 
@@ -62,7 +63,7 @@ const said = world.cityspeak.say('ruth', { topic: 'greet', to: 'player' });     
 const back = world.cityspeak.answer(said, 'player');                             // the reply, if the line has one
 ```
 
-- `choose(who, { to?, topic? })` returns a `Said` or `null` and changes nothing.
+- `choose(who, { to?, topic?, exact?, avoid?, salt?, skip? })` returns a `Said` or `null` and changes nothing. `exact: true` leaves out lines without a topic. `avoid(key)` passes over lines said lately: the most specific level with a line not avoided wins, and only if every level is avoided is a line said again. `salt` (strings and numbers) varies the draw among equals, for a caller that asks several times in a minute. [Voice](voice.md) chooses its beats' words this way.
 - `say(who, { to?, topic? })` is an input: it chooses, remembers it was said (for `once` and `cooldown`), applies the line's `then` effects (with the speaker as `person` and the listener as `target`), logs `said` and emits `say`. It returns the `Said`, or `null`. It applies at once even inside a listener.
 - An action with `says: '<topic>'` says the person's best line on that topic when it starts, the same way as `say` (to the action's target, if it has one).
 - `answer(said, by)` returns the listener's reply. A `reply` of `'topic:<x>'` chooses the listener's best line on topic `x` (to the first speaker); a reply key returns that line directly, with the first of its texts, without checking its conditions.
@@ -175,7 +176,7 @@ Lines, practices and acts are definitions. Barks' cooldowns live outside the sta
 | `addLines(defs)` | this | Declares several |
 | `practice(def)` | this | Declares a practice |
 | `act(def)` | this | Declares a social act |
-| `choose(who, { to?, topic?, skip? })` | Said or null | What they'd say; changes nothing (`skip(line, index)` can rule lines out) |
+| `choose(who, { to?, topic?, exact?, avoid?, salt?, skip? })` | Said or null | What they'd say; changes nothing (`skip(line, index)` can rule lines out; the rest as above) |
 | `say(who, { to?, topic? })` | Said or null | **Input.** Says it |
 | `answer(said, by)` | Said or null | The reply to a line |
 | `converse(a, b, topic = 'chat')` | array | A bark exchange now: `Said & { after }`. Updates bark cooldowns, which aren't state |

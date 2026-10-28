@@ -23,6 +23,7 @@ import { Cradle } from './modules/cradle';
 import { Joi } from './modules/joi';
 import { Athelas } from './modules/athelas';
 import { Delos } from './modules/delos';
+import { Voice } from './modules/voice';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -31,7 +32,7 @@ import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from '
 export const VERSION = '2.0.0';
 
 /** Every module that ships with Tyrell, by name. */
-export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos'] as const;
+export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
@@ -57,6 +58,7 @@ export function create(opts: CreateOptions = {}): World {
     joi: () => new Joi(),
     athelas: () => new Athelas(),
     delos: () => new Delos(cfg.delos as any),
+    voice: () => new Voice(cfg.voice as any),
   };
   const modules: Module[] = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -70,7 +72,7 @@ export const VoightKampff = { run, compare };
 
 export {
   World, DEFAULT_CONFIG, MIGRATIONS, SCHEMA,
-  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos,
+  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
 export type { SaveData, Module };
@@ -78,7 +80,7 @@ export type * from './core/types';
 export type { FeelingDef, BreakDef, MemoryKindDef, Belief, Memory, PersonFile, Shift, ReverieConfig } from './modules/reverie';
 export type { GroupDef, Sentiment, FellowshipConfig } from './modules/fellowship';
 export type { CrimeDef, Report, Secret, WormtongueConfig } from './modules/wormtongue';
-export type { LineDef, PracticeDef, SocialActDef, Said } from './modules/cityspeak';
+export type { LineDef, PracticeDef, SocialActDef, Said, ChooseOpts } from './modules/cityspeak';
 export type { MentatConfig } from './modules/mentat';
 export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
 export type { GoodDef, ChainDef, GoodReport, ProductionReport } from './modules/ceres';
@@ -86,6 +88,7 @@ export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken } from './modules/joi';
 export type { CourseDef, CoursePhase } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
+export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';

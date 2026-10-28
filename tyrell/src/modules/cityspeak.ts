@@ -32,6 +32,8 @@ export interface LineDef {
   topic?: string;
   /** Among equally specific lines, how likely. Default 1. */
   weight?: number;
+  /** Counts this much more toward how specific it is (a line that should win among its equals). Default 0. */
+  pri?: number;
   /** Minutes before the same speaker says it again. */
   cooldown?: number;
   /** Said only once per speaker. */
@@ -72,6 +74,20 @@ export interface SocialActDef {
 }
 
 export interface Said { who: Id; key: string; text?: string; to?: Id; topic?: string; reply?: string }
+
+/** How choose() picks a line. */
+export interface ChooseOpts {
+  /** The listener (the target in lines' conditions). */
+  to?: Id;
+  topic?: string;
+  /** Leave out lines with no topic (with a topic given, they'd otherwise count as its least specific lines). */
+  exact?: boolean;
+  /** Pass over lines by key (said lately), unless there's nothing else. */
+  avoid?: (key: string) => boolean;
+  /** Varies the draw among equally specific lines. */
+  salt?: Array<string | number>;
+  skip?: (l: LineDef, i: number) => boolean;
+}
 
 interface State {
   /** By speaker, by line key (or index, for a line without one): when they last said it. */
@@ -136,18 +152,23 @@ export class Cityspeak implements Module {
 
   /**
    * What a person would say now, without saying it (nothing changes). The
-   * most specific matching line wins; ties go by weight.
+   * most specific matching line wins; ties go by weight. Options: `to` (the
+   * listener), `topic`; `exact` leaves out lines without a topic; `avoid`
+   * passes over lines by key (said lately) unless every line at the most
+   * specific level is avoided, when the most specific fresh line at any
+   * level wins, and only then a repeat; `salt` varies the draw among equals
+   * (Voice passes the talk's counter).
    */
-  choose(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean } = {}): Said | null {
+  choose(who: Id, opts: ChooseOpts = {}): Said | null {
     return this.pick(who, opts)?.said ?? null;
   }
 
   /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
-  private pick(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
+  private pick(who: Id, opts: ChooseOpts): { said: Said; i: number } | null {
     return this.w.peek(() => this.pickNow(who, opts));
   }
 
-  private pickNow(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
+  private pickNow(who: Id, opts: ChooseOpts): { said: Said; i: number } | null {
     const w = this.w;
     const p = w.s.people[who];
     if (!p) return null;
@@ -155,11 +176,14 @@ export class Cityspeak implements Module {
     const now = w.s.now;
     let best: Array<{ l: LineDef; i: number }> = [];
     let bestSpec = -1;
+    // with `avoid`: every line that fits, by how specific it is
+    const all: Array<{ l: LineDef; i: number; spec: number }> | null = opts.avoid ? [] : null;
     this.lines.forEach((l, i) => {
       if (opts.topic !== undefined && l.topic !== undefined && l.topic !== opts.topic) return;
       if (opts.topic === undefined && l.topic !== undefined) return;
+      if (opts.exact && l.topic === undefined) return;
       if (opts.skip?.(l, i)) return;
-      let spec = l.topic !== undefined ? 1 : 0;
+      let spec = (l.topic !== undefined ? 1 : 0) + (l.pri ?? 0);
       if (l.who !== undefined) {
         if (typeof l.who === 'string') {
           if (!this.whoMatches(p, l.who)) return;
@@ -180,10 +204,20 @@ export class Cityspeak implements Module {
       const last = this.lastSaid(who, l, i);
       if (l.once && last !== undefined) return;
       if (l.cooldown && last !== undefined && now - last < l.cooldown) return;
+      if (all) all.push({ l, i, spec });
       if (spec > bestSpec) { bestSpec = spec; best = [{ l, i }]; } else if (spec === bestSpec) best.push({ l, i });
     });
     if (!best.length) return null;
-    const r = w.worldStreamPeek(who, 'line', now);
+    if (all && opts.avoid) {
+      // the most specific level with a line not avoided; else the most specific lines, said again
+      const avoid = opts.avoid;
+      const levels = [...new Set(all.map((x) => x.spec))].sort((a, b) => b - a);
+      for (const lv of levels) {
+        const fresh = all.filter((x) => x.spec === lv && !avoid(lineKey(x.l, x.i)));
+        if (fresh.length) { best = fresh.map(({ l, i }) => ({ l, i })); break; }
+      }
+    }
+    const r = w.worldStreamPeek(who, 'line', now, ...(opts.salt || []));
     const pick = r.weighted(best, (x) => x.l.weight ?? 1) || best[0];
     const out: Said = { who, key: pick.l.key };
     if (pick.l.text !== undefined) out.text = Array.isArray(pick.l.text) ? r.pick(pick.l.text) : pick.l.text;

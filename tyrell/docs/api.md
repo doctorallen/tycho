@@ -1,6 +1,6 @@
 # API reference
 
-The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
+The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
 
 Throughout, **input** marks a method that changes the world through `world.input`: it's recorded for time walk and safe to call from the game. **Engine** marks a method that changes state directly: call it only from inside the simulation (effects, storylets, module hooks, custom input handlers).
 
@@ -21,13 +21,13 @@ Throughout, **input** marks a method that changes the world through `world.input
 |---|---|
 | `create(opts?)` | Makes a new world: `World` |
 | `VERSION` | `'2.0.0'` |
-| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos']` |
+| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice']` |
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |
 | `DEFAULT_CONFIG` | The default `Config` |
 | `SCHEMA` | The save schema version: `2` |
 | `MIGRATIONS` | Save migrations: `MIGRATIONS[v](state)` turns a version-`v` state into `v + 1`. See [Saving](saving.md) |
-| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
+| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
 | `curveAt(curve, x)` | Evaluates a response curve at `x` in 0..1 |
 | `Stream` | A seeded random stream: `new Stream(...parts)`; `next()`, `range(lo, hi)`, `int(n)`, `chance(p)`, `pick(items)`, `weighted(items, weightFn)`, `shuffle(items)` |
 | `clamp(x, lo = 0, hi = 1)` | Clamps a number |
@@ -38,7 +38,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `inHours(h, [from, to])` | Is hour `h` inside the span (wrapping past midnight)? |
 | `HOUR`, `DAY` | 60 and 1440 |
 
-Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `CourseDef`, `CoursePhase`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `Requirement`, `LogFilter`).
+Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `CourseDef`, `CoursePhase`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `Requirement`, `LogFilter`).
 
 ## Options
 
@@ -52,7 +52,7 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `shell` | `{}` | `{ travel?, near?, check? }`: see [Integration: the shell](integration.md#the-shell) |
 | `config` | | Partial `Config` (below) |
 | `esper` | | Partial `EsperConfig` (below) |
-| `moduleConfig` | | Settings by module name: `{ reverie: {...}, fellowship: {...}, wormtongue: {...}, mentat: {...}, gaff: {...}, cradle: {...}, delos: {...} }`. Cityspeak, Ceres, Joi and Athelas take none |
+| `moduleConfig` | | Settings by module name: `{ reverie: {...}, fellowship: {...}, wormtongue: {...}, mentat: {...}, gaff: {...}, cradle: {...}, delos: {...}, voice: {...} }`. Cityspeak, Ceres, Joi and Athelas take none |
 | `extra` | | Your own modules, added after the built-in ones |
 
 `Config` (all optional; see [Deciding: config](deciding.md#config) for what each does):
@@ -110,7 +110,7 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `modules` | Map | Modules by name |
 | `hooks` | Module[] | Modules in the order their hooks run |
 | `replaying` | boolean | True while Esper replays (events are silent) |
-| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos` | | Each module, or `undefined` when it's off |
+| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos`, `voice` | | Each module, or `undefined` when it's off |
 
 ## World methods
 
@@ -274,6 +274,9 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `course` | `{ id, course, phase, label }` | Athelas: a phase started |
 | `recovered` | `{ id, course, cured, label }` | Athelas: a course passed or was cured |
 | `mutated` | `{ id, kind, what, by?, to? }` | Delos: a child was born with a mutation |
+| `voice:start` | `{ who, by }` | Voice: a talk began |
+| `voice:end` | `{ who, by, threads, why }` | Voice: a talk ended (`'bye'`, `'left'`, `'gone'`) |
+| `promise` | `{ who, by, id, state }` | Voice: a promise was made (`'open'`) or settled |
 
 Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
 
@@ -297,8 +300,9 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `birth`, `pair`, `depart` | Cradle |
 | `afflict`, `cure` | Athelas |
 | `genome` (`set`) | Delos |
+| `voice.start`, `voice.answer`, `voice.end` | Voice |
 
-`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw` and `afflict` apply at once even inside a listener, because they return a value.
+`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start` and `voice.answer` apply at once even inside a listener, because they return a value.
 
 ## Types
 

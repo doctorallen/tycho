@@ -19,6 +19,7 @@ import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
 import type { Athelas } from '../modules/athelas';
 import type { Delos } from '../modules/delos';
+import type { Voice } from '../modules/voice';
 import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState, PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState } from './types';
 import { DAY, HOUR, Stream } from './util';
 export declare const SCHEMA = 2;
@@ -154,6 +155,8 @@ export declare class World {
     get athelas(): Athelas | undefined;
     /** Genomes: looks, traits, talents and instincts, inherited. */
     get delos(): Delos | undefined;
+    /** Branching conversations: threads of beats, answers with approaches, promises. */
+    get voice(): Voice | undefined;
     /** Sets a fact (the truth of the world), or reads it if no value is given. */
     fact(key: string, value?: Value): Value | undefined;
     /** The places that are loaded and visible: people there get bodies. */

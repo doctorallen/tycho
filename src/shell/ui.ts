@@ -10,6 +10,10 @@
 // The rising lines move as the pixels' rising words do (Tycho.fx.rise);
 // this keeps the list and makes the HTML.
 //
+// Words spoken aloud (Typer) come out a letter at a time, at a talking
+// pace with a breath at each stop, as Merryfolk's talk sheet types them; the
+// White Dragon's talk is the first on it.
+//
 // Two games' toasts are in, each reachable by its options: the White
 // Dragon's (a short list on game time, the whole of it redrawn on each
 // change, the same words again soon keeping the last one longer, faded by
@@ -255,4 +259,110 @@ export class Acts {
     const acts = typeof this.o.acts === 'function' ? this.o.acts() : this.o.acts, name = el.dataset.act as string, fn = acts[name];
     if (fn) { if (this.o.onAct) this.o.onAct(name, el); fn(el.dataset.arg, el); }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Words spoken aloud
+// ---------------------------------------------------------------------------
+
+export interface TyperOptions {
+  /** Letters a second (40). */
+  cps?: number;
+  /** A breath after a word that ends a sentence (. ! ? …) and after one that ends a clause (, ; : —), in ms (260, 110). */
+  stop?: number; pause?: number;
+  /** Before a typed line: the first (160), and one after another typed line (320); before a line shown whole, after a typed one (200). */
+  first?: number; gap?: number; after?: number;
+  /** The classes that keep what's still to come hidden in its room: a whole line (tk-wait), and a line's letters not yet said (tk-unsaid). */
+  wait?: string; unsaid?: string;
+  /** True to show everything at once (by default, when the page asks for reduced motion). */
+  reduced?: () => boolean;
+  /** The clock and the frames (performance.now, requestAnimationFrame and its cancel), for a test to give its own. */
+  now?: () => number; frame?: (fn: () => void) => number; cancel?: (id: number) => void;
+}
+/** One step of the words coming out, `t` ms from the start: line `line`
+ * shown (upto -1), or its first `upto` letters said. */
+export interface TypeAct { t: number; line: number; upto: number }
+const TYPER = { cps: 40, stop: 260, pause: 110, first: 160, gap: 320, after: 200 };
+
+/** When each line shows and each letter is said: a typed line waits a beat
+ * (a longer one after another typed line), then its letters come at `cps`,
+ * with a breath where a word ends a sentence or a clause; a line shown whole
+ * (your own words, a note) comes a beat after a typed one, or at once. */
+export function typeTimeline(lines: { text: string; typed: boolean }[], o: TyperOptions = {}): TypeAct[] {
+  const O = Object.assign({}, TYPER, o), acts: TypeAct[] = [];
+  let t = 0, spoke = false;
+  lines.forEach((l, line) => {
+    if (!l.typed) { if (spoke) t += O.after; acts.push({ t, line, upto: -1 }); return; }
+    t += spoke ? O.gap : O.first;
+    acts.push({ t, line, upto: -1 });
+    const text = l.text;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i], end = i === text.length - 1 || text[i + 1] === ' ';
+      t += 1000 / O.cps;
+      acts.push({ t, line, upto: i + 1 });
+      if (end && /[.!?…]/.test(c)) t += O.stop;
+      else if (end && /[,;:—]/.test(c)) t += O.pause;
+    }
+    spoke = true;
+  });
+  return acts;
+}
+
+interface TypedLine { el: HTMLElement; text: string; typed: boolean; said?: HTMLElement; unsaid?: HTMLElement }
+/** Lines of a conversation said aloud. `type(els, typed, on)` hides the
+ * lines given (keeping their room), then shows them in turn: the ones
+ * `typed(el)` says are spoken have the words directly in them (not inside
+ * a child, so a name label stays put) said a letter at a time; the rest
+ * appear whole. `on.show(el)` as each line appears (to bring it into view),
+ * `on.done()` when all have. `finish()` says the rest at once (a tap to
+ * hurry it); `stop()` leaves it where it is. */
+export class Typer {
+  o: Required<Pick<TyperOptions, 'wait' | 'unsaid'>> & TyperOptions;
+  private job: { acts: TypeAct[]; lines: TypedLine[]; on: { show?: (el: HTMLElement) => void; done?: () => void }; raf: number; start: number } | null = null;
+  constructor(o: TyperOptions = {}) { this.o = Object.assign({ wait: 'tk-wait', unsaid: 'tk-unsaid' }, o); }
+  get busy(): boolean { return !!this.job; }
+  type(els: HTMLElement[], typed: (el: HTMLElement) => boolean, on: { show?: (el: HTMLElement) => void; done?: () => void } = {}): void {
+    this.stop();
+    const reduced = this.o.reduced ? this.o.reduced() : typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!els.length || reduced) { if (on.done) on.done(); return; }
+    const lines: TypedLine[] = els.map((el) => {
+      el.classList.add(this.o.wait);
+      if (!typed(el)) return { el, text: '', typed: false };
+      const words = Array.from(el.childNodes).filter((n) => n.nodeType === 3) as Text[];
+      const text = words.map((n) => n.data).join('').replace(/^\s+/, '');
+      for (const n of words) n.remove();
+      const doc = el.ownerDocument, said = doc.createElement('span'), unsaid = doc.createElement('span');
+      unsaid.className = this.o.unsaid; unsaid.textContent = text;
+      el.append(' ', said, unsaid);
+      return { el, text, typed: true, said, unsaid };
+    });
+    const job = { acts: typeTimeline(lines, this.o), lines, on, raf: 0, start: 0 };
+    this.job = job;
+    const now = this.o.now || (() => performance.now()), frame = this.o.frame || ((fn: () => void) => requestAnimationFrame(fn));
+    const step = () => {
+      if (this.job !== job) return;
+      if (!job.start) job.start = now();
+      const t = now() - job.start;
+      while (job.acts.length && job.acts[0].t <= t) this.act(job, job.acts.shift() as TypeAct);
+      if (job.acts.length) job.raf = frame(step);
+      else this.end(job);
+    };
+    job.raf = frame(step);
+  }
+  /** Everything still to come, said at once. */
+  finish(): void {
+    const job = this.job; if (!job) return;
+    this.cancel(job);
+    while (job.acts.length) this.act(job, job.acts.shift() as TypeAct);
+    this.end(job);
+  }
+  /** Stops where it is (the lines not yet shown stay hidden). */
+  stop(): void { const job = this.job; if (!job) return; this.cancel(job); this.job = null; }
+  private cancel(job: { raf: number }): void { const c = this.o.cancel || ((id: number) => cancelAnimationFrame(id)); if (job.raf) c(job.raf); job.raf = 0; }
+  private act(job: { lines: TypedLine[]; on: { show?: (el: HTMLElement) => void } }, a: TypeAct): void {
+    const l = job.lines[a.line];
+    if (a.upto < 0) { l.el.classList.remove(this.o.wait); if (job.on.show) job.on.show(l.el); return; }
+    (l.said as HTMLElement).textContent = l.text.slice(0, a.upto); (l.unsaid as HTMLElement).textContent = l.text.slice(a.upto);
+  }
+  private end(job: { on: { done?: () => void } }): void { if (this.job === job) this.job = null; if (job.on.done) job.on.done(); }
 }

@@ -1,6 +1,6 @@
 # Tycho.ui
 
-The interface kit: the HUD's and the screens' machinery, without their looks. Toasts, lines rising over a point in the world, buttons wired by their data attributes, and a screen's buttons run from one handler. What's made is plain elements with the classes a game gives, so its skin (the CSS, the fonts, the words) stays its own. Blocking taps just after a screen opens is the controls' guard ([play.md](play.md), `Tycho.input`); `Acts` takes it as its `guard`.
+The interface kit: the HUD's and the screens' machinery, without their looks. Toasts, lines rising over a point in the world, buttons wired by their data attributes, and a screen's buttons run from one handler. What's made is plain elements with the classes a game gives, so its skin (the CSS, the fonts, the words) stays its own. Blocking taps just after a screen opens is the controls' guard ([play.md](play.md), `Tycho.input`); `Acts` takes it as its `guard`. Words spoken aloud a letter at a time (`Typer`) are here too.
 
 ## Toasts
 
@@ -74,3 +74,19 @@ acts.listen(screenElement);
 `bind` wires its keys in order, so a later key takes a button that has both. `Acts` ignores a disabled button and anything while the guard is up; a button with `data-confirm` asks once: the first tap arms it (its words become `data-confirm`'s, the class `armed`, any other armed button back to its own words), the second runs it.
 
 `test/ui.test.mjs` plays the White Dragon's toasts and rising lines and Lodestar's toasts and hints, as they were, beside Tycho's through the same steps on a stand-in for the DOM with its own clock and timers, and what's on screen must be the same after every one; the same for the White Dragon's `panelBind` and Lodestar's `UI.onTap`.
+
+## Words spoken aloud
+
+`new Typer(o)` says the newest lines of a conversation aloud, as Merryfolk's talk sheet does: a letter at a time at `cps` (40), with a breath where a word ends a sentence (`stop`, 260 ms) or a clause (`pause`, 110 ms), a beat before each spoken line (`first`, 160 ms; `gap`, 320 ms after another), and lines shown whole (your own words, a note) a beat after a spoken one (`after`, 200 ms). The White Dragon's talk is the first on it; Merryfolk's own typer is its model, the same numbers by default.
+
+```js
+const typer = new Tycho.ui.Typer();
+const fresh = [...log.querySelectorAll('.line')].slice(-n);           // the lines not seen yet
+typer.type(fresh, (el) => !el.classList.contains('you'), {           // their words are spoken; yours appear
+  show: (el) => el.scrollIntoView({ block: 'nearest' }),
+  done: () => panel.classList.remove('typing'),                     // the answers come up
+});
+log.onclick = () => typer.finish();                                  // a tap hurries it
+```
+
+Each line given is hidden (`wait`, `tk-wait`) until its turn, keeping its room so nothing below it moves. A spoken line's words are the text directly in it, not in a child, so a name label (`<b>Wen</b>`) stays as it is; they go into two spans, said and still to say (`unsaid`, `tk-unsaid`, hidden), so the bubble holds its shape as it fills. `finish()` says the rest at once, `stop()` leaves it where it is, `busy` says whether it's still going. With reduced motion asked for (or `reduced()` true), everything shows at once. `typeTimeline(lines, o)` is the timing alone: each step's time, line, and letters said. A game gives the classes' CSS (`visibility: hidden` for both).

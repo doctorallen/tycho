@@ -6637,7 +6637,9 @@ void main() {
     Acts: () => Acts,
     Rising: () => Rising,
     Toasts: () => Toasts,
-    bind: () => bind
+    Typer: () => Typer,
+    bind: () => bind,
+    typeTimeline: () => typeTimeline
   });
   var Toasts = class {
     constructor(o) {
@@ -6830,6 +6832,105 @@ void main() {
         if (this.o.onAct) this.o.onAct(name, el);
         fn(el.dataset.arg, el);
       }
+    }
+  };
+  var TYPER = { cps: 40, stop: 260, pause: 110, first: 160, gap: 320, after: 200 };
+  function typeTimeline(lines, o = {}) {
+    const O = Object.assign({}, TYPER, o), acts = [];
+    let t = 0, spoke = false;
+    lines.forEach((l, line) => {
+      if (!l.typed) {
+        if (spoke) t += O.after;
+        acts.push({ t, line, upto: -1 });
+        return;
+      }
+      t += spoke ? O.gap : O.first;
+      acts.push({ t, line, upto: -1 });
+      const text = l.text;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i], end = i === text.length - 1 || text[i + 1] === " ";
+        t += 1e3 / O.cps;
+        acts.push({ t, line, upto: i + 1 });
+        if (end && /[.!?…]/.test(c)) t += O.stop;
+        else if (end && /[,;:—]/.test(c)) t += O.pause;
+      }
+      spoke = true;
+    });
+    return acts;
+  }
+  var Typer = class {
+    constructor(o = {}) {
+      this.job = null;
+      this.o = Object.assign({ wait: "tk-wait", unsaid: "tk-unsaid" }, o);
+    }
+    get busy() {
+      return !!this.job;
+    }
+    type(els, typed, on = {}) {
+      this.stop();
+      const reduced = this.o.reduced ? this.o.reduced() : typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!els.length || reduced) {
+        if (on.done) on.done();
+        return;
+      }
+      const lines = els.map((el) => {
+        el.classList.add(this.o.wait);
+        if (!typed(el)) return { el, text: "", typed: false };
+        const words = Array.from(el.childNodes).filter((n) => n.nodeType === 3);
+        const text = words.map((n) => n.data).join("").replace(/^\s+/, "");
+        for (const n of words) n.remove();
+        const doc = el.ownerDocument, said = doc.createElement("span"), unsaid = doc.createElement("span");
+        unsaid.className = this.o.unsaid;
+        unsaid.textContent = text;
+        el.append(" ", said, unsaid);
+        return { el, text, typed: true, said, unsaid };
+      });
+      const job = { acts: typeTimeline(lines, this.o), lines, on, raf: 0, start: 0 };
+      this.job = job;
+      const now = this.o.now || (() => performance.now()), frame = this.o.frame || ((fn) => requestAnimationFrame(fn));
+      const step = () => {
+        if (this.job !== job) return;
+        if (!job.start) job.start = now();
+        const t = now() - job.start;
+        while (job.acts.length && job.acts[0].t <= t) this.act(job, job.acts.shift());
+        if (job.acts.length) job.raf = frame(step);
+        else this.end(job);
+      };
+      job.raf = frame(step);
+    }
+    /** Everything still to come, said at once. */
+    finish() {
+      const job = this.job;
+      if (!job) return;
+      this.cancel(job);
+      while (job.acts.length) this.act(job, job.acts.shift());
+      this.end(job);
+    }
+    /** Stops where it is (the lines not yet shown stay hidden). */
+    stop() {
+      const job = this.job;
+      if (!job) return;
+      this.cancel(job);
+      this.job = null;
+    }
+    cancel(job) {
+      const c = this.o.cancel || ((id) => cancelAnimationFrame(id));
+      if (job.raf) c(job.raf);
+      job.raf = 0;
+    }
+    act(job, a) {
+      const l = job.lines[a.line];
+      if (a.upto < 0) {
+        l.el.classList.remove(this.o.wait);
+        if (job.on.show) job.on.show(l.el);
+        return;
+      }
+      l.said.textContent = l.text.slice(0, a.upto);
+      l.unsaid.textContent = l.text.slice(a.upto);
+    }
+    end(job) {
+      if (this.job === job) this.job = null;
+      if (job.on.done) job.on.done();
     }
   };
 

@@ -146,3 +146,62 @@ export declare class Acts {
     listen(el: EventTarget, type?: string): this;
     tap(e: Event): void;
 }
+export interface TyperOptions {
+    /** Letters a second (40). */
+    cps?: number;
+    /** A breath after a word that ends a sentence (. ! ? …) and after one that ends a clause (, ; : —), in ms (260, 110). */
+    stop?: number;
+    pause?: number;
+    /** Before a typed line: the first (160), and one after another typed line (320); before a line shown whole, after a typed one (200). */
+    first?: number;
+    gap?: number;
+    after?: number;
+    /** The classes that keep what's still to come hidden in its room: a whole line (tk-wait), and a line's letters not yet said (tk-unsaid). */
+    wait?: string;
+    unsaid?: string;
+    /** True to show everything at once (by default, when the page asks for reduced motion). */
+    reduced?: () => boolean;
+    /** The clock and the frames (performance.now, requestAnimationFrame and its cancel), for a test to give its own. */
+    now?: () => number;
+    frame?: (fn: () => void) => number;
+    cancel?: (id: number) => void;
+}
+/** One step of the words coming out, `t` ms from the start: line `line`
+ * shown (upto -1), or its first `upto` letters said. */
+export interface TypeAct {
+    t: number;
+    line: number;
+    upto: number;
+}
+/** When each line shows and each letter is said: a typed line waits a beat
+ * (a longer one after another typed line), then its letters come at `cps`,
+ * with a breath where a word ends a sentence or a clause; a line shown whole
+ * (your own words, a note) comes a beat after a typed one, or at once. */
+export declare function typeTimeline(lines: {
+    text: string;
+    typed: boolean;
+}[], o?: TyperOptions): TypeAct[];
+/** Lines of a conversation said aloud. `type(els, typed, on)` hides the
+ * lines given (keeping their room), then shows them in turn: the ones
+ * `typed(el)` says are spoken have the words directly in them (not inside
+ * a child, so a name label stays put) said a letter at a time; the rest
+ * appear whole. `on.show(el)` as each line appears (to bring it into view),
+ * `on.done()` when all have. `finish()` says the rest at once (a tap to
+ * hurry it); `stop()` leaves it where it is. */
+export declare class Typer {
+    o: Required<Pick<TyperOptions, 'wait' | 'unsaid'>> & TyperOptions;
+    private job;
+    constructor(o?: TyperOptions);
+    get busy(): boolean;
+    type(els: HTMLElement[], typed: (el: HTMLElement) => boolean, on?: {
+        show?: (el: HTMLElement) => void;
+        done?: () => void;
+    }): void;
+    /** Everything still to come, said at once. */
+    finish(): void;
+    /** Stops where it is (the lines not yet shown stay hidden). */
+    stop(): void;
+    private cancel;
+    private act;
+    private end;
+}

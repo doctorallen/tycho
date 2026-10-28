@@ -218,6 +218,7 @@ export class Entmoot {
     const end = w.s.now + w.config.idle;
     const seq = this.scheduleEnd(p, end);
     p.doing = { kind: 'wait', action: 'wait', place: p.place, start: w.s.now, end, rank: -1, layer: 'idle', seq };
+    this.announce(p);
   }
 
   // -------------------------------------------------------------------------

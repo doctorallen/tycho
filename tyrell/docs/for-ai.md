@@ -192,7 +192,6 @@ console.log(world.describe('mo'));
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |
-| Relying on `step` for every change | Idling (nothing to do) emits no `step` | Refresh from `world.body(id)` when `world.now >= body.end` |
 | A task whose methods' conditions can all fail | `no-plan`, the person idles 20 minutes and picks it again | Give the task `if` conditions, or a last method with none |
 | The game's clock going backward, or a different epoch | `advanceTo` with a past time rewinds the world (or does nothing with Esper off) | Minutes since midnight of day 0, monotonic; rebuild when going back past `esper.earliest()` |
 | `world.save(true)` into `localStorage` | Quota errors: history is megabytes | Save without history; or IndexedDB; lower `logSize` and Esper's `keep` option |

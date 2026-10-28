@@ -90,14 +90,14 @@ world.body('ruth');   // anyone's body, near or not (null if they're away or gon
 | Event | Payload | When |
 |---|---|---|
 | `embody` | Body | Someone comes into view: on focus, after time moves, after a seek or a load. They may be mid-walk or mid-meal |
-| `step` | Body | A near person starts something: sets out, starts an action, starts a plan's wait, follows a leader |
+| `step` | Body | A near person starts something: sets out, starts an action, starts waiting (a plan's wait, or nothing to do), follows a leader |
 | `disembody` | `{ id }` | Someone leaves view: walked out of the focused regions, went away, left for good, or every body before a backward seek or a load |
 | `arrive` | `{ id, place }` | Anyone arrives anywhere, near or far |
 | `failed` | `{ id, why }` | Anyone's action or walk failed (a closed door, a taken stool, a report) |
 
 Listeners run in the middle of the engine's work. Inputs they make (a report, a fact) wait until the engine finishes the event it's handling. Calls that move time or replace the state (`tick`, `advanceTo`, `seek`, `load`...) made from a listener wait until the call that's running returns, then run.
 
-Someone who finishes and has nothing to do waits (`action: 'wait'`) without a `step` event. Refresh a sprite's body from `world.body(id)` when `world.now` passes its `end`, or simply read `world.body(id)` every frame for the people on screen.
+Someone who finishes and has nothing to do waits (`action: 'wait'`), and that comes as a `step` too. Bodies are made when they're sent, so to keep `progress` current, recompute it from `world.now`, or read `world.body(id)` every frame for the people on screen.
 
 ### Body fields
 

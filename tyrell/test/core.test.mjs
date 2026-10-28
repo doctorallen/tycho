@@ -307,6 +307,17 @@ test('waking from nothing: idle people wait and think again', () => {
   assert.ok(p.doing);
 });
 
+test('waiting with nothing to do is announced with a step too', () => {
+  const w = Tyrell.create({ seed: 'idle' });
+  w.place({ id: 'void', region: 'r' });
+  const steps = [];
+  w.on('step', (b) => steps.push(b));
+  w.focus(['r']);
+  w.person('x', { place: 'void' });
+  w.advance(5);
+  assert.ok(steps.some((b) => b.id === 'x' && b.action === 'wait' && b.pose === 'idle'));
+});
+
 test('followers walk and sit with their leader', () => {
   const w = tiny();
   const a = w.person('ana', { home: 'home_a', needs: { hunger: 0.2 } });

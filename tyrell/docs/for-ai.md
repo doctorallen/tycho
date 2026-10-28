@@ -2,7 +2,7 @@
 
 You've been asked to integrate Tyrell into a game. This page is the compact, exact version: invariants, a procedure, the contracts of every callback, a skeleton that runs, and the pitfalls with their fixes. For details, follow the links into [api.md](api.md), [integration.md](integration.md), [conditions.md](conditions.md) and the module pages for the modules the game uses.
 
-This describes Tyrell 1.0.0 (save schema 1).
+This describes Tyrell 1.1.0 (save schema 2).
 
 - [Facts](#facts)
 - [Invariants](#invariants)

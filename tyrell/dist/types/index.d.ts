@@ -15,7 +15,7 @@ import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
 /** The engine's version. */
-export declare const VERSION = "1.0.0";
+export declare const VERSION = "1.1.0";
 /** Every module that ships with Tyrell, by name. */
 export declare const MODULES: readonly ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi"];
 export type ModuleName = (typeof MODULES)[number];

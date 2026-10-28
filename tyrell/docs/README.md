@@ -2,7 +2,20 @@
 
 Tyrell is a minds engine for games full of people. It decides what each person does, remembers what happened to them, keeps track of what they believe and how they feel about each other and about the player, and keeps them living when nobody is watching. Time walk (running faster, rewinding, playing backward) is built into the core. The game supplies the space (places and how long it takes to walk between them) and draws whatever Tyrell decides.
 
-These docs describe Tyrell 1.0.0.
+These docs describe Tyrell 1.1.0 (save schema 2).
+
+**Upgrading from 1.0.** Saves from 1.0 load as they are (they're migrated). What a game may need to change:
+
+- `ceres.transfer` is now `ceres.applyPay`, and `reverie.note` is `reverie.applyNote` (both engine-side: from the game, use `ceres.pay` and `world.did`). `reverie.beliefMap` is gone.
+- `fellowship.rel(a, b)` returns a copy of the record, or `undefined` if there's none; it no longer makes one. Change attraction with the new input `fellowship.attract(a, b, by)`.
+- `reverie.recall`, `reverie.silence`, `cityspeak.resolve`, `gaff.draw` and `world.log` called from the game are inputs now (recorded for time walk). If you wrapped one in a custom input of your own, you can call it directly.
+- `fame:` and `infamy:` effects without a subject change the person's standing, not the player's: write `fame:<group>.player` for the player's.
+- `config.recheck` is gone (it was never read).
+- `said:<key>` works as the docs always said; `said:<index>` still works.
+- A `'*'` listener also gets `event`, the event's real name.
+- Calls that move time or load from a listener now wait until the running call returns, instead of breaking the clock.
+- A backward seek no longer disembodies and re-embodies everyone in view: those who stay get a `step` if they changed.
+- Gaff's automatic `unseen` firings no longer read focus; to keep an event out of view, fire it with `gaff.trigger(id, gaff.unseenPlace(tag))`.
 
 ## Reading order
 

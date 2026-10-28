@@ -1,4 +1,4 @@
-/* Tyrell 1.0.0: a minds engine for games full of people. Built from src/ by scripts/build.mjs; don't edit. */
+/* Tyrell 1.1.0: a minds engine for games full of people. Built from src/ by scripts/build.mjs; don't edit. */
 "use strict";
 var Tyrell = (() => {
   var __defProp = Object.defineProperty;
@@ -5733,7 +5733,7 @@ var Tyrell = (() => {
   }
 
   // src/index.ts
-  var VERSION = "1.0.0";
+  var VERSION = "1.1.0";
   var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi"];
   function create(opts = {}) {
     const names = opts.modules ?? [...MODULES];

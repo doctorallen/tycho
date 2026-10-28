@@ -26,7 +26,7 @@ import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
 
 /** The engine's version. */
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 /** Every module that ships with Tyrell, by name. */
 export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi'] as const;

@@ -1,6 +1,6 @@
 {
   "name": "tyrell",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A minds engine for games full of people: needs, routines, plans, memories, beliefs, relationships, gossip and time walk. Plain JavaScript output, no dependencies.",
   "main": "dist/tyrell.cjs",
   "module": "dist/tyrell.mjs",

@@ -9,7 +9,7 @@ on:
 env:
   # the games' branch whose tests run against this build (each game's
   # submodule pins its own Tycho; this checks a new one before it's taken)
-  GAMES_REF: tycho
+  GAMES_REF: main
 
 jobs:
   build:

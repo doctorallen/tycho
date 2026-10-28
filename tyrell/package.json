@@ -1,0 +1,38 @@
+{
+  "name": "tyrell",
+  "version": "1.1.0",
+  "description": "A minds engine for games full of people: needs, routines, plans, memories, beliefs, relationships, gossip and time walk. Plain JavaScript output, no dependencies.",
+  "main": "dist/tyrell.cjs",
+  "module": "dist/tyrell.mjs",
+  "browser": "dist/tyrell.js",
+  "types": "dist/tyrell.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/tyrell.d.ts",
+      "import": "./dist/tyrell.mjs",
+      "require": "./dist/tyrell.cjs"
+    },
+    "./global": "./dist/tyrell.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
+    "vk": "node bin/voight-kampff.mjs examples/rocinante.js --days 7",
+    "check-dist": "node scripts/build.mjs && git diff --exit-code -- dist"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  },
+  "private": true,
+  "bin": {
+    "voight-kampff": "bin/voight-kampff.mjs"
+  }
+}

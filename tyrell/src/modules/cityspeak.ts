@@ -1,0 +1,400 @@
+// Cityspeak: talk. Named for Blade Runner's street language, a mix of
+// everything spoken in the city.
+//
+//   lines      chosen by the most specific rule that matches (Valve's dialogue
+//              rules; Merryfolk's chooser), with weights, cooldowns, a memory
+//              of what was said, and replies; the game owns the words
+//   barks      two people near the player answering each other
+//   practices  situations with roles (dinner at the bar, a sale at the till,
+//              a police stop) that make role actions more appealing to whoever
+//              fills each role (Versu)
+//   social acts aimed at someone, which the target may refuse (Prom Week's
+//              Comme il Faut), with feelings and regard either way
+//   the room   the mood of the people in a place, for lines to read
+//   ink        a bridge so ink stories can ask Tyrell about the world
+import type { Module } from '../core/module';
+import type { Candidate, Cond, Consideration, Ctx, Doing, Effect, Id, PersonState, Value } from '../core/types';
+import type { World } from '../core/world';
+import { HOUR, clamp, inHours, hourOf, round } from '../core/util';
+
+export interface LineDef {
+  /** The line's key: what the game looks up for the words. */
+  key: string;
+  /** Words, if the engine should carry them (one picked at random). */
+  text?: string | string[];
+  /** Who says it: a person id, 'tag:<tag>', 'job:<id>', or conditions. */
+  who?: string | Cond[];
+  /** Conditions on the speaker and the moment. */
+  when?: Cond[];
+  /** Conditions on the listener (the target in conditions). */
+  to?: Cond[];
+  /** The topic it answers ('greet', 'bye', 'work', 'rumor'...). */
+  topic?: string;
+  /** Among equally specific lines, how likely. Default 1. */
+  weight?: number;
+  /** Minutes before the same speaker says it again. */
+  cooldown?: number;
+  /** Said only once per speaker. */
+  once?: boolean;
+  /** Effects when said (said on purpose by the game, not as a bark). */
+  then?: Effect[];
+  /** The key (or topic, as 'topic:x') the listener answers with. */
+  reply?: string;
+}
+
+export interface PracticeDef {
+  id: Id;
+  /** Where: a place id or 'tag:<tag>'. */
+  at: Id;
+  hours?: [number, number];
+  /** Roles: who can fill them and the actions they make more appealing. */
+  roles: Record<string, { who?: Cond[]; job?: Id; actions: Id[] }>;
+  /** Shifts the mood of the room (-1..1). */
+  tone?: number;
+  /** How much more appealing role actions are. Default 1.5. */
+  boost?: number;
+}
+
+export interface SocialActDef {
+  id: Id;
+  /** The target's side: considerations multiplied (ctx.person is the target, ctx.target the asker). */
+  accept?: Consideration[];
+  /** Or plain conditions on the target. */
+  acceptIf?: Cond[];
+  /** Accepted when the score beats a draw against it (default) or this threshold. */
+  threshold?: number;
+  onAccept?: Effect[];
+  onRefuse?: Effect[];
+  /** Feelings: for the asker on yes and no, and for the target. */
+  feelings?: { accepted?: Id; refused?: Id; target?: Id };
+  /** Regard change for the target toward the asker: [on yes, on no]. */
+  regard?: [number, number];
+}
+
+export interface Said { who: Id; key: string; text?: string; to?: Id; topic?: string; reply?: string }
+
+interface State {
+  /** By speaker, by line key (or index, for a line without one): when they last said it. */
+  said: Record<Id, Record<string, number>>;
+  /** Lines said before save schema 2, by speaker, by line index (read until said again). */
+  byIndex?: Record<Id, Record<string, number>>;
+  acts: Array<{ t: number; act: Id; from: Id; to: Id; ok: boolean }>;
+}
+
+/** What a line is remembered by: its key, or its index if it has none. */
+const lineKey = (l: LineDef, i: number): string => (l.key !== undefined && l.key !== '' ? l.key : String(i));
+
+export class Cityspeak implements Module {
+  readonly name = 'cityspeak';
+  readonly lines: LineDef[] = [];
+  readonly practices = new Map<Id, PracticeDef>();
+  readonly acts = new Map<Id, SocialActDef>();
+  /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
+  private barkSaid = new Map<string, number>();
+  /** Seconds between lines in a bark exchange. */
+  barkGap = 2.2;
+  /** Most lines in one exchange. */
+  barkLength = 3;
+  private w!: World;
+
+  init(): State { return { said: {}, acts: [] }; }
+  private get st(): State { return this.w.s.mod.cityspeak as State; }
+
+  attach(w: World): void {
+    this.w = w;
+    w.lang.term('room', (c) => (c.person?.place ? this.room(c.person.place) : 0.5));
+    w.lang.term('said', (c, a) => (c.person ? this.hasSaid(c.person.id, a) : false));
+    w.lang.term('practice', (c, a) => (c.person?.place ? this.activeAt(c.person.place).some((p) => p.id === a) : false));
+    w.lang.term('role', (c, a) => (c.person ? this.roleOf(c.person, a) : false));
+    w.defineInput('say', (who: Id, opts: { to?: Id; topic?: string }) => this.applySay(who, opts));
+    w.defineInput('social', (act: Id, from: Id, to: Id) => this.applyResolve(act, from, to));
+  }
+
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+
+  line(def: LineDef): this { this.lines.push(def); return this; }
+  addLines(defs: LineDef[]): this { for (const d of defs) this.lines.push(d); return this; }
+  practice(def: PracticeDef): this { this.practices.set(def.id, def); return this; }
+  act(def: SocialActDef): this { this.acts.set(def.id, def); return this; }
+
+  // -------------------------------------------------------------------------
+  // Lines
+  // -------------------------------------------------------------------------
+
+  /** When someone last said a line (undefined if never). */
+  private lastSaid(who: Id, l: LineDef, i: number): number | undefined {
+    return this.st.said[who]?.[lineKey(l, i)] ?? this.st.byIndex?.[who]?.[String(i)];
+  }
+
+  /** Has someone said a line with this key (or, as before 1.1, at this index)? */
+  private hasSaid(who: Id, key: string): boolean {
+    if (this.st.said[who]?.[key] !== undefined) return true;
+    return this.lines.some((l, i) => (lineKey(l, i) === key || String(i) === key) && this.lastSaid(who, l, i) !== undefined);
+  }
+
+  /**
+   * What a person would say now, without saying it (nothing changes). The
+   * most specific matching line wins; ties go by weight.
+   */
+  choose(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean } = {}): Said | null {
+    return this.pick(who, opts)?.said ?? null;
+  }
+
+  /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
+  private pick(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
+    return this.w.peek(() => this.pickNow(who, opts));
+  }
+
+  private pickNow(who: Id, opts: { to?: Id; topic?: string; skip?: (l: LineDef, i: number) => boolean }): { said: Said; i: number } | null {
+    const w = this.w;
+    const p = w.s.people[who];
+    if (!p) return null;
+    const ctx: Ctx = w.ctx(p, { target: opts.to ?? null, topic: opts.topic, place: p.place });
+    const now = w.s.now;
+    let best: Array<{ l: LineDef; i: number }> = [];
+    let bestSpec = -1;
+    this.lines.forEach((l, i) => {
+      if (opts.topic !== undefined && l.topic !== undefined && l.topic !== opts.topic) return;
+      if (opts.topic === undefined && l.topic !== undefined) return;
+      if (opts.skip?.(l, i)) return;
+      let spec = l.topic !== undefined ? 1 : 0;
+      if (l.who !== undefined) {
+        if (typeof l.who === 'string') {
+          if (!this.whoMatches(p, l.who)) return;
+          spec += 2;
+        } else {
+          if (!w.lang.all(l.who, ctx)) return;
+          spec += l.who.length;
+        }
+      }
+      if (l.when) { if (!w.lang.all(l.when, ctx)) return; spec += l.when.length; }
+      if (l.to) {
+        if (!opts.to) return;
+        const t = w.s.people[opts.to];
+        const tctx = t ? { ...ctx } : ctx;
+        if (!w.lang.all(l.to, tctx)) return;
+        spec += l.to.length;
+      }
+      const last = this.lastSaid(who, l, i);
+      if (l.once && last !== undefined) return;
+      if (l.cooldown && last !== undefined && now - last < l.cooldown) return;
+      if (spec > bestSpec) { bestSpec = spec; best = [{ l, i }]; } else if (spec === bestSpec) best.push({ l, i });
+    });
+    if (!best.length) return null;
+    const r = w.worldStreamPeek(who, 'line', now);
+    const pick = r.weighted(best, (x) => x.l.weight ?? 1) || best[0];
+    const out: Said = { who, key: pick.l.key };
+    if (pick.l.text !== undefined) out.text = Array.isArray(pick.l.text) ? r.pick(pick.l.text) : pick.l.text;
+    if (opts.to) out.to = opts.to;
+    if (opts.topic) out.topic = opts.topic;
+    if (pick.l.reply) out.reply = pick.l.reply;
+    return { said: out, i: pick.i };
+  }
+
+  /** Says something on purpose (the game asks): chosen, remembered, its effects applied. */
+  say(who: Id, opts: { to?: Id; topic?: string } = {}): Said | null {
+    return this.w.input('say', [who, opts]) as Said | null;
+  }
+
+  private applySay(who: Id, opts: { to?: Id; topic?: string }): Said | null {
+    const picked = this.pick(who, opts);
+    if (!picked) return null;
+    const { said, i } = picked;
+    const l = this.lines[i];
+    (this.st.said[who] ||= {})[lineKey(l, i)] = this.w.s.now;
+    if (this.st.byIndex?.[who]) delete this.st.byIndex[who][String(i)];
+    const p = this.w.s.people[who];
+    if (l.then && p) this.w.lang.applyAll(l.then, this.w.ctx(p, { target: opts.to ?? null, topic: opts.topic }));
+    this.w.log('said', who, { key: said.key, ...(opts.to ? { to: opts.to } : {}) });
+    this.w.emit('say', said);
+    return said;
+  }
+
+  /** The answer someone gives to a line. */
+  answer(to: Said, by: Id): Said | null { return this.reply(to, by)?.said ?? null; }
+
+  private reply(to: Said, by: Id): { said: Said; i: number } | null {
+    if (!to.reply) return null;
+    if (to.reply.startsWith('topic:')) return this.pick(by, { to: to.who, topic: to.reply.slice(6) });
+    const i = this.lines.findIndex((l) => l.key === to.reply);
+    if (i < 0) return null;
+    const l = this.lines[i];
+    const out: Said = { who: by, key: l.key, to: to.who };
+    if (l.text !== undefined) out.text = Array.isArray(l.text) ? l.text[0] : l.text;
+    return { said: out, i };
+  }
+
+  private whoMatches(p: PersonState, who: string): boolean {
+    if (who === p.id) return true;
+    if (who.startsWith('tag:')) return !!p.def.tags?.includes(who.slice(4));
+    if (who.startsWith('job:')) return p.def.job?.id === who.slice(4);
+    if (who.startsWith('group:')) return !!p.def.groups?.includes(who.slice(6));
+    return false;
+  }
+
+  /**
+   * A short exchange between two people near the player: lines that don't
+   * change the world (barks). Returns the lines with a delay for each.
+   */
+  converse(a: Id, b: Id, topic = 'chat'): Array<Said & { after: number }> {
+    const out: Array<Said & { after: number }> = [];
+    const now = this.w.s.now;
+    const skip = (who: Id) => (l: LineDef, i: number) => {
+      const last = this.barkSaid.get(who + '|' + lineKey(l, i));
+      return last !== undefined && now - last < (l.cooldown ?? 60);
+    };
+    let speaker = a, listener = b;
+    let line = this.pick(speaker, { to: listener, topic, skip: skip(speaker) });
+    for (let n = 0; line && n < this.barkLength; n++) {
+      this.barkSaid.set(speaker + '|' + lineKey(this.lines[line.i], line.i), now);
+      out.push({ ...line.said, after: n * this.barkGap });
+      const reply = this.reply(line.said, listener);
+      [speaker, listener] = [listener, speaker];
+      line = reply;
+    }
+    return out;
+  }
+
+  // -------------------------------------------------------------------------
+  // Practices and the room
+  // -------------------------------------------------------------------------
+
+  /** Practices going on at a place now. */
+  activeAt(place: Id): PracticeDef[] {
+    const w = this.w, h = hourOf(w.s.now);
+    const out: PracticeDef[] = [];
+    for (const pr of this.practices.values()) {
+      if (pr.hours && !inHours(h, pr.hours)) continue;
+      const at = pr.at;
+      const ok = at.startsWith('tag:') ? w.ring.hasTag(place, at.slice(4)) : w.ring.within(place, at);
+      if (ok) out.push(pr);
+    }
+    return out;
+  }
+
+  /** Does a person fill a role at their place? */
+  roleOf(p: PersonState, role: string): boolean {
+    if (!p.place) return false;
+    for (const pr of this.activeAt(p.place)) {
+      const r = pr.roles[role];
+      if (r && this.fills(p, r)) return true;
+    }
+    return false;
+  }
+
+  private fills(p: PersonState, r: { who?: Cond[]; job?: Id }): boolean {
+    if (r.job && p.def.job?.id !== r.job) return false;
+    if (r.who && !this.w.lang.all(r.who, this.w.ctx(p, { place: p.place }))) return false;
+    return true;
+  }
+
+  /** The mood of the room: everyone at the place, plus the practices' tone. */
+  room(place: Id): number {
+    const w = this.w;
+    const ids = w.ring.present(w.ring.root(place));
+    let m = 0.5;
+    if (ids.length && w.reverie) m = ids.reduce((acc, id) => acc + w.reverie!.mood(id), 0) / ids.length;
+    for (const pr of this.activeAt(place)) m += pr.tone ?? 0;
+    return round(clamp(m), 4);
+  }
+
+  consider(p: PersonState, c: Candidate): Array<[string, number]> | void {
+    const place = c.place ?? p.place;
+    if (!place) return;
+    const out: Array<[string, number]> = [];
+    for (const pr of this.activeAt(place)) {
+      for (const role in pr.roles) {
+        const r = pr.roles[role];
+        if (!r.actions.includes(c.id) || !this.fills(p, r)) continue;
+        out.push([`${pr.id}: ${role}`, pr.boost ?? 1.5]);
+        break;
+      }
+    }
+    return out;
+  }
+
+  // -------------------------------------------------------------------------
+  // Social acts
+  // -------------------------------------------------------------------------
+
+  /** An action that says something on starting (its `says` topic) says it. */
+  started(p: PersonState, d: Doing): void {
+    if (d.kind !== 'act') return;
+    const topic = this.w.actions.get(d.action)?.says;
+    if (topic) this.applySay(p.id, d.target ? { topic, to: d.target } : { topic });
+  }
+
+  ended(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
+    if (d.kind !== 'act' || interrupted || frac < 0.5 || !d.target) return;
+    const a = this.w.actions.get(d.action);
+    if (!a?.social) return;
+    this.applyResolve(a.social, p.id, d.target);
+  }
+
+  /** Resolves a social act now (from the game: recorded): does the target accept? Applies the outcome. */
+  resolve(actId: Id, from: Id, to: Id): boolean { return this.w.input('social', [actId, from, to]) === true; }
+
+  /** Resolves a social act inside the simulation. */
+  applyResolve(actId: Id, from: Id, to: Id): boolean {
+    const w = this.w;
+    const def = this.acts.get(actId);
+    const asker = w.s.people[from], target = w.s.people[to];
+    if (!def || !asker || !target) return false;
+    const tctx = w.ctx(target, { target: from });
+    let score = 1;
+    for (const k of def.accept || []) score *= w.mind.consider(k, tctx);
+    if (def.acceptIf && !w.lang.all(def.acceptIf, tctx)) score = 0;
+    const r = w.stream(target);
+    const ok = def.threshold !== undefined ? score >= def.threshold : r.chance(clamp(score));
+    const actx = w.ctx(asker, { target: to });
+    w.lang.applyAll(ok ? def.onAccept : def.onRefuse, actx);
+    const rv = w.reverie;
+    if (rv && def.feelings) {
+      const f = ok ? def.feelings.accepted : def.feelings.refused;
+      if (f) rv.applyFeel(from, f, to);
+      if (def.feelings.target) rv.applyFeel(to, def.feelings.target, from);
+    }
+    if (def.regard && w.fellowship) w.fellowship.applyRegard(to, from, ok ? def.regard[0] : def.regard[1]);
+    this.st.acts.push({ t: w.s.now, act: actId, from, to, ok });
+    if (this.st.acts.length > 100) this.st.acts.shift();
+    w.log('social', from, { act: actId, target: to, ok });
+    w.emit('social', { act: actId, from, to, ok });
+    return ok;
+  }
+
+  // -------------------------------------------------------------------------
+  // Barks between people near the player
+  // -------------------------------------------------------------------------
+
+  met(a: PersonState, b: PersonState): void {
+    const w = this.w;
+    if (w.replaying) return;
+    if (!w.clock.embodied(a.id) && !w.clock.embodied(b.id)) return;
+    const lines = this.converse(a.id, b.id);
+    if (lines.length) w.emit('bark', { a: a.id, b: b.id, lines });
+  }
+
+  // -------------------------------------------------------------------------
+  // ink
+  // -------------------------------------------------------------------------
+
+  /**
+   * Binds Tyrell to an ink story (inkjs): the story can call
+   * tyrell_fact(key), tyrell_thinks(who, key), tyrell_regard(a, b),
+   * tyrell_mood(who), tyrell_test(who, condition) and tyrell_did(actor, verb, target).
+   */
+  bindInk(story: { BindExternalFunction: (name: string, fn: (...args: any[]) => unknown, lookahead?: boolean) => void }): void {
+    const w = this.w;
+    story.BindExternalFunction('tyrell_fact', (k: string) => w.s.facts[k] ?? null, true);
+    story.BindExternalFunction('tyrell_thinks', (who: Id, k: string) => w.peek(() => w.reverie?.thinks(who, k) ?? w.s.facts[k] ?? null), true);
+    story.BindExternalFunction('tyrell_regard', (a: Id, b: Id) => w.fellowship?.regard(a, b) ?? 0, true);
+    story.BindExternalFunction('tyrell_mood', (who: Id) => w.reverie?.mood(who) ?? 0.5, true);
+    story.BindExternalFunction('tyrell_test', (who: Id, cond: string) => { const p = w.s.people[who]; return p ? w.peek(() => w.lang.test(cond, w.ctx(p))) : false; }, true);
+    story.BindExternalFunction('tyrell_did', (actor: Id, verb: string, target: Id) => { w.did(actor, verb, target ? { for: target } : {}); return true; }, false);
+  }
+}
+
+export { HOUR };
+export type { Value };

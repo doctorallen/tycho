@@ -72,4 +72,4 @@ nav:
   - title: Proposed
     pages:
       - { title: Harm, url: /docs/harm.html }
-      - { title: Spy, url: /docs/spy.html }
+      - { title: Events by impact, url: /docs/events.html }

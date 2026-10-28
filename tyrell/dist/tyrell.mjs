@@ -4893,7 +4893,7 @@ var Gaff = class {
     const def = this.storylets.get(id);
     if (!def) return;
     let where = place;
-    if (!where && def.unseen) where = this.unseenPlace(def.unseen);
+    if (!where && def.unseen) where = this.emptyPlace(def.unseen);
     const subject = def.subject ?? "world";
     this.st.last[id] = w.s.now;
     this.st.fired.push({ t: w.s.now, id, place: where });
@@ -4903,12 +4903,26 @@ var Gaff = class {
     w.emit("director", { id, place: where, label: def.label ?? id });
     w.internally(() => def.fire(w, { place: where, subject, id }));
   }
-  /** A place with a tag that nobody is at and the game isn't showing. */
+  /**
+   * A place with a tag that nobody is at, for a storylet firing without a
+   * place. It doesn't read focus: focus isn't state, so a replay (which may
+   * run with any focus) couldn't make the same choice.
+   */
+  emptyPlace(tag) {
+    const w = this.w;
+    const options = w.ring.tagged(tag).filter((id) => !w.ring.present(id).length);
+    return w.worldStream("unseen").pick(options) ?? null;
+  }
+  /**
+   * A place with a tag that nobody is at and the game isn't showing (not in
+   * a focused region). Looking only: it changes nothing. To fire a storylet
+   * there, pass it to trigger(id, place), which records the place.
+   */
   unseenPlace(tag) {
     const w = this.w;
     const focus = new Set(w.clock.regionsInFocus());
     const options = w.ring.tagged(tag).filter((id) => !focus.has(w.ring.region(id)) && !w.ring.present(id).length);
-    return w.worldStream("unseen").pick(options) ?? null;
+    return w.worldStreamPeek("unseen", tag, w.s.now, w.s.n).pick(options) ?? null;
   }
   /** What's fired recently. */
   history() {

@@ -1,6 +1,6 @@
 # Gaff
 
-The director: storylets that fire on a mean time between events, gated by conditions, cooldowns and the phase of an intensity cycle, drawn from shuffled decks so nothing repeats back to back, and placed where nobody's looking when that matters. Named for the Blade Runner detective who watches everything and leaves small origami figures behind.
+The director: storylets that fire on a mean time between events, gated by conditions, cooldowns and the phase of an intensity cycle, drawn from shuffled decks so nothing repeats back to back, and placed where nobody is when that matters. Named for the Blade Runner detective who watches everything and leaves small origami figures behind.
 
 The ideas come from RimWorld's storytellers (mean time between events), Left 4 Dead's AI director (build-up, peak, fade and relax), and card decks for variety without repetition.
 
@@ -41,7 +41,7 @@ world.on('timer:rain-stops', () => world.fact('raining', false));
 | `subject` | `'world'` | The intensity subject it reads and bumps (`'player'`, `'docks'`...) |
 | `bump` | 0.2 | How much firing raises the subject's intensity |
 | `deck` | none | When it comes up, a card is drawn from this deck and fired instead |
-| `unseen` | none | A tag: fire at a place with this tag that nobody is at and the game isn't showing |
+| `unseen` | none | A tag: fired without a place, it fires at a place with this tag that nobody is at |
 | `fire` | required | What happens: `(world, { place, subject, id }) => void` |
 
 ## When storylets fire
@@ -86,9 +86,19 @@ Cooldowns work on both. A cooldown on the trigger spaces out the deck as a whole
 
 ## Unseen places
 
-Some events should happen where nobody sees them happen: a break-in, a fire, a body found later. With `unseen: 'tag'`, a storylet fired without a place picks one with that tag that isn't in a focused region and has nobody at it (`null` if there's none), and passes it to `fire` as `place`.
+Some events should happen where nobody sees them happen: a break-in, a fire, a body found later. With `unseen: 'tag'`, a storylet fired without a place picks one with that tag that nobody is at (`null` if there's none), from the world's stream, and passes it to `fire` as `place`.
 
-Focus isn't part of the state. If the game's focus differs when Esper replays a storylet, the replay can pick a different place. Keep that in mind if the game rewinds through `unseen` storylets.
+That choice doesn't look at what the game is showing, on purpose. Focus isn't part of the world's state and isn't recorded, so a choice that read it could come out differently when Esper replays the firing (the game may be showing anything then), and a watched world would differ from an unwatched one. So Gaff chooses from the state alone, and leaves the view to the game. To keep an event out of the player's sight:
+
+- **Fire it yourself.** `gaff.unseenPlace(tag)` picks a place with the tag that nobody is at *and* that isn't in a focused region, without changing anything. Pass it to `gaff.trigger(id, place)`: the place is part of the recorded input, so a replay fires at the same place whatever is on screen then. Give the storylet `mtb: Infinity` so it only fires this way.
+- **Or gate it with a fact.** If the game keeps a fact such as `player-in:<region>` up to date (an input, so it rewinds), a `when: ['!player-in:docks']` keeps automatic firings away from where the player is.
+
+```js
+world.gaff.storylet({ id: 'fire', mtb: Infinity, unseen: 'shop', fire: (w, { place }) => { if (place) w.fact('burnt:' + place, true); } });
+// from the game's own code, when it decides it's time:
+const place = world.gaff.unseenPlace('shop');
+if (place) world.gaff.trigger('fire', place);
+```
 
 ## Metrics
 
@@ -139,7 +149,7 @@ In `world.s.mod.gaff`:
 | `history()` | array | The last 100 firings |
 | `draw(deck)` | id or undefined | **Input.** Draws a card (applies at once): for decks the game deals from itself |
 | `applyDraw(deck)` | id or undefined | **Engine.** The direct version |
-| `unseenPlace(tag)` | id or null | **Engine.** Picks a place nobody sees (draws from the world's stream) |
+| `unseenPlace(tag)` | id or null | A place with the tag that nobody is at and that isn't in a focused region. Changes nothing; pass it to `trigger` |
 | `applyBump(subject, by)` | void | **Engine.** The direct version of `bump` |
 | `config`, `storylets` | | The config and the declared storylets |
 
@@ -168,7 +178,7 @@ Log entry: `director` (`{ storylet, place }`).
 
 - **Reverie**: the `mood` metric is the town's mean mood, so storylets can ease off when people are miserable.
 - **Wormtongue**: `metric:heat.<actor>` lets the director react to the player's heat.
-- **The clock**: `unseen` reads the focused regions; storylets' timers (`w.at`) come back as `timer:` events the game listens to.
+- **The clock**: `unseenPlace` reads the focused regions; storylets' timers (`w.at`) come back as `timer:` events the game listens to.
 - **Everything else** through `fire`, which can use the whole API: facts, directives, feelings, payments, births.
 
 ## Example

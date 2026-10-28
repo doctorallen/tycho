@@ -304,6 +304,24 @@ test('a storylet\'s changes replay exactly after a rewind (and aren\'t recorded 
   assert.equal(w.hash(), h);
 });
 
+test('unseen storylets pick the same place whatever the game is showing, and on a replay', () => {
+  const build = () => {
+    const w = rocinante({ start: 3 * HOUR });
+    w.gaff.storylet({ id: 'break_in', mtb: 2 * HOUR, cooldown: 6 * HOUR, unseen: 'home', fire: (x, { place }) => { if (place) x.fact('broken_into:' + place, x.now); } });
+    return w;
+  };
+  const a = build(), b = build();
+  a.focus(['blocks']); // the player is looking at the flats
+  a.advance(DAY); b.advance(DAY);
+  assert.ok(Object.keys(a.s.facts).some((k) => k.startsWith('broken_into:')));
+  assert.equal(a.hash(), b.hash(), 'watching changes nothing');
+  const h = a.hash();
+  a.focus(['main']);
+  a.rewind(12 * HOUR);
+  a.advance(12 * HOUR);
+  assert.equal(a.hash(), h, 'and a replay with another focus is the same');
+});
+
 test('unseen places: somewhere nobody is and the game isn\'t showing', () => {
   const w = rocinante({ start: 3 * HOUR });
   w.focus(['main']);

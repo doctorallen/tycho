@@ -5,7 +5,7 @@
 // between events (RimWorld's storytellers), gated by conditions, cooldowns and
 // the phase of an intensity cycle per subject (Left 4 Dead's build-up, peak,
 // fade and relax), drawn from shuffled decks so nothing repeats back to back,
-// and placed where nobody's looking when that matters.
+// and placed where nobody is when that matters.
 //
 // A storylet's fire() is game code the engine runs; it runs again on a
 // replay, so changes it makes through the API aren't recorded twice.
@@ -33,7 +33,7 @@ export interface StoryletDef {
   bump?: number;
   /** Part of a deck: when it comes up, a card is drawn from the deck instead. */
   deck?: string;
-  /** Pick a place nobody can see (not in focus, nobody there), from this tag. */
+  /** Pick a place with this tag that nobody is at (focus isn't read: a replay must pick the same). */
   unseen?: string;
   /** What happens. */
   fire: (w: World, ctx: { place: Id | null; subject: string; id: Id }) => void;
@@ -204,7 +204,7 @@ export class Gaff implements Module {
     const def = this.storylets.get(id);
     if (!def) return;
     let where = place;
-    if (!where && def.unseen) where = this.unseenPlace(def.unseen);
+    if (!where && def.unseen) where = this.emptyPlace(def.unseen);
     const subject = def.subject ?? 'world';
     this.st.last[id] = w.s.now;
     this.st.fired.push({ t: w.s.now, id, place: where });
@@ -215,12 +215,27 @@ export class Gaff implements Module {
     w.internally(() => def.fire(w, { place: where, subject, id }));
   }
 
-  /** A place with a tag that nobody is at and the game isn't showing. */
+  /**
+   * A place with a tag that nobody is at, for a storylet firing without a
+   * place. It doesn't read focus: focus isn't state, so a replay (which may
+   * run with any focus) couldn't make the same choice.
+   */
+  private emptyPlace(tag: string): Id | null {
+    const w = this.w;
+    const options = w.ring.tagged(tag).filter((id) => !w.ring.present(id).length);
+    return w.worldStream('unseen').pick(options) ?? null;
+  }
+
+  /**
+   * A place with a tag that nobody is at and the game isn't showing (not in
+   * a focused region). Looking only: it changes nothing. To fire a storylet
+   * there, pass it to trigger(id, place), which records the place.
+   */
   unseenPlace(tag: string): Id | null {
     const w = this.w;
     const focus = new Set(w.clock.regionsInFocus());
     const options = w.ring.tagged(tag).filter((id) => !focus.has(w.ring.region(id)) && !w.ring.present(id).length);
-    return w.worldStream('unseen').pick(options) ?? null;
+    return w.worldStreamPeek('unseen', tag, w.s.now, w.s.n).pick(options) ?? null;
   }
 
   /** What's fired recently. */

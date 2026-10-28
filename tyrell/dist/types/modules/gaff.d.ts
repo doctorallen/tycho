@@ -19,7 +19,7 @@ export interface StoryletDef {
     bump?: number;
     /** Part of a deck: when it comes up, a card is drawn from the deck instead. */
     deck?: string;
-    /** Pick a place nobody can see (not in focus, nobody there), from this tag. */
+    /** Pick a place with this tag that nobody is at (focus isn't read: a replay must pick the same). */
     unseen?: string;
     /** What happens. */
     fire: (w: World, ctx: {
@@ -95,7 +95,17 @@ export declare class Gaff implements Module {
     /** Makes a storylet fire now (the game can force one: recorded). */
     trigger(id: Id, place?: Id | null): void;
     private fire;
-    /** A place with a tag that nobody is at and the game isn't showing. */
+    /**
+     * A place with a tag that nobody is at, for a storylet firing without a
+     * place. It doesn't read focus: focus isn't state, so a replay (which may
+     * run with any focus) couldn't make the same choice.
+     */
+    private emptyPlace;
+    /**
+     * A place with a tag that nobody is at and the game isn't showing (not in
+     * a focused region). Looking only: it changes nothing. To fire a storylet
+     * there, pass it to trigger(id, place), which records the place.
+     */
     unseenPlace(tag: string): Id | null;
     /** What's fired recently. */
     history(): Array<{

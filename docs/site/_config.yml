@@ -62,6 +62,7 @@ nav:
       - { title: Cityspeak, url: /tyrell/docs/modules/cityspeak.html }
       - { title: Voice, url: /tyrell/docs/modules/voice.html }
       - { title: Bree, url: /tyrell/docs/modules/bree.html }
+      - { title: Morgul, url: /tyrell/docs/modules/morgul.html }
       - { title: Mentat, url: /tyrell/docs/modules/mentat.html }
       - { title: Gaff, url: /tyrell/docs/modules/gaff.html }
       - { title: Ceres, url: /tyrell/docs/modules/ceres.html }

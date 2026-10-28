@@ -44,11 +44,25 @@ world.task({
 | `considerations` | Extra factors |
 | `cooldown` | Minutes before it can be chosen again, after the plan completes |
 | `tags` | As for actions (Reverie boosts read them) |
+| `target` | `'person'`: aimed at someone. It's chosen only when something names who (a directive's `target`, a module's option: Morgul's revenge), never freely, and the plan keeps them ([below](#a-task-aimed-at-someone)) |
 | `methods` | The ways to do it, tried in order |
 
 `MethodDef`: `{ name?, if?, do }`. A method's `if` is checked when the plan starts (or replans), for the person; the first method that isn't marked failed and whose conditions hold is used. Methods are named `'way 1'`, `'way 2'`... in the log if they have no name.
 
 A task is chosen like an action: freely (if it has `relieves` or `base`), by a directive (`world.direct(id, { do: 'fix_radio' })`), by a routine entry, or as a job's action. A Reverie break can be a task too.
+
+### A task aimed at someone
+
+A task with `target: 'person'` keeps who it's aimed at (a directive's `target`, or the option a module offers: Morgul's `avenge`): the plan's `target`. Its methods' conditions read them as the target (`target.hurt<0.5`, `odds>0.5`), a step whose action is aimed at someone (`target: 'person'`) is aimed at them, a step's `target: 'target'` is them, and `'target'` as a place (`go:target`, an action's `at: 'target'`) is wherever they are:
+
+```js
+world.task({ id: 'avenge', target: 'person', tags: ['harm'], methods: [
+  { name: 'have it out', if: ['odds>0.5'], do: [{ action: 'confront', target: 'target' }] },
+  { name: 'spike their supper', if: ['has:nightshade'], do: ['go:cafe', { action: 'spike', target: 'target' }] },
+  { name: 'let it lie', do: ['brood'] },
+] });
+world.direct('sam', { do: 'avenge', target: 'dev' });
+```
 
 ## Steps
 

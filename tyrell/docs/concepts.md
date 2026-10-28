@@ -126,6 +126,7 @@ The core (Bicameral, Ring, Entmoot, Esper, Westmarch, Strangers) is always on. T
 | [Delos](modules/delos.md) | Genomes: genes, blended traits, talents and instincts, inherited |
 | [Voice](modules/voice.md) | The player's conversations: threads, beats, answers whose approaches land by the listener |
 | [Bree](modules/bree.md) | Interactions between people: outcomes by degrees, conversations over turns, quarrels that escalate, grudges and feuds, making up |
+| [Morgul](modules/morgul.md) | Harm between people: wounds, hurt, down and dead, grudges and fear, traps, poison, suspicion, fights by numbers |
 
 A module that's off leaves no trace: its getter (`world.reverie`) is `undefined`, its terms aren't registered, and its fields on definitions (`price`, `feels`, `crime`...) are ignored.
 

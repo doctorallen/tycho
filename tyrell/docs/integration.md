@@ -247,9 +247,12 @@ world.sense({ kind: 'strip', actor: 'player', what: 'till', place: 'grocery', se
 | `seenBy` | everyone at `place` except the actor | Who perceived it. Only people doing something at the place count by default, not people walking past |
 | `strength` | 1 | How clearly, 0..1 |
 | `disguise` | 0 | How well the actor was disguised, 0..1 |
+| `severity` | the crime's | How bad it was, 0..1, for a crime (Wormtongue): the witnesses' memories, and the heat a report adds. Morgul passes a harm's |
 | `data` | none | Anything else |
 
 Off screen, people commit crimes too (actions with `crime`), and everyone at the place may witness them. What happens next (beliefs, memories, reports, heat, gossip) is [Wormtongue](modules/wormtongue.md).
+
+Harm (a blow, a trap sprung, a dose eaten) has its own report: `world.morgul.harm({ to, by, kind, severity, via, intent, seenBy })`, and `world.morgul.spring(trap, id)` for a trap the game's trigger caught. What follows (the wound, the grudge, the fear, the crime, suspicion) is [Morgul](modules/morgul.md).
 
 A **deed** is something someone did to or for someone else. Declare what each verb means, then report deeds as they happen:
 

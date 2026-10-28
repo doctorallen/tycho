@@ -104,6 +104,7 @@ A person's `born` is in their state.
 | `pair(a, b)` | void | **Input.** Makes two people partners |
 | `birth(parents, def = {}, id?)` | id | **Input.** A child is born; applies at once and returns the id |
 | `depart(id, why = 'left')` | void | **Input.** Someone leaves for good |
+| `applyDepart(id, why)` | void | **Engine.** The same, inside the simulation (a course that ends in death, a killing: Athelas, Morgul) |
 | `namer` | function | `(r, parents) => string`: names newborns |
 | `template` | function | `(r, parents) => PersonDef`: fills in newborns |
 | `config` | | The config |

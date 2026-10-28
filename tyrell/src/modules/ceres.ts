@@ -62,6 +62,22 @@ export interface ProductionReport {
   bottlenecks: Array<{ chain: Id; from: Id; to: Id; store: Id | null; fromStock: number; toStock: number }>;
 }
 
+export interface CeresConfig {
+  /**
+   * The headline knob: how much prices put people off. It scales how far a
+   * price, as a share of what they have, weighs an option down. 0: price is
+   * no object (they still can't buy what they can't afford). A person's own
+   * (PersonDef.tune.ceres) multiplies it for them. Default 1.
+   */
+  prices: number;
+  /** A priced option weighs 1 - share × (priceShare + thrift × priceThrift), never under priceFloor, where share is the price over what they have. Defaults 0.4, 0.8 and 0.05. */
+  priceShare: number;
+  priceThrift: number;
+  priceFloor: number;
+}
+
+export const DEFAULT_CERES: CeresConfig = { prices: 1, priceShare: 0.4, priceThrift: 0.8, priceFloor: 0.05 };
+
 interface Flow { made?: Record<Id, number>; used?: Record<Id, number> }
 interface Production { day: number; today: Record<Id, Flow>; yesterday: Record<Id, Flow> }
 interface Rent { amount: number; every: number; next: number; to?: Id }
@@ -69,14 +85,20 @@ interface State { purses: Record<Id, number>; pantry: Record<Id, Record<Id, numb
 
 export class Ceres implements Module {
   readonly name = 'ceres';
+  readonly config: CeresConfig;
+  readonly knobs = { prices: 'person' } as const;
   readonly goods = new Map<Id, GoodDef>();
   readonly chains = new Map<Id, ChainDef>();
   private w!: World;
   /** Whether anything makes goods or works from a store (worked out from the definitions, kept until they change). */
   private producingCache: { n: number; on: boolean } | null = null;
 
+  constructor(cfg: Partial<CeresConfig> = {}) { this.config = { ...DEFAULT_CERES, ...cfg }; }
+
   init(): State { return { purses: {}, pantry: {}, rent: {}, ledger: [] }; }
   private get st(): State { return this.w.s.mod.ceres as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): CeresConfig { return this.w.tuned(this.name, this.config); }
 
   attach(w: World): void {
     this.w = w;
@@ -331,9 +353,12 @@ export class Ceres implements Module {
     const price = a?.price ?? 0;
     if (!price) return;
     const money = Math.max(0.01, this.money(p.id));
-    const thrift = p.def.traits?.thrift ?? 0.5;
+    const thrift = p.def.traits?.thrift ?? this.w.cfg.traitDefault;
     const share = clamp(price / money);
-    return [['price', round(clamp(1 - share * (0.4 + thrift * 0.8), 0.05, 1), 4)]];
+    const cfg = this.c;
+    // the headline knob: how much prices put them off, the world's times their own
+    const k = cfg.prices * this.w.own(p, this.name, 'prices');
+    return [['price', round(clamp(1 - share * (cfg.priceShare + thrift * cfg.priceThrift) * k, cfg.priceFloor, 1), 4)]];
   }
 
   started(p: PersonState, d: Doing): void {

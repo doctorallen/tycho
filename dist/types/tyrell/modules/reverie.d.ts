@@ -116,11 +116,62 @@ export interface ReverieConfig {
     /** Stress half-lives in minutes. */
     stressShort: number;
     stressLong: number;
+    /** How often breaks come: the chance of one, at a mood under a threshold, against the mean days between. 0: never. Default 1. */
+    breaks: number;
+    /** How fast memories and beliefs fade: memoryDecay over the hours, beliefDecay and sawDecay over the days. 0: they never fade. Default 1. */
+    forgetting: number;
+    /** How much feelings move the mood: each feeling's weight in it. Default 1. */
+    feelings: number;
+    /** How much stress builds: everything that adds stress (bad feelings, acting against their values) adds this much more. Default 1. */
+    stress: number;
+    /** Each extra stack of a feeling counts this share of the one before, for a feeling with no `stackMul`. Default 0.8. */
+    stackMul: number;
+    /** A bad feeling with no `stress` adds this share of its weight as stress. Default 0.5. */
+    feelingStress: number;
+    /** A need over this level shows as its emotion (hunger as 'irritable'). Default 0.7. */
+    needEmotion: number;
+    /** How strongly a need past `needEmotion` shows, per point over. Default 0.8. */
+    needEmotionWeight: number;
+    /** How much short-term and long-term stress count in stress. Defaults 0.6 and 0.6. */
+    stressShortWeight: number;
+    stressLongWeight: number;
+    /** The share of new stress that also goes to the long term. Default 0.15. */
+    stressCarry: number;
+    /** While short-term stress is over `strainAt`, each new stress adds `strain` more to the long term. Defaults 0.6 and 0.02. */
+    strainAt: number;
+    strain: number;
+    /** Importance of a memory with none given and no kind to say. Default 5. */
+    memoryImportance: number;
+    /** At midnight, memories (not core ones) weaker than this are forgotten. Default 0.5. */
+    memoryFloor: number;
+    /** A memory recalled this many times, of at least `coreImportance`, may become a core memory, with `coreChance` each recall. Defaults 3, 7 and 1/3. */
+    coreRecalls: number;
+    coreImportance: number;
+    coreChance: number;
+    /** Belief strength kept per day for what they saw for themselves. Default null: the square root of beliefDecay (it fades half as fast). */
+    sawDecay: number | null;
+    /** The rank a break comes at (above everything: story 3, work 2). Default 4. */
+    breakRank: number;
+    /** The share of a break that must be done for it to bring catharsis. Default 0.5. */
+    breakDone: number;
+    /** The share of long-term stress kept after a break (short-term goes). Default 0.7. */
+    catharsisKeep: number;
+    /** An action against a value they hold weighs 1 - held × againstPull, never under againstFloor. Defaults 0.8 and 0.05. */
+    againstPull: number;
+    againstFloor: number;
+    /** Stress, per point of the values held, of starting an action against them. Default 0.3. */
+    againstStress: number;
 }
 export declare const DEFAULT_REVERIE: ReverieConfig;
 export declare class Reverie implements Module {
     readonly name = "reverie";
     readonly config: ReverieConfig;
+    readonly knobs: {
+        readonly breaks: "person";
+        readonly forgetting: "person";
+        readonly feelings: "person";
+        readonly stress: "person";
+    };
     readonly feelingDefs: Map<string, FeelingDef>;
     readonly breakDefs: Map<string, BreakDef>;
     readonly memoryKinds: Map<string, MemoryKindDef>;
@@ -128,6 +179,10 @@ export declare class Reverie implements Module {
     constructor(cfg?: Partial<ReverieConfig>);
     init(): State;
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
+    /** A headline knob for someone: the world's, times their own. */
+    private knob;
     attach(w: World): void;
     feeling(def: FeelingDef): this;
     breakdown(def: BreakDef): this;
@@ -161,8 +216,8 @@ export declare class Reverie implements Module {
     applyRemember(id: Id, m: Partial<Memory> & {
         k: Id;
     }): void;
-    /** How strongly a memory is held now: importance, faded by time. Core memories don't fade. */
-    strength(m: Memory): number;
+    /** How strongly a memory is held now (by whom, for their own pace of forgetting): importance, faded by time. Core memories don't fade. */
+    strength(m: Memory, id?: Id): number;
     /** Someone's memories, strongest first. */
     memories(id: Id): Memory[];
     /**

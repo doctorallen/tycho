@@ -49,6 +49,20 @@ export interface ProductionReport {
         toStock: number;
     }>;
 }
+export interface CeresConfig {
+    /**
+     * The headline knob: how much prices put people off. It scales how far a
+     * price, as a share of what they have, weighs an option down. 0: price is
+     * no object (they still can't buy what they can't afford). A person's own
+     * (PersonDef.tune.ceres) multiplies it for them. Default 1.
+     */
+    prices: number;
+    /** A priced option weighs 1 - share × (priceShare + thrift × priceThrift), never under priceFloor, where share is the price over what they have. Defaults 0.4, 0.8 and 0.05. */
+    priceShare: number;
+    priceThrift: number;
+    priceFloor: number;
+}
+export declare const DEFAULT_CERES: CeresConfig;
 interface Flow {
     made?: Record<Id, number>;
     used?: Record<Id, number>;
@@ -80,13 +94,20 @@ interface State {
 }
 export declare class Ceres implements Module {
     readonly name = "ceres";
+    readonly config: CeresConfig;
+    readonly knobs: {
+        readonly prices: "person";
+    };
     readonly goods: Map<string, GoodDef>;
     readonly chains: Map<string, ChainDef>;
     private w;
     /** Whether anything makes goods or works from a store (worked out from the definitions, kept until they change). */
     private producingCache;
+    constructor(cfg?: Partial<CeresConfig>);
     init(): State;
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
     attach(w: World): void;
     good(def: GoodDef): this;
     /** A production chain, for the daily report's bottlenecks. */

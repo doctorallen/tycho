@@ -54,16 +54,61 @@ export interface FellowshipConfig {
     forgetBelow: number;
     /** Standing labels, by fame (rows: low, some, high) and infamy (columns). */
     labels: string[][];
+    /** How fast friendships and enmities form: the regard each meeting adds or takes away (after its cap). 0: time together changes nothing. Default 1. */
+    friendship: number;
+    /** How fast attraction grows from time together. 0: it doesn't. Default 1. */
+    romance: number;
+    /** How fast relationships fade: regard drifting back to nothing (decay) and how soon faint acquaintances are forgotten (forget). 0: never. Default 1. */
+    fading: number;
+    /** The `friend` term: regard at least this. Default 0.5. */
+    friendAt: number;
+    /** The `foe` term: regard at most this. Default -0.4. */
+    foeAt: number;
+    /** friends(): the people liked more than this. Default 0.2. */
+    likeAbove: number;
+    /** How much shared values add to compatibility (each pair's values, matched). Default 0.3. */
+    compatValues: number;
+    /** The most one meeting can take away from regard, and add to it. Defaults -0.05 and 0.08. */
+    meetMin: number;
+    meetMax: number;
+    /** How much compatibility and mood color a meeting's gain (1 + compat × meetCompat + (mood - 0.5) × meetMood). Defaults 1 and 1. */
+    meetCompat: number;
+    meetMood: number;
+    /** Time together grows attraction only between people more compatible than this, by attractGain of the regard gained. Defaults 0.3 and 0.5. */
+    attractAt: number;
+    attractGain: number;
+    /** Someone's habits rub off only on people whose regard for them is over this. Default 0.3. */
+    imitateAt: number;
+    /** A social action aimed at someone weighs 1 + regard × socialRegard + compat × socialCompat, from socialMin to socialMax. Defaults 0.8, 0.2, 0.1 and 2. */
+    socialRegard: number;
+    socialCompat: number;
+    socialMin: number;
+    socialMax: number;
+    /** A deed's sentiment, when the deed moves no regard, holds this much. Default 0.1. */
+    deedSentiment: number;
+    /** Witnesses to a deed take this share of its regard. Default 0.4. */
+    witnessRegard: number;
+    /** Where fame and infamy pass into the next band of `labels`. Default [0.15, 0.4, 0.7]. */
+    bands: number[];
 }
 export declare const DEFAULT_FELLOWSHIP: FellowshipConfig;
 export declare class Fellowship implements Module {
     readonly name = "fellowship";
     readonly config: FellowshipConfig;
+    readonly knobs: {
+        readonly friendship: "person";
+        readonly romance: "person";
+        readonly fading: "person";
+    };
     readonly groups: Map<string, GroupDef>;
     private w;
     constructor(cfg?: Partial<FellowshipConfig>);
     init(): State;
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
+    /** A headline knob for someone: the world's, times their own. */
+    private knob;
     attach(w: World): void;
     group(def: GroupDef): this;
     /** Everyone in a group. */

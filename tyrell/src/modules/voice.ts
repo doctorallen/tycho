@@ -82,7 +82,7 @@ export interface ThreadDef {
   if?: Cond[];
   /** How much it's worth raising, against the others. Default 1. */
   weight?: number | ((ctx: Ctx) => number);
-  /** Minutes for it to come round fresh again after it was talked about (it does so gradually). Default 3 days. */
+  /** Minutes for it to come round fresh again after it was talked about (it does so gradually). Default config.cooldown (3 days). */
   cooldown?: number;
   /** They raise it themselves (at the start, or between subjects), instead of being offered it. */
   theirs?: boolean;
@@ -107,7 +107,7 @@ export interface PromiseDef {
   kept?: Cond[];
   /** Broken when these hold. */
   broken?: Cond[];
-  /** Days before it comes due. Default 3. */
+  /** Days before it comes due. Default config.promiseDays (3). */
   days?: number;
   /** What it comes to when it's due and neither kept nor broken. Default 'lapsed'. */
   lapse?: 'kept' | 'broken' | 'lapsed';
@@ -139,11 +139,47 @@ export interface VoiceConfig {
   react: string;
   /** A deed recorded when a talk ends (world.deed: feelings, regard, a file on the speaker). Default none. */
   deed: string | null;
+
+  /**
+   * The headline knob: how chatty they are. It scales how long they'll talk
+   * (the patience a talk starts with, rounded, at least 1 beat) and the
+   * chance they raise something of their own (`theirs`). A person's own
+   * (PersonDef.tune.voice) multiplies it for them. Default 1.
+   */
+  chatter: number;
+
+  // The finer numbers.
+  /** The default warmth a talk starts with: regard × warmthRegard, rounded, from warmthMin to warmthMax (with Fellowship). Defaults 3, -1 and 3. */
+  warmthRegard: number;
+  warmthMin: number;
+  warmthMax: number;
+  /** familiarity(): this much for each talk, and for each thing learned about them. Defaults 0.5 and 1. */
+  familiarTalk: number;
+  familiarLearned: number;
+  /** Minutes a subject takes to come round fresh again, for a thread with no `cooldown`. Default 3 days. */
+  cooldown: number;
+  /** Days a subject stays sore after `sore` with no number. Default 2. */
+  soreDays: number;
+  /** A sore subject is worth this share of its weight. Default 0.1. */
+  soreWeight: number;
+  /** A subject for learning something not yet learned is worth this much more. Default 1.5. */
+  revealPull: number;
+  /** Subjects worth less than this aren't offered. Default 0.05. */
+  salientFloor: number;
+  /** A little variety in what's offered: up to this much added to each subject's worth, the same for a pair all day. Default 0.2. */
+  variety: number;
+  /** Days before a promise comes due, for a promise with no `days`. Default 3. */
+  promiseDays: number;
+  /** Days a settled promise is remembered (the `promise:` term reads it). Default 30. */
+  promiseKeep: number;
 }
 
 export const DEFAULT_VOICE: VoiceConfig = {
   offers: 3, choices: 3, theirs: 0.3, patience: 8, fresh: 7 * DAY, strong: 2, onWell: [], onBadly: [],
   greet: 'greet', bye: 'bye', close: 'close', react: 'react', deed: null,
+  chatter: 1,
+  warmthRegard: 3, warmthMin: -1, warmthMax: 3, familiarTalk: 0.5, familiarLearned: 1, cooldown: 3 * DAY, soreDays: 2, soreWeight: 0.1,
+  revealPull: 1.5, salientFloor: 0.05, variety: 0.2, promiseDays: 3, promiseKeep: 30,
 };
 
 /** A line said in a talk. */
@@ -216,16 +252,18 @@ const bondKey = (who: Id, by: Id): string => who + '>' + by;
 export class Voice implements Module {
   readonly name = 'voice';
   readonly config: VoiceConfig;
+  readonly knobs = { chatter: 'person' } as const;
   readonly approaches = new Map<Id, ApproachDef>();
   readonly threads = new Map<Id, ThreadDef>();
   readonly promiseDefs = new Map<Id, PromiseDef>();
-  /** The warmth a talk starts with (a definition: set it on every start). Default: regard times 3, rounded, -1 to 3 (with Fellowship), else 0. */
+  /** The warmth a talk starts with (a definition: set it on every start). Default: regard times config.warmthRegard (3), rounded, from warmthMin to warmthMax (-1 to 3; with Fellowship), else 0. */
   warmth: (ctx: Ctx) => number = (ctx) => {
     const f = ctx.world.fellowship;
-    return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * 3, -1, 3)) : 0;
+    const c = this.c;
+    return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * c.warmthRegard, c.warmthMin, c.warmthMax)) : 0;
   };
-  /** How many beats they'll talk for (a definition). Default config.patience. */
-  patience: (ctx: Ctx) => number = () => this.config.patience;
+  /** How many beats they'll talk for (a definition), before `chatter`. Default config.patience. */
+  patience: (ctx: Ctx) => number = () => this.c.patience;
   private w!: World;
   /** The talk being worked on inside an input (effects add their notes to it). */
   private live: Talk | null = null;
@@ -233,6 +271,10 @@ export class Voice implements Module {
   constructor(cfg: Partial<VoiceConfig> = {}) { this.config = { ...DEFAULT_VOICE, ...cfg }; }
 
   private get st(): State | undefined { return this.w.s.mod.voice as State | undefined; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): VoiceConfig { return this.w.tuned(this.name, this.config); }
+  /** How chatty the one talked to is: the world's chatter, times their own. */
+  private chatter(who: Id): number { return this.c.chatter * this.w.own(this.w.s.people[who], this.name, 'chatter'); }
   private mut(): State { return (this.w.s.mod.voice ||= { talks: {}, bonds: {}, promises: [] }) as State; }
   private bond(who: Id, by: Id): Bond { return (this.mut().bonds[bondKey(who, by)] ||= { talks: 0, seen: {} }); }
   private peekBond(who: Id, by: Id): Bond | undefined { return this.st?.bonds[bondKey(who, by)]; }
@@ -277,7 +319,7 @@ export class Voice implements Module {
       const thread = a || talk?.thread?.id;
       if (!thread) return;
       const b = this.bond(c.person.id, c.target);
-      (b.sore ||= {})[thread] = this.w.s.now + (v === null || v === true ? 2 : Number(v)) * DAY;
+      (b.sore ||= {})[thread] = this.w.s.now + (v === null || v === true ? this.c.soreDays : Number(v)) * DAY;
     });
     L.effect('warmth', (c, _a, op, v) => {
       const talk = c.target ? this.st?.talks[c.target] : undefined;
@@ -323,7 +365,8 @@ export class Voice implements Module {
   /** How well someone knows the speaker: half a point a talk, a point for each thing learned about them. */
   familiarity(who: Id, by: Id = 'player'): number {
     const b = this.peekBond(who, by);
-    return b ? round(b.talks * 0.5 + Object.keys(b.known || {}).length, 2) : 0;
+    const c = this.c;
+    return b ? round(b.talks * c.familiarTalk + Object.keys(b.known || {}).length * c.familiarLearned, 2) : 0;
   }
 
   /** What the speaker has learned about someone. */
@@ -358,13 +401,14 @@ export class Voice implements Module {
     const talk: Talk = { who, by, t: w.s.now, n: 0, warmth: 0, patience: 0, done: [], said: [], lines: [], options: [] };
     const ctx = this.ctx(talk);
     talk.warmth = round(Number(this.warmth(ctx)) || 0, 4);
-    talk.patience = Math.max(1, Math.round(Number(this.patience(ctx)) || this.config.patience));
+    // the headline knob: a chattier person talks for longer
+    talk.patience = Math.max(1, Math.round((Number(this.patience(ctx)) || this.c.patience) * this.chatter(who)));
     st.talks[by] = talk;
     this.live = talk;
     try {
       w.log('talk', who, { by });
       w.emit('voice:start', { who, by });
-      this.say(talk, 'them', this.config.greet);
+      this.say(talk, 'them', this.c.greet);
       if (!this.theirTurn(talk)) this.refresh(talk);
     } finally { this.live = null; }
     return this.view(talk, false);
@@ -463,7 +507,7 @@ export class Voice implements Module {
     if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
     if (talk.patience <= 0 && !talk.over) {
       talk.over = true;
-      this.say(talk, 'them', this.config.close);
+      this.say(talk, 'them', this.c.close);
     }
   }
 
@@ -478,11 +522,12 @@ export class Voice implements Module {
     d = round(d, 4);
     talk.warmth = round(talk.warmth + d, 4);
     talk.landed = d > 0 ? 'well' : d < 0 ? 'badly' : 'even';
-    if (Math.abs(d) >= this.config.strong) {
-      this.w.lang.applyAll(d > 0 ? this.config.onWell : this.config.onBadly, ctx);
+    const c = this.c;
+    if (Math.abs(d) >= c.strong) {
+      this.w.lang.applyAll(d > 0 ? c.onWell : c.onBadly, ctx);
       // a word on how it landed, if they have one
       const how = d > 0 ? 'well' : 'badly';
-      if (!this.say(talk, 'them', `${this.config.react}.${id}.${how}`, false, undefined, true)) this.say(talk, 'them', `${this.config.react}.${how}`, false, undefined, true);
+      if (!this.say(talk, 'them', `${c.react}.${id}.${how}`, false, undefined, true)) this.say(talk, 'them', `${c.react}.${how}`, false, undefined, true);
     }
     return d;
   }
@@ -493,15 +538,17 @@ export class Voice implements Module {
     const w = this.w, now = w.s.now;
     const b = this.peekBond(talk.who, talk.by);
     const ctx = this.ctx(talk);
+    const c = this.c;
     const cands = [...this.threads.values()].filter((def) => {
       if (!def.theirs || talk.done.includes(def.id)) return false;
       const seen = b?.seen[def.id];
-      if (seen !== undefined && now - seen < (def.cooldown ?? 3 * DAY)) return false;
+      if (seen !== undefined && now - seen < (def.cooldown ?? c.cooldown)) return false;
       return !def.if || w.peek(() => w.lang.all(def.if, ctx));
     }).sort((x, y) => (x.id < y.id ? -1 : 1));
     if (!cands.length) return false;
     const r = this.stream(talk);
-    if (!r.chance(this.config.theirs)) return false;
+    // the headline knob: a chattier person raises more of their own
+    if (!r.chance(c.theirs * this.chatter(talk.who))) return false;
     const def = r.weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
     if (!def) return false;
     this.enter(talk, def, true);
@@ -518,21 +565,22 @@ export class Voice implements Module {
     const w = this.w, now = w.s.now;
     const b = this.peekBond(talk.who, talk.by);
     const ctx = this.ctx(talk);
+    const c = this.c;
     const scored: Array<[number, ThreadDef]> = [];
     for (const def of this.threads.values()) {
       if (def.theirs || talk.done.includes(def.id)) continue;
       if (def.if && !w.lang.all(def.if, ctx)) continue;
       const seen = b?.seen[def.id];
-      const fresh = seen === undefined ? 1 : 1 - Math.exp(-(now - seen) / Math.max(1, def.cooldown ?? 3 * DAY));
+      const fresh = seen === undefined ? 1 : 1 - Math.exp(-(now - seen) / Math.max(1, def.cooldown ?? c.cooldown));
       let s = this.weightOf(def, ctx) * fresh;
-      if ((b?.sore?.[def.id] ?? -1) > now) s *= 0.1;
-      if (def.reveals && b?.known?.[def.reveals] === undefined) s *= 1.5;
-      if (s < 0.05) continue;
+      if ((b?.sore?.[def.id] ?? -1) > now) s *= c.soreWeight;
+      if (def.reveals && b?.known?.[def.reveals] === undefined) s *= c.revealPull;
+      if (s < c.salientFloor) continue;
       // a little variety, the same for this pair all day
-      s += w.worldStreamPeek('voice', talk.who, talk.by, Math.floor(now / DAY), def.id).next() * 0.2;
+      s += w.worldStreamPeek('voice', talk.who, talk.by, Math.floor(now / DAY), def.id).next() * c.variety;
       scored.push([s, def]);
     }
-    return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, this.config.offers).map(([, d]) => d);
+    return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, c.offers).map(([, d]) => d);
   }
 
   /** Works out what can be said now (kept with the talk, so a replay offers the same). */
@@ -544,8 +592,9 @@ export class Voice implements Module {
       if (talk.over) { talk.options = [{ kind: 'bye', id: 'bye', ok: true }]; return; }
       if (talk.thread) {
         const beat = this.threads.get(talk.thread.id)?.beats[talk.thread.beat];
+        const choices = this.c.choices;
         (beat?.answers || []).forEach((a, i) => {
-          if (out.length >= this.config.choices) return;
+          if (out.length >= choices) return;
           const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === undefined || talk.warmth >= a.warmth);
           if (!ok && !a.soft) return;
           // a beat come round again doesn't offer what's been said already
@@ -569,7 +618,7 @@ export class Voice implements Module {
   }
 
   private bye(talk: Talk): TalkView {
-    this.say(talk, 'them', this.config.bye);
+    this.say(talk, 'them', this.c.bye);
     const view = this.view(talk, true);
     this.applyEnd(talk.by, 'bye');
     return view;
@@ -588,7 +637,7 @@ export class Voice implements Module {
     b.last = w.s.now;
     w.log('talked', talk.who, { by, threads: talk.done.slice(), why });
     w.emit('voice:end', { who: talk.who, by, threads: talk.done.slice(), why });
-    const deed = this.config.deed;
+    const deed = this.c.deed;
     if (deed) {
       const data: Record<string, Value> = { for: talk.who };
       w.log('did', by, { verb: deed, for: talk.who });
@@ -619,9 +668,10 @@ export class Voice implements Module {
     if (speaker && cs && w.s.people[speaker] && (!words || this.isTopic(speaker, topicOrWords))) {
       const b = this.peekBond(talk.who, talk.by);
       const now = w.s.now;
+      const fresh = this.c.fresh;
       const said = cs.choose(speaker, {
         to: listener, topic: topicOrWords, exact: true, salt: [talk.t, talk.n++],
-        avoid: (key) => talk.said.includes(key) || (b?.said?.[key] !== undefined && now - (b.said[key] as number) < this.config.fresh),
+        avoid: (key) => talk.said.includes(key) || (b?.said?.[key] !== undefined && now - (b.said[key] as number) < fresh),
       });
       if (said) {
         const line: TalkLine = { who, key: said.key };
@@ -680,7 +730,7 @@ export class Voice implements Module {
     if (st.promises.some((p) => p.who === who && p.by === by && p.id === id && p.state === 'open')) return;
     const def = this.promiseDefs.get(id);
     const now = this.w.s.now;
-    st.promises.push({ who, by, id, t: now, due: now + (days ?? def?.days ?? 3) * DAY, state: 'open' });
+    st.promises.push({ who, by, id, t: now, due: now + (days ?? def?.days ?? this.c.promiseDays) * DAY, state: 'open' });
     this.w.log('promised', who, { by, promise: id });
     this.w.emit('promise', { who, by, id, state: 'open' });
   }
@@ -719,14 +769,14 @@ export class Voice implements Module {
   day(): void {
     const st = this.st;
     if (!st) return;
-    const now = this.w.s.now;
+    const now = this.w.s.now, c = this.c;
     for (const k of Object.keys(st.bonds)) {
       const said = st.bonds[k].said;
-      if (said) for (const key of Object.keys(said)) if (now - said[key] > 2 * this.config.fresh) delete said[key];
+      if (said) for (const key of Object.keys(said)) if (now - said[key] > 2 * c.fresh) delete said[key];
       const sore = st.bonds[k].sore;
       if (sore) for (const t of Object.keys(sore)) if (sore[t] <= now) delete sore[t];
     }
-    st.promises = st.promises.filter((p) => p.state === 'open' || now - (p.settled ?? now) < 30 * DAY);
+    st.promises = st.promises.filter((p) => p.state === 'open' || now - (p.settled ?? now) < c.promiseKeep * DAY);
   }
 
   removed(p: PersonState): void {

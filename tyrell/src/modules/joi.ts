@@ -30,15 +30,32 @@ export type JoiProvider = (req: JoiRequest) => Promise<JoiReply>;
 
 export interface Spoken { text: string; key: string | null; flags: string[]; fromModel: boolean }
 
+/** Joi's settings. It never changes the world, so it has no headline knobs: these shape only the prompt and the wait. */
+export interface JoiConfig {
+  /** Needs over this level go into the prompt as what they badly want. Default 0.6. */
+  wants: number;
+  /** How many of their strongest memories go into the prompt. Default 3. */
+  memories: number;
+  /** Milliseconds to wait for the provider before the written line, unless speak() is given its own. Default 2500. */
+  timeoutMs: number;
+}
+
+export const DEFAULT_JOI: JoiConfig = { wants: 0.6, memories: 3, timeoutMs: 2500 };
+
 export class Joi implements Module {
   readonly name = 'joi';
+  readonly config: JoiConfig;
   /** The game's voice, in a sentence: 'neon noir, clipped' or 'cozy, folksy'. */
   voice = 'Speak as this person would, in one or two short sentences.';
   private provider: JoiProvider | null = null;
   private allowed = new Set<string>();
   private w!: World;
 
+  constructor(cfg: Partial<JoiConfig> = {}) { this.config = { ...DEFAULT_JOI, ...cfg }; }
+
   attach(w: World): void { this.w = w; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): JoiConfig { return this.w.tuned(this.name, this.config); }
 
   /** Sets the function that calls a model (async). */
   setProvider(fn: JoiProvider | null): this { this.provider = fn; return this; }
@@ -58,13 +75,14 @@ export class Joi implements Module {
     if (traits) lines.push(`Temperament (0 to 1): ${traits}.`);
     const d = p.doing;
     if (d) lines.push(`Right now: ${d.kind === 'travel' ? `walking to ${d.to}` : `${w.actions.get(d.action)?.label ?? d.action} at ${d.place}`}.`);
-    const needs = [...w.needs.keys()].map((n) => [n, w.mind.level(p, n)] as const).filter(([, v]) => v > 0.6).map(([n]) => n);
+    const c = this.c;
+    const needs = [...w.needs.keys()].map((n) => [n, w.mind.level(p, n)] as const).filter(([, v]) => v > c.wants).map(([n]) => n);
     if (needs.length) lines.push(`You badly want: ${needs.join(', ')}.`);
     if (w.reverie) {
       lines.push(`Mood: ${round(w.reverie.mood(who), 2)} (${w.reverie.emotion(who)}).`);
       const feelings = w.reverie.feelings(who).map((f) => f.label);
       if (feelings.length) lines.push(`On your mind: ${feelings.join('; ')}.`);
-      const mem = w.reverie.memories(who).slice(0, 3).map((m) => m.text ?? m.k);
+      const mem = w.reverie.memories(who).slice(0, c.memories).map((m) => m.text ?? m.k);
       if (mem.length) lines.push(`You remember: ${mem.join('; ')}.`);
     }
     if (opts.to) {
@@ -93,7 +111,7 @@ export class Joi implements Module {
     const fallback: Spoken = { text: line?.text ?? '', key: line?.key ?? null, flags: [], fromModel: false };
     if (!this.provider) return fallback;
     const req: JoiRequest = { prompt: this.prompt(who, opts), system: this.voice, who, line, ...(opts.to ? { to: opts.to } : {}) };
-    const timeout = opts.timeoutMs ?? 2500;
+    const timeout = opts.timeoutMs ?? this.c.timeoutMs;
     try {
       const reply = await Promise.race([
         this.provider(req),

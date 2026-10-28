@@ -61,16 +61,35 @@ export interface DelosConfig {
         chance: number;
         by: number;
     };
+    /** How often genomes mutate: the chance of a trait jump, of a gift, and every gene's `mutate`. 0: never. Default 1. */
+    mutation: number;
+    /** How far children stray from their parents: every blended value's noise. 0: a child is exactly the blend. Default 1. */
+    variation: number;
+    /**
+     * The defaults for each kind of blended value, for a trait, talent,
+     * instinct or look that doesn't say its own: founders' range, bounds,
+     * cross and noise (BlendDef). Give any of them; the rest stay as they were.
+     */
+    traitBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+    talentBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+    instinctBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
+    lookBlend: Partial<Pick<BlendDef, 'founders' | 'bounds' | 'cross' | 'noise'>>;
 }
 export declare const DEFAULT_DELOS: DelosConfig;
 export declare class Delos implements Module {
     readonly name = "delos";
     readonly config: DelosConfig;
+    readonly knobs: {
+        readonly mutation: "world";
+        readonly variation: "world";
+    };
     readonly genes: Map<string, GeneDef>;
     readonly blends: Record<Kind, Map<Id, BlendDef>>;
     private w;
     constructor(cfg?: Partial<DelosConfig>);
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
     private mut;
     attach(w: World): void;
     gene(def: GeneDef): this;

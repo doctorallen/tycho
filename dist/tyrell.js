@@ -23,6 +23,7 @@ var Tyrell = (() => {
   var index_exports = {};
   __export(index_exports, {
     Athelas: () => Athelas,
+    CORE_KNOBS: () => CORE_KNOBS,
     Ceres: () => Ceres,
     Cityspeak: () => Cityspeak,
     Cradle: () => Cradle,
@@ -35,6 +36,7 @@ var Tyrell = (() => {
     Joi: () => Joi,
     MIGRATIONS: () => MIGRATIONS,
     MODULES: () => MODULES,
+    MODULE_DEFAULTS: () => MODULE_DEFAULTS,
     Mentat: () => Mentat,
     Reverie: () => Reverie,
     SCHEMA: () => SCHEMA,
@@ -3745,7 +3747,32 @@ var Tyrell = (() => {
     beliefFloor: 0.05,
     beliefDecay: 0.97,
     stressShort: 12 * HOUR,
-    stressLong: 7 * DAY
+    stressLong: 7 * DAY,
+    breaks: 1,
+    forgetting: 1,
+    feelings: 1,
+    stress: 1,
+    stackMul: 0.8,
+    feelingStress: 0.5,
+    needEmotion: 0.7,
+    needEmotionWeight: 0.8,
+    stressShortWeight: 0.6,
+    stressLongWeight: 0.6,
+    stressCarry: 0.15,
+    strainAt: 0.6,
+    strain: 0.02,
+    memoryImportance: 5,
+    memoryFloor: 0.5,
+    coreRecalls: 3,
+    coreImportance: 7,
+    coreChance: 1 / 3,
+    sawDecay: null,
+    breakRank: 4,
+    breakDone: 0.5,
+    catharsisKeep: 0.7,
+    againstPull: 0.8,
+    againstFloor: 0.05,
+    againstStress: 0.3
   };
   var BUILTIN_FEELINGS = [
     { id: "catharsis", label: "Got it out of my system", weight: 0.25, minutes: 2 * DAY, emotion: "relieved" },
@@ -3760,6 +3787,7 @@ var Tyrell = (() => {
   var Reverie = class {
     constructor(cfg = {}) {
       this.name = "reverie";
+      this.knobs = { breaks: "person", forgetting: "person", feelings: "person", stress: "person" };
       this.feelingDefs = /* @__PURE__ */ new Map();
       this.breakDefs = /* @__PURE__ */ new Map();
       this.memoryKinds = /* @__PURE__ */ new Map();
@@ -3771,6 +3799,14 @@ var Tyrell = (() => {
     }
     get st() {
       return this.w.s.mod.reverie;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** A headline knob for someone: the world's, times their own. */
+    knob(name, id) {
+      return this.c[name] * this.w.own(id === void 0 ? void 0 : this.w.s.people[id], this.name, name);
     }
     attach(w) {
       this.w = w;
@@ -3855,13 +3891,13 @@ var Tyrell = (() => {
         oldest.until = now2 + def.minutes;
         if (cause) oldest.cause = cause;
       } else {
-        w = def.weight * Math.pow(def.stackMul ?? 0.8, same.length);
+        w = def.weight * Math.pow(def.stackMul ?? this.c.stackMul, same.length);
         const f = { id: feeling, t: now2, until: now2 + def.minutes, w: round(w, 4) };
         if (cause) f.cause = cause;
         list.push(f);
       }
       this.st.f[id] = list;
-      const stress = def.stress ?? (def.weight < 0 ? -def.weight * 0.5 : 0);
+      const stress = def.stress ?? (def.weight < 0 ? -def.weight * this.c.feelingStress : 0);
       if (stress) this.addStress(id, stress);
       this.w.log("felt", id, { feeling, label: def.label ?? feeling, ...cause ? { cause } : {} });
       this.w.emit("felt", { id, feeling, label: def.label ?? feeling, emotion: def.emotion ?? null });
@@ -3878,14 +3914,16 @@ var Tyrell = (() => {
     mood(id) {
       const p = this.w.s.people[id];
       if (!p) return 0.5;
-      let m = this.config.base;
-      for (const f of this.feelings(id)) m += f.weight;
+      const c = this.c;
+      const k = this.knob("feelings", id);
+      let m = c.base;
+      for (const f of this.feelings(id)) m += f.weight * k;
       let pen = 0, n = 0;
       for (const need of this.w.needs.keys()) {
         pen += this.w.mind.urgency(p, need);
         n++;
       }
-      if (n) m -= pen / n * this.config.needWeight * 2;
+      if (n) m -= pen / n * c.needWeight * 2;
       return round(clamp(m), 4);
     }
     /** The one named emotion showing now ('fine' when nothing stands out). */
@@ -3893,12 +3931,13 @@ var Tyrell = (() => {
       const sums = /* @__PURE__ */ new Map();
       for (const f of this.feelings(id)) if (f.emotion) sums.set(f.emotion, (sums.get(f.emotion) || 0) + Math.abs(f.weight));
       const p = this.w.s.people[id];
+      const c = this.c;
       if (p) for (const [nid, nd] of this.w.needs) {
         if (!nd.emotion) continue;
         const lvl = this.w.mind.level(p, nid);
-        if (lvl > 0.7) sums.set(nd.emotion, (sums.get(nd.emotion) || 0) + (lvl - 0.7) * 0.8);
+        if (lvl > c.needEmotion) sums.set(nd.emotion, (sums.get(nd.emotion) || 0) + (lvl - c.needEmotion) * c.needEmotionWeight);
       }
-      let best = "fine", top = this.config.emotionFloor;
+      let best = "fine", top = c.emotionFloor;
       for (const [e, v] of sums) if (v > top || v === top && e < best) {
         best = e;
         top = v;
@@ -3911,20 +3950,24 @@ var Tyrell = (() => {
     /** Stress now: short-term and long-term together, 0..1. */
     stress(id) {
       const [s, l] = this.stressParts(id);
-      return round(clamp(s * 0.6 + l * 0.6), 4);
+      const c = this.c;
+      return round(clamp(s * c.stressShortWeight + l * c.stressLongWeight), 4);
     }
     stressParts(id) {
       const cur = this.st.st[id];
       if (!cur) return [0, 0];
       const dt = this.w.s.now - cur[2];
-      const s = cur[0] * Math.pow(0.5, dt / this.config.stressShort);
-      const l = cur[1] * Math.pow(0.5, dt / this.config.stressLong);
+      const c = this.c;
+      const s = cur[0] * Math.pow(0.5, dt / c.stressShort);
+      const l = cur[1] * Math.pow(0.5, dt / c.stressLong);
       return [s, l];
     }
     addStress(id, amount) {
       const [s, l] = this.stressParts(id);
-      const ns = clamp(s + amount);
-      const nl = clamp(l + amount * 0.15 + (ns > 0.6 ? 0.02 : 0));
+      const c = this.c;
+      const a = amount * this.knob("stress", id);
+      const ns = clamp(s + a);
+      const nl = clamp(l + a * c.stressCarry + (ns > c.strainAt ? c.strain : 0));
       this.st.st[id] = [round(ns, 5), round(nl, 5), this.w.s.now];
     }
     // -------------------------------------------------------------------------
@@ -3939,28 +3982,28 @@ var Tyrell = (() => {
       var _a;
       if (!this.w.s.people[id]) return;
       const kind = this.memoryKinds.get(m.k);
-      const mem = { k: m.k, t: this.w.s.now, imp: clamp(m.imp ?? kind?.importance ?? 5, 1, 10), recalls: 0 };
+      const mem = { k: m.k, t: this.w.s.now, imp: clamp(m.imp ?? kind?.importance ?? this.c.memoryImportance, 1, 10), recalls: 0 };
       if (m.about) mem.about = m.about;
       if (m.place) mem.place = m.place;
       if (m.text) mem.text = m.text;
       const list = (_a = this.st.m)[id] || (_a[id] = []);
       list.push(mem);
       const loose = list.filter((x) => !x.core);
-      if (loose.length > this.config.memoryCap) {
+      if (loose.length > this.c.memoryCap) {
         let worst = loose[0];
-        for (const x of loose) if (this.strength(x) < this.strength(worst)) worst = x;
+        for (const x of loose) if (this.strength(x, id) < this.strength(worst, id)) worst = x;
         list.splice(list.indexOf(worst), 1);
       }
     }
-    /** How strongly a memory is held now: importance, faded by time. Core memories don't fade. */
-    strength(m) {
+    /** How strongly a memory is held now (by whom, for their own pace of forgetting): importance, faded by time. Core memories don't fade. */
+    strength(m, id) {
       if (m.core) return m.imp;
       const hours = (this.w.s.now - m.t) / HOUR;
-      return m.imp * Math.pow(this.config.memoryDecay, hours);
+      return m.imp * Math.pow(this.c.memoryDecay, hours * this.knob("forgetting", id));
     }
     /** Someone's memories, strongest first. */
     memories(id) {
-      return (this.st.m[id] || []).slice().sort((a, b) => this.strength(b) - this.strength(a));
+      return (this.st.m[id] || []).slice().sort((a, b) => this.strength(b, id) - this.strength(a, id));
     }
     /**
      * Brings memories to mind: the strongest matching ones (about someone, of
@@ -3973,10 +4016,11 @@ var Tyrell = (() => {
     /** Recalls inside the simulation (copies of the memories recalled). */
     applyRecall(id, match = {}, n = 3) {
       const list = (this.st.m[id] || []).filter((m) => (!match.about || m.about === match.about) && (!match.k || m.k === match.k) && (!match.place || m.place === match.place));
-      const out = list.sort((a, b) => this.strength(b) - this.strength(a)).slice(0, n);
+      const out = list.sort((a, b) => this.strength(b, id) - this.strength(a, id)).slice(0, n);
+      const c = this.c;
       for (const m of out) {
         m.recalls++;
-        if (!m.core && m.recalls >= 3 && m.imp >= 7) this.maybeCore(id, m);
+        if (!m.core && m.recalls >= c.coreRecalls && m.imp >= c.coreImportance) this.maybeCore(id, m);
       }
       return out.map((m) => ({ ...m }));
     }
@@ -3985,14 +4029,14 @@ var Tyrell = (() => {
       const p = this.w.s.people[id];
       if (!p) return;
       const cores = (this.st.m[id] || []).filter((x) => x.core).length;
-      if (cores >= this.config.coreCap) return;
-      if (!this.w.stream(p).chance(1 / 3)) return;
+      if (cores >= this.c.coreCap) return;
+      if (!this.w.stream(p).chance(this.c.coreChance)) return;
       m.core = true;
       const kind = this.memoryKinds.get(m.k);
       const shifts = kind?.shifts || {};
       (_a = p.def).traits || (_a.traits = {});
       for (const trait in shifts) {
-        const before = p.def.traits[trait] ?? 0.5;
+        const before = p.def.traits[trait] ?? this.w.cfg.traitDefault;
         const after = clamp(before + shifts[trait]);
         p.def.traits[trait] = round(after, 4);
         ((_b = this.st.shifts)[id] || (_b[id] = [])).push({ trait, by: round(after - before, 4), cause: m.text ?? m.k, t: this.w.s.now });
@@ -4036,7 +4080,7 @@ var Tyrell = (() => {
     /** What someone believes about a key (undefined if they don't know or have forgotten). */
     belief(id, key2) {
       const b = this.st.b[id]?.[key2];
-      return b && b.str >= this.config.beliefFloor ? b.v : void 0;
+      return b && b.str >= this.c.beliefFloor ? b.v : void 0;
     }
     /** The full belief record. */
     beliefRecord(id, key2) {
@@ -4056,7 +4100,8 @@ var Tyrell = (() => {
     /** All of someone's beliefs, strongest and newest first. */
     beliefs(id) {
       const map = this.st.b[id] || {};
-      return Object.keys(map).map((key2) => ({ key: key2, ...map[key2] })).filter((b) => b.str >= this.config.beliefFloor).sort((a, b) => b.str - a.str || b.t - a.t || (a.key < b.key ? -1 : 1));
+      const floor = this.c.beliefFloor;
+      return Object.keys(map).map((key2) => ({ key: key2, ...map[key2] })).filter((b) => b.str >= floor).sort((a, b) => b.str - a.str || b.t - a.t || (a.key < b.key ? -1 : 1));
     }
     /** Is someone's belief true? (null when the world has no fact to check it against) */
     accurate(id, key2) {
@@ -4108,12 +4153,12 @@ var Tyrell = (() => {
       if (dt <= 0) return;
       if (p.doing && p.doing.layer === "break") return;
       const mood = this.mood(p.id);
-      const c = this.config;
+      const c = this.c;
       const level = mood < c.extreme[0] ? "extreme" : mood < c.major[0] ? "major" : mood < c.minor[0] ? "minor" : null;
       if (!level) return;
       const mtbDays = c[level][1];
       const r = this.w.stream(p);
-      if (!r.chance(1 - Math.exp(-dt / (mtbDays * DAY)))) return;
+      if (!r.chance(1 - Math.exp(-dt * this.knob("breaks", p.id) / (mtbDays * DAY)))) return;
       const order = ["extreme", "major", "minor"];
       let defs = [];
       for (const lv of order.slice(order.indexOf(level))) {
@@ -4125,7 +4170,7 @@ var Tyrell = (() => {
       if (!pick) return;
       const kind = this.w.tasks.has(pick.do) ? "task" : "action";
       const places = this.w.ring.resolve(pick.at ?? (this.w.actions.get(pick.do)?.at ?? null), p);
-      out.push({ id: pick.do, kind, place: places[0] ?? null, rank: 4, layer: "break", weight: 1, parts: [["break", 1]] });
+      out.push({ id: pick.do, kind, place: places[0] ?? null, rank: c.breakRank, layer: "break", weight: 1, parts: [["break", 1]] });
       st.checked[p.id] = now2;
       this.w.log("broke", p.id, { kind: pick.id, level, mood });
       this.w.emit("broke", { id: p.id, kind: pick.id, level, label: pick.label ?? pick.id });
@@ -4142,9 +4187,10 @@ var Tyrell = (() => {
         }
       }
       if (a?.against) {
+        const cfg = this.c;
         for (const v of a.against) {
           const held = p.def.values?.[v] ?? 0;
-          if (held > 0) out.push([`against ${v}`, clamp(1 - held * 0.8, 0.05, 1)]);
+          if (held > 0) out.push([`against ${v}`, clamp(1 - held * cfg.againstPull, cfg.againstFloor, 1)]);
         }
       }
       return out;
@@ -4156,7 +4202,7 @@ var Tyrell = (() => {
       let s = 0;
       for (const v of a.against) s += p.def.values?.[v] ?? 0;
       if (s > 0) {
-        this.addStress(p.id, s * 0.3);
+        this.addStress(p.id, s * this.c.againstStress);
         if (this.feelingDefs.has("conscience")) this.applyFeel(p.id, "conscience", a.id);
       }
     }
@@ -4164,11 +4210,11 @@ var Tyrell = (() => {
       if (d.kind !== "act") return;
       const a = this.w.actions.get(d.action);
       if (a?.feels && !interrupted) for (const f of a.feels) this.applyFeel(p.id, f, a.id);
-      if (d.layer === "break" && frac > 0.5) {
+      if (d.layer === "break" && frac > this.c.breakDone) {
         const def = [...this.breakDefs.values()].find((b) => b.do === d.action);
         this.applyFeel(p.id, def?.after ?? "catharsis", "a break");
         const [, l] = this.stressParts(p.id);
-        this.st.st[p.id] = [0, round(l * 0.7, 5), this.w.s.now];
+        this.st.st[p.id] = [0, round(l * this.c.catharsisKeep, 5), this.w.s.now];
       }
     }
     did(actor, verb, data) {
@@ -4198,20 +4244,23 @@ var Tyrell = (() => {
       }
     }
     day() {
-      const st = this.st, now2 = this.w.s.now, c = this.config;
+      const st = this.st, now2 = this.w.s.now, c = this.c;
       for (const id in st.f) {
         st.f[id] = st.f[id].filter((f) => f.until > now2);
         if (!st.f[id].length) delete st.f[id];
       }
       for (const id in st.b) {
         const map = st.b[id];
+        const k = this.knob("forgetting", id);
+        const sawBase = c.sawDecay ?? Math.sqrt(c.beliefDecay);
+        const told = k === 1 ? c.beliefDecay : Math.pow(c.beliefDecay, k), saw = k === 1 ? sawBase : Math.pow(sawBase, k);
         for (const key2 in map) {
-          map[key2].str = round(map[key2].str * (map[key2].src === "saw" ? Math.sqrt(c.beliefDecay) : c.beliefDecay), 4);
+          map[key2].str = round(map[key2].str * (map[key2].src === "saw" ? saw : told), 4);
           if (map[key2].str < c.beliefFloor) delete map[key2];
         }
       }
       for (const id in st.m) {
-        st.m[id] = st.m[id].filter((m) => m.core || this.strength(m) >= 0.5);
+        st.m[id] = st.m[id].filter((m) => m.core || this.strength(m, id) >= c.memoryFloor);
       }
     }
     removed(p) {
@@ -4236,6 +4285,27 @@ var Tyrell = (() => {
     imitation: 0.03,
     forget: 14,
     forgetBelow: 0.05,
+    friendship: 1,
+    romance: 1,
+    fading: 1,
+    friendAt: 0.5,
+    foeAt: -0.4,
+    likeAbove: 0.2,
+    compatValues: 0.3,
+    meetMin: -0.05,
+    meetMax: 0.08,
+    meetCompat: 1,
+    meetMood: 1,
+    attractAt: 0.3,
+    attractGain: 0.5,
+    imitateAt: 0.3,
+    socialRegard: 0.8,
+    socialCompat: 0.2,
+    socialMin: 0.1,
+    socialMax: 2,
+    deedSentiment: 0.1,
+    witnessRegard: 0.4,
+    bands: [0.15, 0.4, 0.7],
     labels: [
       ["unknown", "suspect", "trouble", "menace"],
       ["familiar", "mixed", "rough edges", "feared"],
@@ -4247,6 +4317,7 @@ var Tyrell = (() => {
   var Fellowship = class {
     constructor(cfg = {}) {
       this.name = "fellowship";
+      this.knobs = { friendship: "person", romance: "person", fading: "person" };
       this.groups = /* @__PURE__ */ new Map();
       this.config = { ...DEFAULT_FELLOWSHIP, ...cfg };
     }
@@ -4255,6 +4326,14 @@ var Tyrell = (() => {
     }
     get st() {
       return this.w.s.mod.fellowship;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** A headline knob for someone: the world's, times their own. */
+    knob(name, p) {
+      return this.c[name] * this.w.own(p, this.name, name);
     }
     attach(w) {
       this.w = w;
@@ -4274,11 +4353,11 @@ var Tyrell = (() => {
       });
       L.term("friend", (c, a) => {
         const o = other(c, a);
-        return !!(c.person && o && this.regard(c.person.id, o) >= 0.5);
+        return !!(c.person && o && this.regard(c.person.id, o) >= this.c.friendAt);
       });
       L.term("foe", (c, a) => {
         const o = other(c, a);
-        return !!(c.person && o && this.regard(c.person.id, o) <= -0.4);
+        return !!(c.person && o && this.regard(c.person.id, o) <= this.c.foeAt);
       });
       L.term("member", (c, a) => c.person ? this.groupsOf(c.person.id).includes(a) : false);
       L.term("partner", (c, a) => c.person ? a ? this.partner(c.person.id) === a : this.partner(c.person.id) ?? null : null);
@@ -4388,7 +4467,8 @@ var Tyrell = (() => {
     /** Hidden compatibility of a pair, -1..1 (the same both ways). */
     compat(a, b) {
       const [x, y] = a < b ? [a, b] : [b, a];
-      let c = (hash01(this.w.s.seed, "compat", x, y) * 2 - 1) * this.config.compatSpread;
+      const cfg = this.c;
+      let c = (hash01(this.w.s.seed, "compat", x, y) * 2 - 1) * cfg.compatSpread;
       const va = this.w.s.people[a]?.def.values, vb = this.w.s.people[b]?.def.values;
       if (va && vb) {
         let shared = 0, n = 0;
@@ -4396,7 +4476,7 @@ var Tyrell = (() => {
           shared += 1 - Math.abs(va[k] - vb[k]) * 2;
           n++;
         }
-        if (n) c += shared / n * 0.3;
+        if (n) c += shared / n * cfg.compatValues;
       }
       return round(clamp(c, -1, 1), 4);
     }
@@ -4412,7 +4492,8 @@ var Tyrell = (() => {
     }
     /** The people a person likes most. */
     friends(a, n = 3) {
-      return this.relations(a).filter((r) => r.regard > 0.2).slice(0, n).map((r) => r.id);
+      const above = this.c.likeAbove;
+      return this.relations(a).filter((r) => r.regard > above).slice(0, n).map((r) => r.id);
     }
     /** Changes a's regard for b (from the game: recorded). */
     adjust(a, b, by, why) {
@@ -4434,9 +4515,10 @@ var Tyrell = (() => {
       const s = { label, by: round(by, 4) };
       if (minutes !== void 0) s.until = now2 + minutes;
       r.s.push(s);
-      if (r.s.length > this.config.sentiments) {
+      const most = this.c.sentiments;
+      if (r.s.length > most) {
         r.s.sort((x, y) => Math.abs(y.by) - Math.abs(x.by));
-        r.s.length = this.config.sentiments;
+        r.s.length = most;
       }
       this.w.log("sentiment", a, { target: b, label, by });
     }
@@ -4468,8 +4550,9 @@ var Tyrell = (() => {
     /** A subject's standing with a group: fame and infamy (0..1 each) and a label. */
     standing(g, subject) {
       const [fame, infamy] = this.st.standing[g]?.[subject] || [0, 0];
-      const band = (x) => x < 0.15 ? 0 : x < 0.4 ? 1 : x < 0.7 ? 2 : 3;
-      return { fame, infamy, label: this.config.labels[band(fame)][band(infamy)] };
+      const c = this.c, [b1, b2, b3] = c.bands;
+      const band = (x) => x < b1 ? 0 : x < b2 ? 1 : x < b3 ? 2 : 3;
+      return { fame, infamy, label: c.labels[band(fame)][band(infamy)] };
     }
     /** Changes standing (from the game: recorded). */
     changeStanding(g, subject, fame, infamy) {
@@ -4486,17 +4569,18 @@ var Tyrell = (() => {
     // -------------------------------------------------------------------------
     met(a, b, _place, minutes) {
       const rv = this.w.reverie;
+      const c = this.c, core = this.w.cfg;
       for (const [x, y] of [[a, b], [b, a]]) {
         const r = this.record(x.id, y.id);
         const mood = rv ? rv.mood(x.id) - 0.5 : 0;
-        const gain = this.config.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) + mood);
-        r.r = round(clamp(r.r + clamp(gain, -0.05, 0.08), -1, 1), 4);
-        if (this.compat(x.id, y.id) > 0.3 && this.partner(x.id) === void 0) r.a = round(clamp(r.a + gain * 0.5, -1, 1), 4);
+        const gain = c.meetGain * (minutes / 30) * (1 + this.compat(x.id, y.id) * c.meetCompat + mood * c.meetMood);
+        r.r = round(clamp(r.r + clamp(gain, c.meetMin, c.meetMax) * this.knob("friendship", x), -1, 1), 4);
+        if (this.compat(x.id, y.id) > c.attractAt && this.partner(x.id) === void 0) r.a = round(clamp(r.a + gain * c.attractGain * this.knob("romance", x), -1, 1), 4);
         r.met++;
         r.last = this.w.s.now;
-        if (y.doing && y.doing.kind === "act" && this.regard(x.id, y.id) > 0.3) {
+        if (y.doing && y.doing.kind === "act" && this.regard(x.id, y.id) > c.imitateAt) {
           const h = x.habits[y.doing.action] || [1, 1];
-          x.habits[y.doing.action] = [round(clamp(h[0] + this.config.imitation, this.w.config.habitMin, this.w.config.habitMax), 5), h[1]];
+          x.habits[y.doing.action] = [round(clamp(h[0] + c.imitation, core.habitMin, core.habitMax), 5), h[1]];
         }
       }
       this.w.log("met", a.id, { target: b.id, minutes: Math.round(minutes) });
@@ -4505,7 +4589,8 @@ var Tyrell = (() => {
       if (!c.target) return;
       const a = this.w.actions.get(c.id);
       if (!a?.tags?.includes("social")) return;
-      return [["regard", round(clamp(1 + this.regard(p.id, c.target) * 0.8 + this.compat(p.id, c.target) * 0.2, 0.1, 2), 4)]];
+      const cfg = this.c;
+      return [["regard", round(clamp(1 + this.regard(p.id, c.target) * cfg.socialRegard + this.compat(p.id, c.target) * cfg.socialCompat, cfg.socialMin, cfg.socialMax), 4)]];
     }
     did(actor, verb, data) {
       const deed = this.w.deeds.get(verb);
@@ -4513,16 +4598,18 @@ var Tyrell = (() => {
       const target = data.for ?? data.to ?? data.target;
       if (target) {
         if (deed.regard) this.applyRegard(target, actor, deed.regard);
-        if (deed.sentiment) this.applySentiment(target, actor, deed.sentiment, deed.regard ?? 0.1);
+        if (deed.sentiment) this.applySentiment(target, actor, deed.sentiment, deed.regard ?? this.c.deedSentiment);
         if (deed.fame || deed.infamy) for (const g of this.groupsOf(target)) this.applyStanding(g, actor, deed.fame ?? 0, deed.infamy ?? 0);
       }
       const seen = Array.isArray(data.seenBy) ? data.seenBy : [];
-      for (const wid of seen) if (wid !== target && deed.regard) this.applyRegard(wid, actor, deed.regard * 0.4);
+      for (const wid of seen) if (wid !== target && deed.regard) this.applyRegard(wid, actor, deed.regard * this.c.witnessRegard);
     }
     day() {
-      const d = this.config.decay, now2 = this.w.s.now, gone = this.config.forget * DAY, below = this.config.forgetBelow;
+      const c = this.c, now2 = this.w.s.now, below = c.forgetBelow;
       for (const k in this.st.rel) {
         const r = this.st.rel[k];
+        const f = this.knob("fading", this.w.s.people[k.slice(0, k.indexOf(">"))]);
+        const d = c.decay * f, gone = c.forget / f * DAY;
         if (Math.abs(r.r) <= d) r.r = 0;
         else r.r = round(r.r - Math.sign(r.r) * d, 4);
         r.s = r.s.filter((s) => s.until === void 0 || s.until > now2);
@@ -4546,11 +4633,52 @@ var Tyrell = (() => {
     gossipChance: 0.45,
     maxHops: 3,
     heatDecay: 0.85,
-    lieChance: 0.5
+    lieChance: 0.5,
+    gossip: 1,
+    reporting: 1,
+    heat: 1,
+    cooling: 1,
+    lies: 1,
+    heatPerSeverity: 10,
+    heatFloor: 0.05,
+    sawStrength: 0.3,
+    crimeMemory: 4,
+    severityMemory: 6,
+    plainMemory: 3,
+    fearWeight: 0.3,
+    loyalty: 0.8,
+    crimeSeen: 0.8,
+    infamyAuthority: 0.2,
+    infamyGroups: 0.1,
+    toldAuthority: 0.8,
+    bribeGreed: 0.6,
+    bribeFull: 100,
+    bribeMoney: 0.5,
+    bribeHonesty: 0.4,
+    bribeBase: 0.1,
+    scareFear: 0.8,
+    scareHonesty: 0.2,
+    scareBase: 0.1,
+    scareRegard: -0.3,
+    secretSpite: -0.3,
+    juicyCrime: 3,
+    juicyDeed: 1.5,
+    gossipRecency: 0.99,
+    liarBelow: 0.3,
+    lieSpite: -0.3,
+    scapegoat: -0.2,
+    trustBase: 0.6,
+    trustRegard: 0.4,
+    trustMin: 0.2,
+    trustMax: 1,
+    trustAlone: 0.7,
+    toldKeep: 0.9,
+    exposedAt: 4
   };
   var Wormtongue = class {
     constructor(cfg = {}) {
       this.name = "wormtongue";
+      this.knobs = { gossip: "person", reporting: "person", heat: "person", cooling: "person", lies: "person" };
       this.crimes = /* @__PURE__ */ new Map();
       this.config = { ...DEFAULT_WORMTONGUE, ...cfg };
     }
@@ -4559,6 +4687,14 @@ var Tyrell = (() => {
     }
     get st() {
       return this.w.s.mod.wormtongue;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** A headline knob for someone (a person's id, or anyone else: the player): the world's, times their own. */
+    knob(name, id) {
+      return this.c[name] * this.w.own(this.w.s.people[id], this.name, name);
     }
     attach(w) {
       this.w = w;
@@ -4621,7 +4757,7 @@ var Tyrell = (() => {
     // Witnessing
     // -------------------------------------------------------------------------
     sensed(stim) {
-      const w = this.w, rv = w.reverie;
+      const w = this.w, rv = w.reverie, c = this.c;
       const crime = this.crimes.get(stim.kind);
       const strength = clamp(stim.strength ?? 1);
       for (const wid of stim.seenBy || []) {
@@ -4629,22 +4765,23 @@ var Tyrell = (() => {
         if (!p || p.status !== "active" || wid === stim.actor) continue;
         const r = w.stream(p);
         const knows = !!w.fellowship?.knows(wid, stim.actor) || !!rv?.file(wid, stim.actor);
-        const chance = strength * (1 - clamp(stim.disguise ?? 0)) * (knows ? 1 : this.config.recognizeStranger);
+        const chance = strength * (1 - clamp(stim.disguise ?? 0)) * (knows ? 1 : c.recognizeStranger);
         const recognized = r.chance(chance);
         const actor = recognized ? stim.actor : "someone";
         const key2 = `did:${actor}:${stim.kind}`;
-        rv?.applyBelieve(wid, key2, stim.what ?? true, "saw", null, Math.max(0.3, strength));
-        rv?.applyRemember(wid, { k: "saw:" + stim.kind, about: recognized ? stim.actor : void 0, place: stim.place ?? void 0, imp: crime ? 4 + crime.severity * 6 : 3, text: `saw ${actor} ${stim.kind}${stim.what ? " " + stim.what : ""}` });
+        rv?.applyBelieve(wid, key2, stim.what ?? true, "saw", null, Math.max(c.sawStrength, strength));
+        rv?.applyRemember(wid, { k: "saw:" + stim.kind, about: recognized ? stim.actor : void 0, place: stim.place ?? void 0, imp: crime ? c.crimeMemory + crime.severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? " " + stim.what : ""}` });
         if (crime && rv) rv.applyFeel(wid, crime.feeling ?? "witnessed", key2);
         w.log("witnessed", wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized });
         w.emit("witnessed", { id: wid, actor, kind: stim.kind, recognized });
         if (crime && recognized) {
-          const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? 0.5;
-          const fear = p.def.traits?.courage !== void 0 ? 1 - p.def.traits.courage : 0.5;
+          const mid2 = w.cfg.traitDefault;
+          const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? mid2;
+          const fear = p.def.traits?.courage !== void 0 ? 1 - p.def.traits.courage : 1 - mid2;
           const regard = w.fellowship ? w.fellowship.regard(wid, stim.actor) : 0;
-          const pReport = clamp((crime.report ?? this.config.reportChance) * (0.5 + lawful) * (1 - fear * 0.3) * (1 - Math.max(0, regard) * 0.8));
+          const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * this.knob("reporting", wid));
           if (r.chance(pReport)) {
-            const [a, b] = this.config.reportDelay;
+            const [a, b] = c.reportDelay;
             w.clock.schedule({ t: w.s.now + r.range(a, b), k: "module", ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null } });
           }
         }
@@ -4662,7 +4799,7 @@ var Tyrell = (() => {
       this.report(wid, actor, kind, item.data?.what);
     }
     report(wid, actor, kind, what) {
-      const w = this.w;
+      const w = this.w, c = this.c;
       const crime = this.crimes.get(kind);
       if (!crime) return;
       let to = crime.reportTo;
@@ -4677,12 +4814,12 @@ var Tyrell = (() => {
       if (to) rep.to = to;
       this.st.reports.push(rep);
       if (this.st.reports.length > 200) this.st.reports.shift();
-      this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * 10), 4);
+      this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * c.heatPerSeverity) * this.knob("heat", actor), 4);
       if (w.fellowship) {
-        if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * 0.2);
-        for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * 0.1);
+        if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * c.infamyAuthority);
+        for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * c.infamyGroups);
       }
-      if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, "told", wid, 0.8, 1);
+      if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, "told", wid, c.toldAuthority, 1);
       w.log("report", wid, { actor, kind, to: to ?? null });
       w.emit("report", { ...rep, heat: this.heat(actor) });
     }
@@ -4696,8 +4833,10 @@ var Tyrell = (() => {
       const rv = w.reverie;
       if (!p || !rv) return;
       const r = w.stream(p);
-      const greed = p.def.traits?.greed ?? 0.5, courage = p.def.traits?.courage ?? 0.5, honesty = p.def.traits?.honesty ?? 0.5;
-      const pAccept = how === "pay" ? clamp(greed * 0.6 + Math.min(1, amount / 100) * 0.5 - honesty * 0.4 + 0.1) : clamp((1 - courage) * 0.8 - honesty * 0.2 + 0.1);
+      const c = this.c;
+      const mid2 = w.cfg.traitDefault;
+      const greed = p.def.traits?.greed ?? mid2, courage = p.def.traits?.courage ?? mid2, honesty = p.def.traits?.honesty ?? mid2;
+      const pAccept = how === "pay" ? clamp(greed * c.bribeGreed + Math.min(1, amount / c.bribeFull) * c.bribeMoney - honesty * c.bribeHonesty + c.bribeBase) : clamp((1 - courage) * c.scareFear - honesty * c.scareHonesty + c.scareBase);
       const ok = r.chance(pAccept);
       if (ok) {
         for (const b of rv.beliefs(witness)) if (b.key.startsWith(`did:${actor}:`)) rv.applySilence(witness, b.key);
@@ -4705,7 +4844,7 @@ var Tyrell = (() => {
       if (how === "pay" && ok) p.vars.money = Number(p.vars.money ?? 0) + amount;
       if (how === "scare") {
         rv.applyFeel(witness, "scared", actor);
-        w.fellowship?.applyRegard(witness, actor, -0.3);
+        w.fellowship?.applyRegard(witness, actor, c.scareRegard);
       }
       w.log("silenced", witness, { actor, how, ok });
       w.emit("silenced", { witness, actor, how, ok });
@@ -4721,22 +4860,23 @@ var Tyrell = (() => {
     gossip(a, b) {
       const w = this.w, rv = w.reverie;
       if (!rv) return;
+      const c = this.c;
       const r = w.stream(a);
-      const talkative = a.def.traits?.talkative ?? 0.5;
-      if (!r.chance(this.config.gossipChance * (0.5 + talkative))) return;
+      const talkative = a.def.traits?.talkative ?? w.cfg.traitDefault;
+      if (!r.chance(c.gossipChance * (0.5 + talkative) * this.knob("gossip", a.id))) return;
       const now2 = w.s.now;
       let best = null;
       for (const bl of rv.beliefs(a.id)) {
-        if (bl.silenced || bl.hops >= this.config.maxHops) continue;
+        if (bl.silenced || bl.hops >= c.maxHops) continue;
         if (bl.key.startsWith("@")) continue;
         const theirs = rv.belief(b.id, bl.key);
         if (theirs === bl.v) continue;
         const secret = this.secretFor(bl.key);
-        if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < -0.3)) continue;
+        if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < c.secretSpite)) continue;
         const subject2 = subjectOf(bl.key);
         if (subject2 === b.id) continue;
-        const juicy = bl.key.startsWith("did:") ? this.crimes.has(bl.key.split(":")[2]) ? 3 : 1.5 : 1;
-        const recency = Math.pow(0.99, (now2 - bl.t) / HOUR);
+        const juicy = bl.key.startsWith("did:") ? this.crimes.has(bl.key.split(":")[2]) ? c.juicyCrime : c.juicyDeed : 1;
+        const recency = Math.pow(c.gossipRecency, (now2 - bl.t) / HOUR);
         const score = juicy * bl.str * recency;
         if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
       }
@@ -4744,20 +4884,20 @@ var Tyrell = (() => {
       let key2 = best.key, lie = false;
       const v = best.v;
       const subject = subjectOf(key2);
-      const honesty = a.def.traits?.honesty ?? 0.5;
-      if (subject && v !== false && v !== null && honesty < 0.3 && w.fellowship && w.fellowship.regard(a.id, subject) < -0.3 && r.chance(this.config.lieChance)) {
-        const foes = w.fellowship.relations(a.id).filter((x) => x.regard < -0.2 && x.id !== subject && x.id !== b.id);
+      const honesty = a.def.traits?.honesty ?? w.cfg.traitDefault;
+      if (subject && v !== false && v !== null && honesty < c.liarBelow && w.fellowship && w.fellowship.regard(a.id, subject) < c.lieSpite && r.chance(c.lieChance * this.knob("lies", a.id))) {
+        const foes = w.fellowship.relations(a.id).filter((x) => x.regard < c.scapegoat && x.id !== subject && x.id !== b.id);
         if (foes.length) {
           key2 = key2.replace(`did:${subject}:`, `did:${foes[0].id}:`);
           lie = true;
         }
       }
-      const trust = w.fellowship ? clamp(0.6 + w.fellowship.regard(b.id, a.id) * 0.4, 0.2, 1) : 0.7;
-      rv.applyBelieve(b.id, key2, v, "told", a.id, best.str * trust * 0.9, best.hops + 1);
+      const trust = w.fellowship ? clamp(c.trustBase + w.fellowship.regard(b.id, a.id) * c.trustRegard, c.trustMin, c.trustMax) : c.trustAlone;
+      rv.applyBelieve(b.id, key2, v, "told", a.id, best.str * trust * c.toldKeep, best.hops + 1);
       const sec = this.secretFor(key2);
       if (sec && !sec.knownBy.includes(b.id)) {
         sec.knownBy.push(b.id);
-        if (sec.knownBy.length === 4) {
+        if (sec.knownBy.length === c.exposedAt) {
           w.log("exposed", sec.about, { key: key2 });
           w.emit("exposed", { about: sec.about, key: key2 });
         }
@@ -4812,7 +4952,7 @@ var Tyrell = (() => {
       const a = this.w.actions.get(d.action);
       if (!a?.crime) return;
       const seenBy = this.w.ring.present(this.w.ring.root(d.place)).filter((id) => id !== p.id);
-      this.sensed({ kind: a.crime, actor: p.id, place: d.place, seenBy, strength: 0.8 });
+      this.sensed({ kind: a.crime, actor: p.id, place: d.place, seenBy, strength: this.c.crimeSeen });
     }
     // -------------------------------------------------------------------------
     // Upkeep
@@ -4824,9 +4964,11 @@ var Tyrell = (() => {
       }
     }
     day() {
+      const c = this.c;
       for (const k in this.st.heat) {
-        const v = round(this.st.heat[k] * this.config.heatDecay, 4);
-        if (v < 0.05) delete this.st.heat[k];
+        const f = this.knob("cooling", k);
+        const v = round(this.st.heat[k] * (f === 1 ? c.heatDecay : Math.pow(c.heatDecay, f)), 4);
+        if (v < c.heatFloor) delete this.st.heat[k];
         else this.st.heat[k] = v;
       }
       const cutoff = this.w.s.now - 14 * DAY;
@@ -4842,25 +4984,47 @@ var Tyrell = (() => {
   }
 
   // tyrell/src/modules/cityspeak.ts
+  var DEFAULT_CITYSPEAK = { chatter: 1, barkGap: 2.2, barkLength: 3, barkCooldown: 60, practiceBoost: 1.5, socialDone: 0.5, roomEmpty: 0.5 };
   var lineKey = (l, i) => l.key !== void 0 && l.key !== "" ? l.key : String(i);
   var Cityspeak = class {
-    constructor() {
+    constructor(cfg = {}) {
       this.name = "cityspeak";
+      this.knobs = { chatter: "person" };
       this.lines = [];
       this.practices = /* @__PURE__ */ new Map();
       this.acts = /* @__PURE__ */ new Map();
       /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
       this.barkSaid = /* @__PURE__ */ new Map();
-      /** Seconds between lines in a bark exchange. */
-      this.barkGap = 2.2;
-      /** Most lines in one exchange. */
-      this.barkLength = 3;
+      this.config = { ...DEFAULT_CITYSPEAK, ...cfg };
+    }
+    /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
+    get barkGap() {
+      return this.w ? this.c.barkGap : this.config.barkGap;
+    }
+    set barkGap(v) {
+      this.config.barkGap = v;
+    }
+    /** Most lines in one exchange (config.barkLength: setting it here sets the config). */
+    get barkLength() {
+      return this.w ? this.c.barkLength : this.config.barkLength;
+    }
+    set barkLength(v) {
+      this.config.barkLength = v;
     }
     init() {
       return { said: {}, acts: [] };
     }
     get st() {
       return this.w.s.mod.cityspeak;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** How chatty two people are together: the world's chatter, times each one's own. */
+    chatter(a, b) {
+      const w = this.w;
+      return this.c.chatter * w.own(w.s.people[a], this.name, "chatter") * w.own(w.s.people[b], this.name, "chatter");
     }
     attach(w) {
       this.w = w;
@@ -5029,15 +5193,19 @@ var Tyrell = (() => {
     converse(a, b, topic = "chat") {
       const out = [];
       const now2 = this.w.s.now;
+      const c = this.c;
+      const k = this.chatter(a, b);
+      if (!(k > 0)) return out;
+      const most = k === 1 ? c.barkLength : Math.max(1, Math.round(c.barkLength * k));
       const skip = (who) => (l, i) => {
         const last = this.barkSaid.get(who + "|" + lineKey(l, i));
-        return last !== void 0 && now2 - last < (l.cooldown ?? 60);
+        return last !== void 0 && now2 - last < (l.cooldown ?? c.barkCooldown);
       };
       let speaker = a, listener = b;
       let line = this.pick(speaker, { to: listener, topic, skip: skip(speaker) });
-      for (let n = 0; line && n < this.barkLength; n++) {
+      for (let n = 0; line && n < most; n++) {
         this.barkSaid.set(speaker + "|" + lineKey(this.lines[line.i], line.i), now2);
-        out.push({ ...line.said, after: n * this.barkGap });
+        out.push({ ...line.said, after: n * c.barkGap });
         const reply = this.reply(line.said, listener);
         [speaker, listener] = [listener, speaker];
         line = reply;
@@ -5077,7 +5245,7 @@ var Tyrell = (() => {
     room(place) {
       const w = this.w;
       const ids = w.ring.present(w.ring.root(place));
-      let m = 0.5;
+      let m = this.c.roomEmpty;
       if (ids.length && w.reverie) m = ids.reduce((acc, id) => acc + w.reverie.mood(id), 0) / ids.length;
       for (const pr of this.activeAt(place)) m += pr.tone ?? 0;
       return round(clamp(m), 4);
@@ -5090,7 +5258,7 @@ var Tyrell = (() => {
         for (const role in pr.roles) {
           const r = pr.roles[role];
           if (!r.actions.includes(c.id) || !this.fills(p, r)) continue;
-          out.push([`${pr.id}: ${role}`, pr.boost ?? 1.5]);
+          out.push([`${pr.id}: ${role}`, pr.boost ?? this.c.practiceBoost]);
           break;
         }
       }
@@ -5106,7 +5274,7 @@ var Tyrell = (() => {
       if (topic) this.applySay(p.id, d.target ? { topic, to: d.target } : { topic });
     }
     ended(p, d, frac, interrupted) {
-      if (d.kind !== "act" || interrupted || frac < 0.5 || !d.target) return;
+      if (d.kind !== "act" || interrupted || frac < this.c.socialDone || !d.target) return;
       const a = this.w.actions.get(d.action);
       if (!a?.social) return;
       this.applyResolve(a.social, p.id, d.target);
@@ -5149,6 +5317,8 @@ var Tyrell = (() => {
       const w = this.w;
       if (w.replaying) return;
       if (!w.clock.embodied(a.id) && !w.clock.embodied(b.id)) return;
+      const k = this.chatter(a.id, b.id);
+      if (k < 1 && !(k > 0 && w.worldStreamPeek("bark", a.id, b.id, w.s.now).chance(k))) return;
       const lines = this.converse(a.id, b.id);
       if (lines.length) w.emit("bark", { a: a.id, b: b.id, lines });
     }
@@ -5178,11 +5348,35 @@ var Tyrell = (() => {
   };
 
   // tyrell/src/modules/mentat.ts
-  var DEFAULT_MENTAT = { maxTries: 3, depth: 3, priceWeight: 1 };
+  var DEFAULT_MENTAT = {
+    maxTries: 3,
+    depth: 3,
+    priceWeight: 1,
+    persistence: 1,
+    scruples: 1,
+    giveUp: 120,
+    setAside: 2,
+    stale: 24 * 60,
+    honestNever: 0.8,
+    riskBase: 60,
+    riskHonesty: 300,
+    riskHeat: 20,
+    valuesNever: 0.9,
+    valuesCost: 200
+  };
   var Mentat = class {
     constructor(cfg = {}) {
       this.name = "mentat";
+      this.knobs = { persistence: "person", scruples: "person" };
       this.config = { ...DEFAULT_MENTAT, ...cfg };
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** A headline knob for someone: the world's, times their own. */
+    knob(name, p) {
+      return this.c[name] * this.w.own(p, this.name, name);
     }
     attach(w) {
       this.w = w;
@@ -5247,7 +5441,7 @@ var Tyrell = (() => {
           if (step.startsWith("get:")) {
             const item = step.slice(4);
             if (w.have(p, item) > 0) continue;
-            const route = this.route(p, item, this.config.depth, /* @__PURE__ */ new Set());
+            const route = this.route(p, item, this.c.depth, /* @__PURE__ */ new Set());
             if (!route) return this.fail(p, `no way to get ${item}`);
             plan.stack.push({ task: "get:" + item, method: -1, steps: route.steps, i: 0 });
             w.log("route", p.id, { item, steps: route.steps.map((s) => typeof s === "string" ? s : s.action), cost: round(route.cost, 1) });
@@ -5321,7 +5515,7 @@ var Tyrell = (() => {
       const closed = /^(.*) is closed then$/.exec(why);
       if (closed && w.reverie) w.reverie.applyBelieve(p.id, "open:" + closed[1], false, "saw");
       plan.tries++;
-      if (plan.tries > this.config.maxTries) return this.giveUp(p, why);
+      if (plan.tries > this.c.maxTries * this.knob("persistence", p)) return this.giveUp(p, why);
       while (plan.stack.length) {
         const frame = plan.stack.pop();
         if (frame.method < 0) continue;
@@ -5343,7 +5537,7 @@ var Tyrell = (() => {
       w.emit("planned", { id: p.id, task: plan.task, ok: false, why });
       if (w.reverie?.feelingDefs.has("frustrated")) w.reverie.applyFeel(p.id, "frustrated", plan.task);
       const def = w.tasks.get(plan.task);
-      p.cool[plan.task] = w.s.now + Math.max(def?.cooldown ?? 0, 120);
+      p.cool[plan.task] = w.s.now + Math.max(def?.cooldown ?? 0, this.c.giveUp);
       p.plan = null;
       return null;
     }
@@ -5354,7 +5548,8 @@ var Tyrell = (() => {
       const frame = plan.stack[plan.stack.length - 1];
       if (frame && frame.i > 0) frame.i--;
       p.suspended.unshift(plan);
-      if (p.suspended.length > 2) p.suspended.length = 2;
+      const most = this.c.setAside;
+      if (p.suspended.length > most) p.suspended.length = most;
       p.plan = null;
       this.w.log("set-aside", p.id, { task: plan.task });
     }
@@ -5368,7 +5563,7 @@ var Tyrell = (() => {
         return null;
       }
       p.suspended.shift();
-      if (this.w.s.now - plan.started > 24 * 60) return null;
+      if (this.w.s.now - plan.started > this.c.stale) return null;
       p.plan = plan;
       this.w.log("resumed", p.id, { task: plan.task });
       return this.next(p);
@@ -5447,35 +5642,37 @@ var Tyrell = (() => {
     }
     /** What an action costs a person, in minutes of effort: time, money by thrift, risk by honesty. */
     cost(p, a) {
-      const w = this.w;
+      const w = this.w, c = this.c;
       const minutes = Array.isArray(a.minutes) ? (a.minutes[0] + a.minutes[1]) / 2 : a.minutes;
       let cost = minutes + (a.cost ?? 0);
       const price = a.price ?? 0;
       if (price) {
         const money = Number(p.vars.money ?? 0);
         if (price > money) return Infinity;
-        const thrift = p.def.traits?.thrift ?? 0.5;
-        cost += price * this.config.priceWeight * (0.5 + thrift) * (1 + clamp(price / Math.max(1, money)));
+        const thrift = p.def.traits?.thrift ?? w.cfg.traitDefault;
+        cost += price * c.priceWeight * (0.5 + thrift) * (1 + clamp(price / Math.max(1, money)));
       }
+      const scruples = a.tags?.includes("illegal") || a.against?.length ? this.knob("scruples", p) : 1;
       if (a.tags?.includes("illegal")) {
-        const honesty = p.def.traits?.honesty ?? 0.5;
-        if (honesty >= 0.8) return Infinity;
-        cost += 60 + honesty * 300 + (w.wormtongue ? w.wormtongue.heat(p.id) * 20 : 0);
+        const honesty = p.def.traits?.honesty ?? w.cfg.traitDefault;
+        if (honesty >= c.honestNever) return Infinity;
+        cost += (c.riskBase + honesty * c.riskHonesty + (w.wormtongue ? w.wormtongue.heat(p.id) * c.riskHeat : 0)) * scruples;
       }
       for (const v of a.against || []) {
         const held = p.def.values?.[v] ?? 0;
-        if (held >= 0.9) return Infinity;
-        cost += held * 200;
+        if (held >= c.valuesNever) return Infinity;
+        cost += held * c.valuesCost * scruples;
       }
       return cost;
     }
   };
 
   // tyrell/src/modules/gaff.ts
-  var DEFAULT_GAFF = { peakAt: 0.7, peakMinutes: 4 * HOUR, relaxMinutes: 12 * HOUR, decay: 0.04 };
+  var DEFAULT_GAFF = { peakAt: 0.7, peakMinutes: 4 * HOUR, relaxMinutes: 12 * HOUR, decay: 0.04, events: 1, intensity: 1, bump: 0.2, relaxAt: 0.4 };
   var Gaff = class {
     constructor(cfg = {}) {
       this.name = "gaff";
+      this.knobs = { events: "world", intensity: "world" };
       this.storylets = /* @__PURE__ */ new Map();
       this.deckCards = /* @__PURE__ */ new Map();
       this.metricFns = /* @__PURE__ */ new Map();
@@ -5486,6 +5683,10 @@ var Tyrell = (() => {
     }
     get st() {
       return this.w.s.mod.gaff;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
     }
     attach(w) {
       this.w = w;
@@ -5551,7 +5752,7 @@ var Tyrell = (() => {
       i.v = round(clamp(i.v + by), 4);
     }
     stepPhases() {
-      const c = this.config, now2 = this.w.s.now;
+      const c = this.c, now2 = this.w.s.now;
       for (const subject in this.st.intensity) {
         const i = this.st.intensity[subject];
         i.v = round(clamp(i.v - c.decay), 4);
@@ -5561,7 +5762,7 @@ var Tyrell = (() => {
         } else if (i.phase === "peak" && now2 - i.since >= c.peakMinutes) {
           i.phase = "fade";
           i.since = now2;
-        } else if (i.phase === "fade" && i.v < c.peakAt * 0.4) {
+        } else if (i.phase === "fade" && i.v < c.peakAt * c.relaxAt) {
           i.phase = "relax";
           i.since = now2;
         } else if (i.phase === "relax" && now2 - i.since >= c.relaxMinutes) {
@@ -5593,9 +5794,10 @@ var Tyrell = (() => {
       const w = this.w;
       this.stepPhases();
       const r = w.worldStream("gaff");
+      const events = this.c.events;
       for (const def of this.storylets.values()) {
         if (!this.ready(def)) continue;
-        if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
+        if (!r.chance(1 - Math.exp(-HOUR * events / Math.max(1, def.mtb)))) continue;
         let id = def.id;
         if (def.deck) {
           const drawn = this.applyDraw(def.deck);
@@ -5641,7 +5843,8 @@ var Tyrell = (() => {
       this.st.last[id] = w.s.now;
       this.st.fired.push({ t: w.s.now, id, place: where });
       if (this.st.fired.length > 100) this.st.fired.shift();
-      this.applyBump(subject, def.bump ?? 0.2);
+      const c = this.c;
+      this.applyBump(subject, (def.bump ?? c.bump) * c.intensity);
       w.log("director", void 0, { storylet: id, place: where });
       w.emit("director", { id, place: where, label: def.label ?? id });
       w.internally(() => def.fire(w, { place: where, subject, id }));
@@ -5674,19 +5877,26 @@ var Tyrell = (() => {
   };
 
   // tyrell/src/modules/ceres.ts
+  var DEFAULT_CERES = { prices: 1, priceShare: 0.4, priceThrift: 0.8, priceFloor: 0.05 };
   var Ceres = class {
-    constructor() {
+    constructor(cfg = {}) {
       this.name = "ceres";
+      this.knobs = { prices: "person" };
       this.goods = /* @__PURE__ */ new Map();
       this.chains = /* @__PURE__ */ new Map();
       /** Whether anything makes goods or works from a store (worked out from the definitions, kept until they change). */
       this.producingCache = null;
+      this.config = { ...DEFAULT_CERES, ...cfg };
     }
     init() {
       return { purses: {}, pantry: {}, rent: {}, ledger: [] };
     }
     get st() {
       return this.w.s.mod.ceres;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
     }
     attach(w) {
       this.w = w;
@@ -5947,9 +6157,11 @@ var Tyrell = (() => {
       const price = a?.price ?? 0;
       if (!price) return;
       const money = Math.max(0.01, this.money(p.id));
-      const thrift = p.def.traits?.thrift ?? 0.5;
+      const thrift = p.def.traits?.thrift ?? this.w.cfg.traitDefault;
       const share = clamp(price / money);
-      return [["price", round(clamp(1 - share * (0.4 + thrift * 0.8), 0.05, 1), 4)]];
+      const cfg = this.c;
+      const k = cfg.prices * this.w.own(p, this.name, "prices");
+      return [["price", round(clamp(1 - share * (cfg.priceShare + thrift * cfg.priceThrift) * k, cfg.priceFloor, 1), 4)]];
     }
     started(p, d) {
       if (d.kind !== "act") return;
@@ -6073,11 +6285,22 @@ var Tyrell = (() => {
     lifespan: [72, 96],
     fertility: 0.25,
     fertile: [20, 42],
-    autoPair: { regard: 0.6, attraction: 0.5 }
+    autoPair: { regard: 0.6, attraction: 0.5 },
+    courtship: 1,
+    births: 1,
+    deaths: 1,
+    ageUnknown: 30,
+    pairStages: ["adult", "elder"],
+    partnerSentiment: 0.3,
+    childSentiment: 0.5,
+    traitSpread: 0.12,
+    griefAt: 0.35,
+    pastLifespan: 0.2
   };
   var Cradle = class {
     constructor(cfg = {}) {
       this.name = "cradle";
+      this.knobs = { courtship: "person", births: "person", deaths: "person" };
       /** Names a newborn: set this to your game's namer. */
       this.namer = (r) => "Baby " + "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[r.int(26)];
       /** Fills in a newborn's definition (look, home): set this for your game. */
@@ -6089,6 +6312,14 @@ var Tyrell = (() => {
     }
     get st() {
       return this.w.s.mod.cradle;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** A headline knob for someone: the world's, times their own. */
+    knob(name, p) {
+      return this.c[name] * this.w.own(p, this.name, name);
     }
     attach(w) {
       this.w = w;
@@ -6105,13 +6336,14 @@ var Tyrell = (() => {
     /** Age in years (fractional). */
     age(id) {
       const p = this.w.s.people[id];
-      if (!p || p.born === void 0) return 30;
-      return round((this.w.s.now - p.born) / this.config.year, 3);
+      if (!p || p.born === void 0) return this.c.ageUnknown;
+      return round((this.w.s.now - p.born) / this.c.year, 3);
     }
     stage(id) {
       const age = this.age(id);
-      let out = this.config.stages[0]?.[0] ?? "adult";
-      for (const [name, from] of this.config.stages) if (age >= from) out = name;
+      const stages = this.c.stages;
+      let out = stages[0]?.[0] ?? "adult";
+      for (const [name, from] of stages) if (age >= from) out = name;
       return out;
     }
     /** Who someone's parents are. */
@@ -6137,8 +6369,9 @@ var Tyrell = (() => {
       const f = this.w.fellowship;
       if (!f) return;
       f.applyPartners(a, b);
-      f.applySentiment(a, b, "my partner", 0.3);
-      f.applySentiment(b, a, "my partner", 0.3);
+      const by = this.c.partnerSentiment;
+      f.applySentiment(a, b, "my partner", by);
+      f.applySentiment(b, a, "my partner", by);
       this.w.log("paired", a, { target: b });
       this.w.emit("paired", { a, b });
     }
@@ -6159,7 +6392,8 @@ var Tyrell = (() => {
       for (const k of [...keys].sort()) {
         const vals = parents.map((p) => p.def.traits?.[k]).filter((v) => v !== void 0);
         const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
-        traits[k] = round(clamp(avg + r.range(-0.12, 0.12)), 3);
+        const spread = this.c.traitSpread;
+        traits[k] = round(clamp(avg + r.range(-spread, spread)), 3);
       }
       const tpl = this.template(r, parents);
       const home = def.home ?? tpl.home ?? parents[0]?.def.home;
@@ -6183,7 +6417,7 @@ var Tyrell = (() => {
       this.st.parents[id] = parents.map((p) => p.id);
       this.st.stage[id] = this.stage(id);
       if (w.fellowship) for (const p of parents) {
-        w.fellowship.applySentiment(p.id, id, "my child", 0.5);
+        w.fellowship.applySentiment(p.id, id, "my child", this.c.childSentiment);
       }
       w.log("born", id, { parents: parents.map((p) => p.id) });
       w.emit("born", { id, parents: parents.map((p) => p.id) });
@@ -6201,7 +6435,7 @@ var Tyrell = (() => {
         for (const o of w.people()) {
           if (o.id === id) continue;
           const regard = w.fellowship.regard(o.id, id);
-          if (regard >= 0.35) {
+          if (regard >= this.c.griefAt) {
             w.reverie.applyFeel(o.id, "grief", p.name);
             w.reverie.applyRemember(o.id, { k: "loss", about: id, imp: clamp(Math.round(regard * 10), 5, 10), text: `${p.name} ${why}` });
           }
@@ -6226,7 +6460,7 @@ var Tyrell = (() => {
     // Daily
     // -------------------------------------------------------------------------
     day() {
-      const w = this.w, c = this.config, st = this.st;
+      const w = this.w, c = this.c, st = this.st;
       const yearDays = c.year / DAY;
       const people = w.people();
       for (const p of people) {
@@ -6243,20 +6477,23 @@ var Tyrell = (() => {
         const age = this.age(p.id);
         if (age >= c.lifespan[0]) {
           const span = Math.max(1, c.lifespan[1] - c.lifespan[0]);
-          const pDie = clamp((age - c.lifespan[0]) / span) * 2 / (span * yearDays) + (age >= c.lifespan[1] ? 0.2 : 0);
-          if (w.stream(p).chance(pDie)) this.applyDepart(p.id, "died");
+          const pDie = clamp((age - c.lifespan[0]) / span) * 2 / (span * yearDays) + (age >= c.lifespan[1] ? c.pastLifespan : 0);
+          if (w.stream(p).chance(pDie * this.knob("deaths", p))) this.applyDepart(p.id, "died");
         }
       }
       const f = w.fellowship;
       if (!f) return;
       if (c.autoPair) {
+        const pairs = (id) => c.pairStages.includes(this.stage(id));
         for (const p of people) {
-          if (p.status !== "active" || f.partner(p.id) || this.stage(p.id) !== "adult" && this.stage(p.id) !== "elder") continue;
+          if (p.status !== "active" || f.partner(p.id) || !pairs(p.id)) continue;
+          const kp = this.knob("courtship", p);
           for (const r of f.relations(p.id)) {
             const o = w.s.people[r.id];
             if (!o || o.status !== "active" || f.partner(o.id) || o.id === p.id) continue;
-            if (this.stage(o.id) !== "adult" && this.stage(o.id) !== "elder") continue;
-            if (r.regard >= c.autoPair.regard && r.attraction >= c.autoPair.attraction && f.regard(o.id, p.id) >= c.autoPair.regard && f.attraction(o.id, p.id) >= c.autoPair.attraction) {
+            if (!pairs(o.id)) continue;
+            const ko = this.knob("courtship", o);
+            if (r.regard >= c.autoPair.regard / kp && r.attraction >= c.autoPair.attraction / kp && f.regard(o.id, p.id) >= c.autoPair.regard / ko && f.attraction(o.id, p.id) >= c.autoPair.attraction / ko) {
               this.applyPair(p.id, o.id);
               break;
             }
@@ -6273,7 +6510,7 @@ var Tyrell = (() => {
         if (!o || o.status !== "active") continue;
         const ages = [this.age(p.id), this.age(q)];
         if (ages.some((a) => a < c.fertile[0] || a > c.fertile[1])) continue;
-        if (w.stream(p).chance(c.fertility / yearDays)) this.applyBirth([p.id, q], {}, null);
+        if (w.stream(p).chance(c.fertility * this.knob("births", p) * this.w.own(o, this.name, "births") / yearDays)) this.applyBirth([p.id, q], {}, null);
       }
     }
     removed(p, why) {
@@ -6282,16 +6519,22 @@ var Tyrell = (() => {
   };
 
   // tyrell/src/modules/joi.ts
+  var DEFAULT_JOI = { wants: 0.6, memories: 3, timeoutMs: 2500 };
   var Joi = class {
-    constructor() {
+    constructor(cfg = {}) {
       this.name = "joi";
       /** The game's voice, in a sentence: 'neon noir, clipped' or 'cozy, folksy'. */
       this.voice = "Speak as this person would, in one or two short sentences.";
       this.provider = null;
       this.allowed = /* @__PURE__ */ new Set();
+      this.config = { ...DEFAULT_JOI, ...cfg };
     }
     attach(w) {
       this.w = w;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
     }
     /** Sets the function that calls a model (async). */
     setProvider(fn) {
@@ -6317,13 +6560,14 @@ var Tyrell = (() => {
       if (traits) lines.push(`Temperament (0 to 1): ${traits}.`);
       const d = p.doing;
       if (d) lines.push(`Right now: ${d.kind === "travel" ? `walking to ${d.to}` : `${w.actions.get(d.action)?.label ?? d.action} at ${d.place}`}.`);
-      const needs = [...w.needs.keys()].map((n) => [n, w.mind.level(p, n)]).filter(([, v]) => v > 0.6).map(([n]) => n);
+      const c = this.c;
+      const needs = [...w.needs.keys()].map((n) => [n, w.mind.level(p, n)]).filter(([, v]) => v > c.wants).map(([n]) => n);
       if (needs.length) lines.push(`You badly want: ${needs.join(", ")}.`);
       if (w.reverie) {
         lines.push(`Mood: ${round(w.reverie.mood(who), 2)} (${w.reverie.emotion(who)}).`);
         const feelings = w.reverie.feelings(who).map((f) => f.label);
         if (feelings.length) lines.push(`On your mind: ${feelings.join("; ")}.`);
-        const mem = w.reverie.memories(who).slice(0, 3).map((m) => m.text ?? m.k);
+        const mem = w.reverie.memories(who).slice(0, c.memories).map((m) => m.text ?? m.k);
         if (mem.length) lines.push(`You remember: ${mem.join("; ")}.`);
       }
       if (opts.to) {
@@ -6351,7 +6595,7 @@ var Tyrell = (() => {
       const fallback = { text: line?.text ?? "", key: line?.key ?? null, flags: [], fromModel: false };
       if (!this.provider) return fallback;
       const req = { prompt: this.prompt(who, opts), system: this.voice, who, line, ...opts.to ? { to: opts.to } : {} };
-      const timeout = opts.timeoutMs ?? 2500;
+      const timeout = opts.timeoutMs ?? this.c.timeoutMs;
       try {
         const reply = await Promise.race([
           this.provider(req),
@@ -6369,10 +6613,17 @@ var Tyrell = (() => {
   };
 
   // tyrell/src/modules/athelas.ts
+  var DEFAULT_ATHELAS = { contagion: 1, duration: 1 };
   var Athelas = class {
-    constructor() {
+    constructor(cfg = {}) {
       this.name = "athelas";
+      this.knobs = { contagion: "person", duration: "person" };
       this.courses = /* @__PURE__ */ new Map();
+      this.config = { ...DEFAULT_ATHELAS, ...cfg };
+    }
+    /** A headline knob for someone: the world's (as tuned), times their own. */
+    knob(name, p) {
+      return this.w.tuned(this.name, this.config)[name] * this.w.own(p, this.name, name);
     }
     /** The state for reading: undefined until someone is first afflicted. */
     get st() {
@@ -6458,6 +6709,7 @@ var Tyrell = (() => {
         const ctx = this.w.ctx(p);
         for (const k of ph.scale) m *= this.w.mind.consider(k, ctx);
       }
+      m *= this.knob("duration", p);
       return round(Math.max(1, m), 4);
     }
     schedule(id, course, r) {
@@ -6626,7 +6878,7 @@ var Tyrell = (() => {
         const cg = def?.contagion;
         if (!def || !cg || def.phases[on[course].p]?.spreads === false) continue;
         if (this.st?.on[to.id]?.[course] || this.immune(to.id, course)) continue;
-        let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance)), minutes / 60);
+        let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance * this.knob("contagion", to))), minutes / 60);
         if (cg.resist?.length) {
           const ctx = this.w.ctx(to, { target: from.id });
           for (const k of cg.resist) chance *= this.w.mind.consider(k, ctx);
@@ -6664,16 +6916,31 @@ var Tyrell = (() => {
     instincts: { founders: [0.8, 1.25], bounds: [0.5, 1.5], cross: 0, noise: 0.1 },
     looks: { founders: [0, 1], bounds: [0, 1], cross: 0.65, noise: 0.1 }
   };
-  var DEFAULT_DELOS = { jump: { chance: 0.12, by: 0.35 }, gift: { chance: 0.1, by: 0.4 } };
+  var DEFAULT_DELOS = {
+    jump: { chance: 0.12, by: 0.35 },
+    gift: { chance: 0.1, by: 0.4 },
+    mutation: 1,
+    variation: 1,
+    traitBlend: { ...DEFAULTS.traits },
+    talentBlend: { ...DEFAULTS.talents },
+    instinctBlend: { ...DEFAULTS.instincts },
+    lookBlend: { ...DEFAULTS.looks }
+  };
+  var BLEND = { traits: "traitBlend", talents: "talentBlend", instincts: "instinctBlend", looks: "lookBlend" };
   var Delos = class {
     constructor(cfg = {}) {
       this.name = "delos";
+      this.knobs = { mutation: "world", variation: "world" };
       this.genes = /* @__PURE__ */ new Map();
       this.blends = { traits: /* @__PURE__ */ new Map(), talents: /* @__PURE__ */ new Map(), instincts: /* @__PURE__ */ new Map(), looks: /* @__PURE__ */ new Map() };
       this.config = { ...DEFAULT_DELOS, ...cfg };
     }
     get st() {
       return this.w.s.mod.delos;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
     }
     mut() {
       var _a;
@@ -6757,8 +7024,8 @@ var Tyrell = (() => {
     // Making genomes
     // -------------------------------------------------------------------------
     settings(kind, def) {
-      const d = DEFAULTS[kind];
-      return { founders: def.founders ?? d.founders, bounds: def.bounds ?? d.bounds, cross: def.cross ?? d.cross, noise: def.noise ?? d.noise };
+      const d = DEFAULTS[kind], g = this.c[BLEND[kind]];
+      return { founders: def.founders ?? g.founders ?? d.founders, bounds: def.bounds ?? g.bounds ?? d.bounds, cross: def.cross ?? g.cross ?? d.cross, noise: def.noise ?? g.noise ?? d.noise };
     }
     fit(kind, def, v) {
       const { bounds } = this.settings(kind, def);
@@ -6834,6 +7101,7 @@ var Tyrell = (() => {
       const r = new Stream(w.s.seed, "delos", "birth", child);
       const g = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
       const mut = [];
+      const cfg = this.c;
       for (const gid of [...this.genes.keys()].sort()) {
         const def = this.genes.get(gid);
         const from = (x) => {
@@ -6841,7 +7109,7 @@ var Tyrell = (() => {
           return c && c.length ? r.pick(c) : this.allele(def, r);
         };
         const copies = def.copies === 1 ? [from(r.chance(0.5) ? a : b)] : [from(a), from(b)];
-        if (def.mutate && r.chance(def.mutate)) {
+        if (def.mutate && r.chance(def.mutate * cfg.mutation)) {
           const i = r.int(copies.length);
           const to = this.allele(def, r);
           if (to !== copies[i]) {
@@ -6858,22 +7126,23 @@ var Tyrell = (() => {
           const va = a[kind][k] ?? r.range(founders[0], founders[1]);
           const vb = b[kind][k] ?? r.range(founders[0], founders[1]);
           const one = r.chance(0.5) ? va : vb;
-          g[kind][k] = this.fit(kind, def, one * cross + (va + vb) / 2 * (1 - cross) + r.range(-noise, noise));
+          const n = noise * cfg.variation;
+          g[kind][k] = this.fit(kind, def, one * cross + (va + vb) / 2 * (1 - cross) + r.range(-n, n));
         }
       }
       const traits = [...this.blends.traits.keys()].sort();
-      if (traits.length && r.chance(this.config.jump.chance)) {
+      if (traits.length && r.chance(cfg.jump.chance * cfg.mutation)) {
         const k = traits[r.int(traits.length)];
-        const by = r.chance(0.5) ? this.config.jump.by : -this.config.jump.by;
+        const by = r.chance(0.5) ? cfg.jump.by : -cfg.jump.by;
         const before = g.traits[k];
         g.traits[k] = this.fit("traits", this.blends.traits.get(k), before + by);
         mut.push({ kind: "trait", id: k, by: round(g.traits[k] - before, 4) });
       }
       const talents = [...this.blends.talents.keys()].sort();
-      if (talents.length && r.chance(this.config.gift.chance)) {
+      if (talents.length && r.chance(cfg.gift.chance * cfg.mutation)) {
         const k = talents[r.int(talents.length)];
         const before = g.talents[k];
-        g.talents[k] = this.fit("talents", this.blends.talents.get(k), before + this.config.gift.by);
+        g.talents[k] = this.fit("talents", this.blends.talents.get(k), before + cfg.gift.by);
         mut.push({ kind: "talent", id: k, by: round(g.talents[k] - before, 4) });
       }
       if (mut.length) g.mut = mut;
@@ -6935,28 +7204,52 @@ var Tyrell = (() => {
     bye: "bye",
     close: "close",
     react: "react",
-    deed: null
+    deed: null,
+    chatter: 1,
+    warmthRegard: 3,
+    warmthMin: -1,
+    warmthMax: 3,
+    familiarTalk: 0.5,
+    familiarLearned: 1,
+    cooldown: 3 * DAY,
+    soreDays: 2,
+    soreWeight: 0.1,
+    revealPull: 1.5,
+    salientFloor: 0.05,
+    variety: 0.2,
+    promiseDays: 3,
+    promiseKeep: 30
   };
   var bondKey = (who, by) => who + ">" + by;
   var Voice = class {
     constructor(cfg = {}) {
       this.name = "voice";
+      this.knobs = { chatter: "person" };
       this.approaches = /* @__PURE__ */ new Map();
       this.threads = /* @__PURE__ */ new Map();
       this.promiseDefs = /* @__PURE__ */ new Map();
-      /** The warmth a talk starts with (a definition: set it on every start). Default: regard times 3, rounded, -1 to 3 (with Fellowship), else 0. */
+      /** The warmth a talk starts with (a definition: set it on every start). Default: regard times config.warmthRegard (3), rounded, from warmthMin to warmthMax (-1 to 3; with Fellowship), else 0. */
       this.warmth = (ctx) => {
         const f = ctx.world.fellowship;
-        return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * 3, -1, 3)) : 0;
+        const c = this.c;
+        return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * c.warmthRegard, c.warmthMin, c.warmthMax)) : 0;
       };
-      /** How many beats they'll talk for (a definition). Default config.patience. */
-      this.patience = () => this.config.patience;
+      /** How many beats they'll talk for (a definition), before `chatter`. Default config.patience. */
+      this.patience = () => this.c.patience;
       /** The talk being worked on inside an input (effects add their notes to it). */
       this.live = null;
       this.config = { ...DEFAULT_VOICE, ...cfg };
     }
     get st() {
       return this.w.s.mod.voice;
+    }
+    /** The config in force: as declared, under any world.tune. */
+    get c() {
+      return this.w.tuned(this.name, this.config);
+    }
+    /** How chatty the one talked to is: the world's chatter, times their own. */
+    chatter(who) {
+      return this.c.chatter * this.w.own(this.w.s.people[who], this.name, "chatter");
     }
     mut() {
       var _a;
@@ -7013,7 +7306,7 @@ var Tyrell = (() => {
         const thread = a || talk?.thread?.id;
         if (!thread) return;
         const b = this.bond(c.person.id, c.target);
-        (b.sore || (b.sore = {}))[thread] = this.w.s.now + (v === null || v === true ? 2 : Number(v)) * DAY;
+        (b.sore || (b.sore = {}))[thread] = this.w.s.now + (v === null || v === true ? this.c.soreDays : Number(v)) * DAY;
       });
       L.effect("warmth", (c, _a, op, v) => {
         const talk = c.target ? this.st?.talks[c.target] : void 0;
@@ -7064,7 +7357,8 @@ var Tyrell = (() => {
     /** How well someone knows the speaker: half a point a talk, a point for each thing learned about them. */
     familiarity(who, by = "player") {
       const b = this.peekBond(who, by);
-      return b ? round(b.talks * 0.5 + Object.keys(b.known || {}).length, 2) : 0;
+      const c = this.c;
+      return b ? round(b.talks * c.familiarTalk + Object.keys(b.known || {}).length * c.familiarLearned, 2) : 0;
     }
     /** What the speaker has learned about someone. */
     learned(who, by = "player") {
@@ -7100,13 +7394,13 @@ var Tyrell = (() => {
       const talk = { who, by, t: w.s.now, n: 0, warmth: 0, patience: 0, done: [], said: [], lines: [], options: [] };
       const ctx = this.ctx(talk);
       talk.warmth = round(Number(this.warmth(ctx)) || 0, 4);
-      talk.patience = Math.max(1, Math.round(Number(this.patience(ctx)) || this.config.patience));
+      talk.patience = Math.max(1, Math.round((Number(this.patience(ctx)) || this.c.patience) * this.chatter(who)));
       st.talks[by] = talk;
       this.live = talk;
       try {
         w.log("talk", who, { by });
         w.emit("voice:start", { who, by });
-        this.say(talk, "them", this.config.greet);
+        this.say(talk, "them", this.c.greet);
         if (!this.theirTurn(talk)) this.refresh(talk);
       } finally {
         this.live = null;
@@ -7209,7 +7503,7 @@ var Tyrell = (() => {
       if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
       if (talk.patience <= 0 && !talk.over) {
         talk.over = true;
-        this.say(talk, "them", this.config.close);
+        this.say(talk, "them", this.c.close);
       }
     }
     /** How an approach lands: added to the warmth, and remembered for the lines and answers that follow. */
@@ -7223,10 +7517,11 @@ var Tyrell = (() => {
       d = round(d, 4);
       talk.warmth = round(talk.warmth + d, 4);
       talk.landed = d > 0 ? "well" : d < 0 ? "badly" : "even";
-      if (Math.abs(d) >= this.config.strong) {
-        this.w.lang.applyAll(d > 0 ? this.config.onWell : this.config.onBadly, ctx);
+      const c = this.c;
+      if (Math.abs(d) >= c.strong) {
+        this.w.lang.applyAll(d > 0 ? c.onWell : c.onBadly, ctx);
         const how = d > 0 ? "well" : "badly";
-        if (!this.say(talk, "them", `${this.config.react}.${id}.${how}`, false, void 0, true)) this.say(talk, "them", `${this.config.react}.${how}`, false, void 0, true);
+        if (!this.say(talk, "them", `${c.react}.${id}.${how}`, false, void 0, true)) this.say(talk, "them", `${c.react}.${how}`, false, void 0, true);
       }
       return d;
     }
@@ -7236,15 +7531,16 @@ var Tyrell = (() => {
       const w = this.w, now2 = w.s.now;
       const b = this.peekBond(talk.who, talk.by);
       const ctx = this.ctx(talk);
+      const c = this.c;
       const cands = [...this.threads.values()].filter((def2) => {
         if (!def2.theirs || talk.done.includes(def2.id)) return false;
         const seen = b?.seen[def2.id];
-        if (seen !== void 0 && now2 - seen < (def2.cooldown ?? 3 * DAY)) return false;
+        if (seen !== void 0 && now2 - seen < (def2.cooldown ?? c.cooldown)) return false;
         return !def2.if || w.peek(() => w.lang.all(def2.if, ctx));
       }).sort((x, y) => x.id < y.id ? -1 : 1);
       if (!cands.length) return false;
       const r = this.stream(talk);
-      if (!r.chance(this.config.theirs)) return false;
+      if (!r.chance(c.theirs * this.chatter(talk.who))) return false;
       const def = r.weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
       if (!def) return false;
       this.enter(talk, def, true);
@@ -7259,20 +7555,21 @@ var Tyrell = (() => {
       const w = this.w, now2 = w.s.now;
       const b = this.peekBond(talk.who, talk.by);
       const ctx = this.ctx(talk);
+      const c = this.c;
       const scored = [];
       for (const def of this.threads.values()) {
         if (def.theirs || talk.done.includes(def.id)) continue;
         if (def.if && !w.lang.all(def.if, ctx)) continue;
         const seen = b?.seen[def.id];
-        const fresh = seen === void 0 ? 1 : 1 - Math.exp(-(now2 - seen) / Math.max(1, def.cooldown ?? 3 * DAY));
+        const fresh = seen === void 0 ? 1 : 1 - Math.exp(-(now2 - seen) / Math.max(1, def.cooldown ?? c.cooldown));
         let s = this.weightOf(def, ctx) * fresh;
-        if ((b?.sore?.[def.id] ?? -1) > now2) s *= 0.1;
-        if (def.reveals && b?.known?.[def.reveals] === void 0) s *= 1.5;
-        if (s < 0.05) continue;
-        s += w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id).next() * 0.2;
+        if ((b?.sore?.[def.id] ?? -1) > now2) s *= c.soreWeight;
+        if (def.reveals && b?.known?.[def.reveals] === void 0) s *= c.revealPull;
+        if (s < c.salientFloor) continue;
+        s += w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id).next() * c.variety;
         scored.push([s, def]);
       }
-      return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, this.config.offers).map(([, d]) => d);
+      return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, c.offers).map(([, d]) => d);
     }
     /** Works out what can be said now (kept with the talk, so a replay offers the same). */
     refresh(talk) {
@@ -7286,8 +7583,9 @@ var Tyrell = (() => {
         }
         if (talk.thread) {
           const beat = this.threads.get(talk.thread.id)?.beats[talk.thread.beat];
+          const choices = this.c.choices;
           (beat?.answers || []).forEach((a, i) => {
-            if (out.length >= this.config.choices) return;
+            if (out.length >= choices) return;
             const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === void 0 || talk.warmth >= a.warmth);
             if (!ok && !a.soft) return;
             if (ok && !this.isTopic(talk.by, a.say) && talk.said.includes(a.say)) return;
@@ -7309,7 +7607,7 @@ var Tyrell = (() => {
       });
     }
     bye(talk) {
-      this.say(talk, "them", this.config.bye);
+      this.say(talk, "them", this.c.bye);
       const view = this.view(talk, true);
       this.applyEnd(talk.by, "bye");
       return view;
@@ -7327,7 +7625,7 @@ var Tyrell = (() => {
       b.last = w.s.now;
       w.log("talked", talk.who, { by, threads: talk.done.slice(), why });
       w.emit("voice:end", { who: talk.who, by, threads: talk.done.slice(), why });
-      const deed = this.config.deed;
+      const deed = this.c.deed;
       if (deed) {
         const data = { for: talk.who };
         w.log("did", by, { verb: deed, for: talk.who });
@@ -7356,12 +7654,13 @@ var Tyrell = (() => {
       if (speaker && cs && w.s.people[speaker] && (!words || this.isTopic(speaker, topicOrWords))) {
         const b = this.peekBond(talk.who, talk.by);
         const now2 = w.s.now;
+        const fresh = this.c.fresh;
         const said = cs.choose(speaker, {
           to: listener,
           topic: topicOrWords,
           exact: true,
           salt: [talk.t, talk.n++],
-          avoid: (key2) => talk.said.includes(key2) || b?.said?.[key2] !== void 0 && now2 - b.said[key2] < this.config.fresh
+          avoid: (key2) => talk.said.includes(key2) || b?.said?.[key2] !== void 0 && now2 - b.said[key2] < fresh
         });
         if (said) {
           const line = { who, key: said.key };
@@ -7426,7 +7725,7 @@ var Tyrell = (() => {
       if (st.promises.some((p) => p.who === who && p.by === by && p.id === id && p.state === "open")) return;
       const def = this.promiseDefs.get(id);
       const now2 = this.w.s.now;
-      st.promises.push({ who, by, id, t: now2, due: now2 + (days ?? def?.days ?? 3) * DAY, state: "open" });
+      st.promises.push({ who, by, id, t: now2, due: now2 + (days ?? def?.days ?? this.c.promiseDays) * DAY, state: "open" });
       this.w.log("promised", who, { by, promise: id });
       this.w.emit("promise", { who, by, id, state: "open" });
     }
@@ -7468,18 +7767,18 @@ var Tyrell = (() => {
     day() {
       const st = this.st;
       if (!st) return;
-      const now2 = this.w.s.now;
+      const now2 = this.w.s.now, c = this.c;
       for (const k of Object.keys(st.bonds)) {
         const said = st.bonds[k].said;
         if (said) {
-          for (const key2 of Object.keys(said)) if (now2 - said[key2] > 2 * this.config.fresh) delete said[key2];
+          for (const key2 of Object.keys(said)) if (now2 - said[key2] > 2 * c.fresh) delete said[key2];
         }
         const sore = st.bonds[k].sore;
         if (sore) {
           for (const t of Object.keys(sore)) if (sore[t] <= now2) delete sore[t];
         }
       }
-      st.promises = st.promises.filter((p) => p.state === "open" || now2 - (p.settled ?? now2) < 30 * DAY);
+      st.promises = st.promises.filter((p) => p.state === "open" || now2 - (p.settled ?? now2) < c.promiseKeep * DAY);
     }
     removed(p) {
       const st = this.st;
@@ -7682,13 +7981,13 @@ var Tyrell = (() => {
       reverie: () => new Reverie(cfg.reverie),
       fellowship: () => new Fellowship(cfg.fellowship),
       wormtongue: () => new Wormtongue(cfg.wormtongue),
-      cityspeak: () => new Cityspeak(),
+      cityspeak: () => new Cityspeak(cfg.cityspeak),
       mentat: () => new Mentat(cfg.mentat),
       gaff: () => new Gaff(cfg.gaff),
-      ceres: () => new Ceres(),
+      ceres: () => new Ceres(cfg.ceres),
       cradle: () => new Cradle(cfg.cradle),
-      joi: () => new Joi(),
-      athelas: () => new Athelas(),
+      joi: () => new Joi(cfg.joi),
+      athelas: () => new Athelas(cfg.athelas),
       delos: () => new Delos(cfg.delos),
       voice: () => new Voice(cfg.voice)
     };
@@ -7699,5 +7998,19 @@ var Tyrell = (() => {
     return new World(opts, modules);
   }
   var VoightKampff = { run, compare: compare2 };
+  var MODULE_DEFAULTS = {
+    reverie: DEFAULT_REVERIE,
+    fellowship: DEFAULT_FELLOWSHIP,
+    wormtongue: DEFAULT_WORMTONGUE,
+    cityspeak: DEFAULT_CITYSPEAK,
+    mentat: DEFAULT_MENTAT,
+    gaff: DEFAULT_GAFF,
+    ceres: DEFAULT_CERES,
+    cradle: DEFAULT_CRADLE,
+    joi: DEFAULT_JOI,
+    athelas: DEFAULT_ATHELAS,
+    delos: DEFAULT_DELOS,
+    voice: DEFAULT_VOICE
+  };
   return __toCommonJS(index_exports);
 })();

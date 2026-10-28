@@ -44,10 +44,30 @@ export interface CourseDef {
     /** Effects when it passes (not when it's cured). */
     then?: Effect[];
 }
+export interface AthelasConfig {
+    /**
+     * The headline knobs: plain multipliers, 1 changing nothing. A person's own
+     * (PersonDef.tune.athelas) multiplies these for them alone: the catcher's
+     * for contagion, the sufferer's for duration.
+     */
+    /** How catching courses are: every course's contagion chance per hour together. 0: nothing spreads. Default 1. */
+    contagion: number;
+    /** How long courses last: every phase's minutes (when it starts). Default 1. */
+    duration: number;
+}
+export declare const DEFAULT_ATHELAS: AthelasConfig;
 export declare class Athelas implements Module {
     readonly name = "athelas";
+    readonly config: AthelasConfig;
+    readonly knobs: {
+        readonly contagion: "person";
+        readonly duration: "person";
+    };
     readonly courses: Map<string, CourseDef>;
     private w;
+    constructor(cfg?: Partial<AthelasConfig>);
+    /** A headline knob for someone: the world's (as tuned), times their own. */
+    private knob;
     /** The state for reading: undefined until someone is first afflicted. */
     private get st();
     /** The state for writing (inside the simulation): made when first needed. */

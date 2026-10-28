@@ -41,7 +41,7 @@ export interface PracticeDef {
     }>;
     /** Shifts the mood of the room (-1..1). */
     tone?: number;
-    /** How much more appealing role actions are. Default 1.5. */
+    /** How much more appealing role actions are. Default config.practiceBoost (1.5). */
     boost?: number;
 }
 export interface SocialActDef {
@@ -84,6 +84,30 @@ export interface ChooseOpts {
     salt?: Array<string | number>;
     skip?: (l: LineDef, i: number) => boolean;
 }
+export interface CityspeakConfig {
+    /**
+     * The headline knob: how chatty people near the player are. It scales the
+     * chance that two people meeting in view strike up an exchange (1, the
+     * default, always does; 0 never) and how many lines it runs to (barkLength
+     * times it, rounded, at least one). A person's own (PersonDef.tune.cityspeak)
+     * multiplies it for them: an exchange takes both people's. Barks change
+     * nothing in the world, so neither does this.
+     */
+    chatter: number;
+    /** Seconds between lines in a bark exchange. Default 2.2. */
+    barkGap: number;
+    /** Most lines in one exchange. Default 3. */
+    barkLength: number;
+    /** Minutes before someone barks the same line again, for a line with no `cooldown`. Default 60. */
+    barkCooldown: number;
+    /** How much more appealing role actions are, for a practice with no `boost`. Default 1.5. */
+    practiceBoost: number;
+    /** The share of an action with a `social` act that must be done for the act to be resolved. Default 0.5. */
+    socialDone: number;
+    /** The mood of a room with nobody in it (before the practices' tone). Default 0.5. */
+    roomEmpty: number;
+}
+export declare const DEFAULT_CITYSPEAK: CityspeakConfig;
 interface State {
     /** By speaker, by line key (or index, for a line without one): when they last said it. */
     said: Record<Id, Record<string, number>>;
@@ -99,18 +123,29 @@ interface State {
 }
 export declare class Cityspeak implements Module {
     readonly name = "cityspeak";
+    readonly config: CityspeakConfig;
+    readonly knobs: {
+        readonly chatter: "person";
+    };
     readonly lines: LineDef[];
     readonly practices: Map<string, PracticeDef>;
     readonly acts: Map<string, SocialActDef>;
     /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
     private barkSaid;
-    /** Seconds between lines in a bark exchange. */
-    barkGap: number;
-    /** Most lines in one exchange. */
-    barkLength: number;
     private w;
+    constructor(cfg?: Partial<CityspeakConfig>);
+    /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
+    get barkGap(): number;
+    set barkGap(v: number);
+    /** Most lines in one exchange (config.barkLength: setting it here sets the config). */
+    get barkLength(): number;
+    set barkLength(v: number);
     init(): State;
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
+    /** How chatty two people are together: the world's chatter, times each one's own. */
+    private chatter;
     attach(w: World): void;
     line(def: LineDef): this;
     addLines(defs: LineDef[]): this;

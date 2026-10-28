@@ -786,7 +786,7 @@ var Tyrell = (() => {
       let fast = h[0], slow = h[1];
       const ratio = expected > 1e-6 ? clamp(got / expected, 0, 2) : 1;
       fast += c.habitFast * (ratio - 1) + bonus;
-      fast += 0.02 * (1 - fast);
+      fast += c.habitDrift * (1 - fast);
       fast = clamp(fast, c.habitMin, c.habitMax);
       slow = clamp(slow + c.habitSlow * (fast - slow), c.habitMin, c.habitMax);
       p.habits[id] = [round(fast, 5), round(slow, 5)];
@@ -2693,6 +2693,7 @@ var Tyrell = (() => {
     decisions: 12,
     habitFast: 0.25,
     habitSlow: 0.05,
+    habitDrift: 0.02,
     habitMin: 0.25,
     habitMax: 4,
     compensate: true,

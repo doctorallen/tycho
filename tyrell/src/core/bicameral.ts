@@ -251,7 +251,7 @@ export class Bicameral {
     let fast = h[0], slow = h[1];
     const ratio = expected > 1e-6 ? clamp(got / expected, 0, 2) : 1;
     fast += c.habitFast * (ratio - 1) + bonus;
-    fast += 0.02 * (1 - fast); // a slow pull back toward neutral
+    fast += c.habitDrift * (1 - fast); // a slow pull back toward neutral
     fast = clamp(fast, c.habitMin, c.habitMax);
     slow = clamp(slow + c.habitSlow * (fast - slow), c.habitMin, c.habitMax);
     p.habits[id] = [round(fast, 5), round(slow, 5)];

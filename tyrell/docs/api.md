@@ -74,6 +74,7 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `pallDecay` | 0.08 | | `wishHours` | `[8, 13, 17]` |
 | `pallPenalty` | 0.6 | | `wishChance` | 0.5 |
 | `wishMinutes` | 2160 | | `wishPull` | 1.35 |
+| `habitDrift` | 0.02 | | | |
 
 `EsperConfig` (see [Time](time.md#esperconfig-and-memory)):
 

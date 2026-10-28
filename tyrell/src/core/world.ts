@@ -56,6 +56,7 @@ export const DEFAULT_CONFIG: Config = {
   decisions: 12,
   habitFast: 0.25,
   habitSlow: 0.05,
+  habitDrift: 0.02,
   habitMin: 0.25,
   habitMax: 4,
   compensate: true,

@@ -296,6 +296,22 @@ test('habits learn from how things went, and rewards nudge them', () => {
   assert.ok(w.mind.habit(p, 'stroll') < 0.9);
 });
 
+test('a game that learns in its own way turns the habits\' own learning off', () => {
+  // an action that went worse than expected, then one that went as expected
+  const learn = (config) => {
+    const w = tiny({ config });
+    const p = w.person('ana', { home: 'home_a' });
+    w.reward('ana', 'eat', 0.4);
+    w.mind.learn(p, 'eat', 0.5, 1);
+    w.mind.learn(p, 'eat', 1, 1);
+    return p.habits.eat;
+  };
+  const [fast, slow] = learn({});
+  assert.ok(fast < 1.4 && slow > 1.1, 'by default the fast weight learns and drifts back, and the slow one follows');
+  assert.deepEqual(learn({ habitFast: 0, habitSlow: 0, habitDrift: 0 }), [1.4, 1.1], 'with none of it, only the reward moved the habit');
+  assert.equal(Tyrell.create({ seed: 'd' }).config.habitDrift, 0.02);
+});
+
 test('waking from nothing: idle people wait and think again', () => {
   const w = Tyrell.create({ seed: 'idle' });
   w.place({ id: 'void' });

@@ -660,6 +660,8 @@ export interface Config {
   /** Habit learning rates and bounds. */
   habitFast: number;
   habitSlow: number;
+  /** How far the fast habit weight is pulled back toward 1 each time it learns. Default 0.02. */
+  habitDrift: number;
   habitMin: number;
   habitMax: number;
   /** Compensate for the number of considerations (IAUS). Default true. */

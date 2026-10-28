@@ -35,6 +35,24 @@ export interface VKStats {
     decisions: number;
     /** Milliseconds the run took. */
     ms: number;
+    /** What passed between people (Bree), when anything did. */
+    interactions?: VKInteractions;
+}
+/** What passed between people over a run (Bree's exchanges). */
+export interface VKInteractions {
+    /** Exchanges finished, and the turns they ran to. */
+    exchanges: number;
+    turns: number;
+    /** Exchanges by the kind they ended as, and by outcome. */
+    kinds: Record<string, number>;
+    outcomes: Record<string, number>;
+    /** Talk that turned into an argument or worse; people who walked off; someone who stepped in. */
+    escalations: number;
+    walkedOff: number;
+    steppedIn: number;
+    /** At the end: grudges held, and feuds. */
+    grudges: number;
+    feuds: number;
 }
 export interface VKReport {
     seed: string;

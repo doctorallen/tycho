@@ -3,7 +3,9 @@
 // that people still behave like people: nobody starves, no place is over
 // capacity, everyone sleeps, nobody stands about for hours, the same seed
 // gives the same world, and time walk and saving give back exactly what they
-// took. It also gathers the numbers a baseline can be compared against.
+// took. It also gathers the numbers a baseline can be compared against, and,
+// when people interact (Bree), what passed between them; the 'interactions'
+// check (asked for by name) holds those exchanges to sense.
 import type { Id } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, HOUR, hourOf, round } from '../core/util';
@@ -41,6 +43,25 @@ export interface VKStats {
   decisions: number;
   /** Milliseconds the run took. */
   ms: number;
+  /** What passed between people (Bree), when anything did. */
+  interactions?: VKInteractions;
+}
+
+/** What passed between people over a run (Bree's exchanges). */
+export interface VKInteractions {
+  /** Exchanges finished, and the turns they ran to. */
+  exchanges: number;
+  turns: number;
+  /** Exchanges by the kind they ended as, and by outcome. */
+  kinds: Record<string, number>;
+  outcomes: Record<string, number>;
+  /** Talk that turned into an argument or worse; people who walked off; someone who stepped in. */
+  escalations: number;
+  walkedOff: number;
+  steppedIn: number;
+  /** At the end: grudges held, and feuds. */
+  grudges: number;
+  feuds: number;
 }
 
 export interface VKReport {
@@ -54,6 +75,23 @@ export interface VKReport {
 }
 
 const builtins: Record<string, VKCheck> = {
+  // asked for by name: exchanges between people (Bree) make sense
+  interactions: {
+    name: 'interactions',
+    sample(w, acc, fail) {
+      const b = w.bree;
+      if (!b) return;
+      const seen = new Set<string>();
+      for (const ex of b.exchanges()) {
+        if (w.now - ex.t > 6 * HOUR && !acc['long:' + ex.id]) { acc['long:' + ex.id] = true; fail(`exchange ${ex.id} (${ex.kind}) has gone on for over 6 hours (day ${w.day})`); }
+        for (const id of ex.who) {
+          if (seen.has(id)) fail(`${id} is in two exchanges at once at ${w.now}`);
+          seen.add(id);
+        }
+      }
+      for (const p of w.people()) for (const g of b.grudges(p.id)) if (!(g.strength > 0 && g.strength <= 1)) fail(`${p.id}'s grudge against ${g.id} is ${g.strength}`);
+    },
+  },
   'nobody-starves': {
     name: 'nobody-starves',
     sample(w, acc, fail) {
@@ -142,6 +180,19 @@ export function run(opts: VKOptions): VKReport {
   const needMax: Record<Id, number> = {};
   let decisions = 0;
   w.on('decided', () => { decisions++; });
+  // what passes between people, as it ends (Bree)
+  let inter: VKInteractions | null = null;
+  const tally = (): VKInteractions => (inter ||= { exchanges: 0, turns: 0, kinds: {}, outcomes: {}, escalations: 0, walkedOff: 0, steppedIn: 0, grudges: 0, feuds: 0 });
+  w.on('bree:end', (e: { kind: string; outcome: string; n: number; why: string }) => {
+    const t = tally();
+    t.exchanges++;
+    t.turns += e.n;
+    t.kinds[e.kind] = (t.kinds[e.kind] || 0) + 1;
+    t.outcomes[e.outcome] = (t.outcomes[e.outcome] || 0) + 1;
+    if (e.why === 'left') t.walkedOff++;
+    if (e.why === 'stepped in') t.steppedIn++;
+  });
+  w.on('bree:escalated', () => { tally().escalations++; });
   for (let t = start + every; t <= end + 1e-6; t += every) {
     w.advanceTo(t);
     for (const c of checks) c.sample?.(w, acc, fail);
@@ -191,10 +242,20 @@ export function run(opts: VKOptions): VKReport {
     copy.advance(3 * HOUR);
     if (copy.hash() !== w.hash()) fail('a loaded world ran differently from the original');
   }
+  const stats: VKStats = { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 };
+  const done = inter as VKInteractions | null;
+  if (done && w.bree) {
+    const sorted = (o: Record<string, number>): Record<string, number> => { const out: Record<string, number> = {}; for (const k of Object.keys(o).sort()) out[k] = o[k]; return out; };
+    done.kinds = sorted(done.kinds);
+    done.outcomes = sorted(done.outcomes);
+    done.grudges = w.people().reduce((n, p) => n + (w.bree as NonNullable<World['bree']>).grudges(p.id).length, 0);
+    done.feuds = w.bree.feuds().length;
+    stats.interactions = done;
+  }
   return {
     seed, days, passed: failures.length === 0, failures,
     checks: names.map((c) => (typeof c === 'string' ? c : c.name)),
-    stats: { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 },
+    stats,
     hash,
   };
 }

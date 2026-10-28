@@ -29,7 +29,7 @@ Always run `npm test` and commit `dist/` with any change to `src/`. CI fails if 
   - `esper.ts`: time walk: snapshots, the input log, seek, branch, marks.
   - `ring.ts`: places, travel, slots, hours.
   - `westmarch.ts`: the log. `strangers.ts`: passers-by. `conds.ts`: the condition and effect language. `util.ts`: hashing, seeded streams, the heap. `module.ts`: the module hooks.
-- `src/modules/`: Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice.
+- `src/modules/`: Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree.
 - `src/tools/`: Palantír (`palantir.ts`) and Voight-Kampff (`voightkampff.ts`).
 - `src/index.ts`: `create()` and the exports.
 - `examples/rocinante.js`: the sample town (plain JS; works as a script, with require and import). Tests and the runner use it.

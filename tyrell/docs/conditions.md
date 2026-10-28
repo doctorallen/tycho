@@ -81,6 +81,10 @@ Conditions are compiled once and cached, so using them is cheap.
 | `ThreadDef.if`, `weight`, `label`; `AnswerDef.if`, `to[].if`; beats', answers' and threads' `then` (Voice) | The person talked to; `target` is the speaker |
 | `ApproachDef.lands` (Voice) | The listener; `target` is the speaker |
 | `PromiseDef.kept`, `broken`, `onKept`... (Voice) | The one promised to; `target` is the one who promised |
+| `KindDef.who`, `to`, `if`, `weight`, `knack` (Bree) | The one who starts it (or speaks); `target` is the other; `place` |
+| `KindDef.lands`, `MannerDef.lands`, `TopicDef.fit` (Bree) | The one who hears it (or whose taste it is); `target` is the speaker (the other) |
+| `TopicDef.if`, `weight` (Bree) | The speaker; `target` is the listener; `topic`; `data.subject` |
+| `OutcomeDo.then`, `TopicDef.then` (Bree) | Each of them in turn; `target` is the other |
 | `Consideration.input` | A term (not a condition), read in the option's context |
 
 ## Core terms
@@ -242,6 +246,25 @@ The person talked to is the person, and the speaker (`'player'`) the target.
 | `talked:<thread>` | They've talked of it; `talked` alone is minutes since their last talk ended (`null` if never) |
 | `promise:<id>` | The state of the latest promise of that kind to them: `'open'`, `'kept'`, `'broken'`, `'lapsed'`, or `null` |
 
+### Bree
+
+The person, with the target the other.
+
+| Term | Value |
+|---|---|
+| `nature.<role>` | Their nature in a role (`temper`, `warmth`, `humor`, `patience`, `courage`, `forgiveness`, `talkative`), from the term the config maps it to |
+| `grudge`, `grudge:<id>` | Their grudge against the target (or that person), 0..1 |
+| `grudged` | The target's grudge against them |
+| `feud`, `feud:<id>` | A feud between them, as people or through their groups |
+| `bond`, `bond:<label>` | How they stand with the target: `'partner'`, `'kin'`, `'rival'`, `'close'`, `'friend'`, `'acquaintance'`, `'stranger'`, `'sour'` |
+| `rowed` | Minutes since their last row with the target (`null` if none) |
+| `exchanges` | How many exchanges they've had with the target |
+| `exchange`, `exchange:<kind>` | The kind of the exchange they're in now (`null` if none) |
+| `outcome`, `outcome:<o>` | How the one they're in is going, or how the last with the target went |
+| `turn`, `turn:<o>` | How the last turn of the one they're in landed (for its words) |
+| `manner`, `manner:<id>` | Their manner (in their exchange, or now) |
+| `subject` | The subject of the topic they're on |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.
@@ -283,6 +306,9 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `promise:<id>=days`, `promise:<id>` | Voice | A promise to the person, from the target |
 | `sore:<thread>=days`, `sore` | Voice | A subject best left a while (the current one, two days, by default) |
 | `warmth+=n`, `-=`, `=` | Voice | The warmth of the talk in progress |
+| `grudge+=n`, `-=`, `=`; `grudge:<id>...` | Bree | The person's grudge against the target (or that person) |
+| `reconcile`, `reconcile:<id>` | Bree | The person and the target make it up: grudges both ways and a feud between them end |
+| `exchange:<kind>` | Bree | Starts an exchange of that kind between the person and the target |
 
 ## Functions
 

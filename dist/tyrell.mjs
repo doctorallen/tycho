@@ -2998,6 +2998,10 @@ var World = class {
   get voice() {
     return this.modules.get("voice");
   }
+  /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
+  get bree() {
+    return this.modules.get("bree");
+  }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
   // -------------------------------------------------------------------------
@@ -3657,7 +3661,7 @@ function plain(v) {
   return false;
 }
 var kindOf = (v) => Array.isArray(v) ? "list" : v === null ? "null" : typeof v;
-var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer"]);
+var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer", "bree.start"]);
 var MIGRATIONS = {
   // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
   // old records are kept apart (it takes the line definitions to read them).
@@ -4811,23 +4815,51 @@ var Wormtongue = class {
     const r = w.stream(a);
     const talkative = a.def.traits?.talkative ?? w.cfg.traitDefault;
     if (!r.chance(c.gossipChance * (0.5 + talkative) * this.knob("gossip", a.id))) return;
+    const best = this.news(a.id, b.id);
+    if (!best) return;
+    this.applyTell(a.id, b.id, best, r);
+  }
+  /**
+   * What a would most want to tell b now (gossip's pick): a belief not
+   * silenced, not too many tellings on, not private ('@'), not something b
+   * already believes, not about b, a secret only out of spite; scored by
+   * how juicy, how strong and how fresh. With `key`, that belief alone, if
+   * it could be told. Null if there's nothing. A look: it changes nothing.
+   */
+  news(a, b, key2) {
+    const w = this.w, rv = w.reverie;
+    if (!rv) return null;
+    const c = this.c;
     const now2 = w.s.now;
     let best = null;
-    for (const bl of rv.beliefs(a.id)) {
+    for (const bl of rv.beliefs(a)) {
+      if (key2 !== void 0 && bl.key !== key2) continue;
       if (bl.silenced || bl.hops >= c.maxHops) continue;
       if (bl.key.startsWith("@")) continue;
-      const theirs = rv.belief(b.id, bl.key);
+      const theirs = rv.belief(b, bl.key);
       if (theirs === bl.v) continue;
       const secret = this.secretFor(bl.key);
-      if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < c.secretSpite)) continue;
-      const subject2 = subjectOf(bl.key);
-      if (subject2 === b.id) continue;
+      if (secret && !(secret.about !== a && w.fellowship && w.fellowship.regard(a, secret.about) < c.secretSpite)) continue;
+      const subject = subjectOf(bl.key);
+      if (subject === b) continue;
       const juicy = bl.key.startsWith("did:") ? this.crimes.has(bl.key.split(":")[2]) ? c.juicyCrime : c.juicyDeed : 1;
       const recency = Math.pow(c.gossipRecency, (now2 - bl.t) / HOUR);
       const score = juicy * bl.str * recency;
       if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
     }
-    if (!best) return;
+    return best;
+  }
+  /**
+   * a tells b something they believe (inside the simulation; gossip, and
+   * Bree's talk): a liar may shift the blame, b believes it as far as they
+   * trust a, a secret spreads, and a member of the authority takes a crime
+   * as a report. `r` is the stream its draws come from.
+   */
+  applyTell(teller, listener, best, r) {
+    const w = this.w, rv = w.reverie;
+    const a = w.s.people[teller], b = w.s.people[listener];
+    if (!rv || !a || !b) return;
+    const c = this.c;
     let key2 = best.key, lie = false;
     const v = best.v;
     const subject = subjectOf(key2);
@@ -7137,6 +7169,14 @@ var Delos = class {
   }
 };
 
+// tyrell/src/modules/landing.ts
+function landing(lang, base, lands, ctx) {
+  let d = base;
+  if (typeof lands === "function") d += Number(lands(ctx)) || 0;
+  else for (const r of lands || []) if (!r.if || lang.all(r.if, ctx)) d += r.by;
+  return round(d, 4);
+}
+
 // tyrell/src/modules/voice.ts
 var DEFAULT_VOICE = {
   offers: 3,
@@ -7458,10 +7498,7 @@ var Voice = class {
     const def = this.approaches.get(id);
     if (!def) return 0;
     const ctx = this.ctx(talk);
-    let d = def.base ?? 0;
-    if (typeof def.lands === "function") d += Number(def.lands(ctx)) || 0;
-    else for (const r of def.lands || []) if (!r.if || this.w.lang.all(r.if, ctx)) d += r.by;
-    d = round(d, 4);
+    const d = landing(this.w.lang, def.base ?? 0, def.lands, ctx);
     talk.warmth = round(talk.warmth + d, 4);
     talk.landed = d > 0 ? "well" : d < 0 ? "badly" : "even";
     const c = this.c;
@@ -7734,8 +7771,1695 @@ var Voice = class {
   }
 };
 
+// tyrell/src/modules/bree.ts
+var OUTCOMES = ["warm", "good", "fine", "awkward", "sour", "row"];
+var DEFAULT_BREE = {
+  warmth: 1,
+  quarrels: 1,
+  escalation: 1,
+  grudges: 1,
+  forgiveness: 1,
+  talk: 1,
+  strike: 0.3,
+  quiet: ["sleep"],
+  needPull: 2,
+  traits: { temper: "trait.temper", warmth: "trait.warmth", humor: "trait.humor", patience: "trait.patience", courage: "trait.courage", forgiveness: "trait.forgiveness", talkative: "trait.talkative" },
+  scale: [2, 0.75, -0.75, -1.75, -3],
+  spread: 1.5,
+  regardWeight: 2,
+  compatWeight: 1,
+  moodWeight: 1,
+  stressWeight: 1,
+  needWeight: 2,
+  attractWeight: 3,
+  grudgeWeight: 3,
+  rowWeight: 2,
+  rowMinutes: 1440,
+  roomWeight: 0.5,
+  topicWeight: 1,
+  mannerWeight: 1,
+  sway: 0.4,
+  regard: { warm: 0.04, good: 0.02, fine: 5e-3, awkward: -0.01, sour: -0.03, row: -0.08 },
+  attraction: { warm: 0.05, good: 0.025, fine: 0, awkward: -0.01, sour: -0.03, row: -0.06 },
+  grudge: { warm: 0, good: 0, fine: 0, awkward: 0, sour: 0.1, row: 0.25 },
+  mends: { warm: 1.5, good: 1, fine: 0.5, awkward: 0, sour: 0, row: 0 },
+  feel: { warm: "good_talk", sour: "had_words", row: "had_words", long: "long_chat", left: "snubbed" },
+  memory: { row: 5 },
+  groupShare: 0.5,
+  longTurns: 6,
+  leftRegard: -0.03,
+  teachOver: 0.2,
+  turns: { partner: 8, kin: 6, close: 8, friend: 5, acquaintance: 3, stranger: 2, rival: 4, sour: 2 },
+  bonds: [0.6, 0.3, 0.05, -0.15],
+  rivalAt: 0.3,
+  talkativeTurns: 2,
+  lowMood: 0.35,
+  lowMoodTurns: 2,
+  turnsJitter: 1,
+  minTurns: 2,
+  maxTurns: 12,
+  quickTurns: 2,
+  groupTurns: 3,
+  turnGap: [2, 4],
+  topicPull: 0.5,
+  topicCooldown: DAY,
+  topicMemory: 8,
+  tellAt: "fine",
+  trust: 0.7,
+  shareWindow: HOUR,
+  recentMinutes: DAY,
+  likeAbove: 1.1,
+  shareFit: 0.5,
+  mannerJitter: 0.1,
+  groupMax: 5,
+  joinChance: 0.5,
+  joinRegard: 0,
+  escalateAt: "sour",
+  escalateBase: 0.25,
+  escalateTemper: 0.5,
+  escalateStress: 0.5,
+  escalateGrudge: 0.6,
+  escalateRegard: 0.5,
+  calmBase: 0.1,
+  calmPatience: 0.6,
+  calmRegard: 0.3,
+  stepInBase: 0.05,
+  stepInRegard: 0.5,
+  stepInCourage: 0.3,
+  stepInFrom: 0.2,
+  mediateRegard: 0.03,
+  mediateMends: 0.1,
+  leaveBase: 0.3,
+  leaveTemper: 0.35,
+  leaveRegard: 0.3,
+  leaveSour: 0.2,
+  grudgeTemper: 0.5,
+  grudgeForgive: 0.5,
+  fade: 0.04,
+  forgiveBase: 0.5,
+  forgiveTrait: 1,
+  grudgeFloor: 0.02,
+  feudAt: 0.5,
+  feudFade: 0.01,
+  feudSpread: 0,
+  feudMends: 0.5,
+  avoidFrom: 0.05,
+  avoidPlace: 0.6,
+  avoidTarget: 0.8,
+  avoidFloor: 0.1,
+  hostilePull: 1,
+  reconcileLabel: "made it up",
+  reconcileSentiment: 0.05,
+  reconcileFeeling: "made_up",
+  reconcileMemory: 5,
+  seenAt: "sour",
+  witnessStrength: 0.8,
+  witnessMemory: 3,
+  witnessRegard: 0.5,
+  witnessFeeling: "saw_row",
+  recent: 50,
+  pairDays: 30
+};
+var BREE_FEELINGS = [
+  { id: "good_talk", label: "A good talk", weight: 0.05, minutes: 4 * HOUR, emotion: "happy" },
+  { id: "long_chat", label: "A proper long talk", weight: 0.07, minutes: 7 * HOUR, emotion: "happy" },
+  { id: "had_words", label: "Had words with someone", weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: "angry" },
+  { id: "snubbed", label: "Brushed off", weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: "sad" },
+  { id: "fought", label: "In a fight", weight: -0.2, minutes: DAY, stack: 2, emotion: "angry" },
+  { id: "made_up", label: "Made it up", weight: 0.1, minutes: DAY, emotion: "relieved" },
+  { id: "saw_row", label: "Saw a row", weight: -0.04, minutes: 4 * HOUR, emotion: "tense" },
+  { id: "comforted", label: "Someone was kind", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
+];
+var pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+function breeStarter(opts = {}) {
+  const co = opts.company ?? "company", fun = opts.fun ?? "fun";
+  const nature = (role, lo, hi) => ({ name: role, input: "nature." + role, out: [lo, hi] });
+  const kinds = [
+    {
+      id: "chat",
+      label: "a chat",
+      tags: ["talk", "friendly"],
+      topics: ["*"],
+      group: true,
+      relieves: { [co]: 0.15, [fun]: 0.05 },
+      escalates: "argue",
+      weight: [nature("talkative", 0.5, 1.5)]
+    },
+    {
+      id: "deep_talk",
+      label: "a heart to heart",
+      tags: ["talk", "friendly"],
+      topics: ["tag:deep", "*"],
+      to: ["regard>0.3"],
+      relieves: { [co]: 0.3 },
+      base: 0.25,
+      traits: { warmth: 0.5 },
+      regard: 1.5,
+      escalates: "argue",
+      weight: [nature("warmth", 0.2, 1)],
+      on: { long: { memory: 4 } }
+    },
+    {
+      id: "joke",
+      label: "a joke",
+      tags: ["friendly"],
+      relieves: { [fun]: 0.1 },
+      base: 0.25,
+      traits: { humor: 1.5, temper: -0.5 },
+      skill: { humor: 1 },
+      escalates: "argue",
+      weight: [nature("humor", 0.1, 1.2)]
+    },
+    {
+      id: "compliment",
+      label: "a compliment",
+      tags: ["friendly"],
+      to: ["regard>0"],
+      base: 1,
+      traits: { warmth: 0.5 },
+      weight: 0.4,
+      on: { warm: { sentiment: { label: "said something kind", by: 0.05, minutes: 2 * DAY } } }
+    },
+    {
+      id: "tease",
+      label: "some teasing",
+      tags: ["friendly"],
+      to: ["regard>0.2"],
+      relieves: { [fun]: 0.1 },
+      traits: { humor: 1, temper: -1.5 },
+      skill: { humor: 0.5 },
+      escalates: "argue",
+      weight: [nature("humor", 0.1, 0.8)]
+    },
+    {
+      id: "flirt",
+      label: "flirting",
+      tags: ["romantic", "talk"],
+      topics: ["tag:romantic", "small_talk"],
+      who: ["!is:child"],
+      to: ["attraction>0.1", "!target.is:child"],
+      traits: { warmth: 0.5 },
+      skill: { humor: 0.5, warmth: 0.5 },
+      weight: [{ name: "attraction", input: "attraction", range: [0, 1], out: [0.2, 2.5] }]
+    },
+    {
+      id: "comfort",
+      label: "a word of comfort",
+      tags: ["friendly"],
+      to: ["target.mood<0.4", "regard>0"],
+      relieves: { [co]: 0.2 },
+      base: 0.5,
+      lands: [{ if: ["mood<0.35"], by: 1 }],
+      skill: { warmth: 1 },
+      weight: [nature("warmth", 0.2, 1.5)],
+      on: { warm: { feel: [null, "comforted"] }, good: { feel: [null, "comforted"] } }
+    },
+    { id: "favor", label: "asking a favor", to: ["regard>0.1"], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ["regard>0.4"], by: 1 }], owes: 1, weight: 0.2 },
+    {
+      id: "gift",
+      label: "a gift",
+      tags: ["friendly"],
+      to: ["regard>0"],
+      base: 1.5,
+      regard: 2,
+      mends: 0.2,
+      weight: 0.1,
+      on: { warm: { sentiment: { label: "gave me a present", by: 0.1, minutes: 7 * DAY } } }
+    },
+    { id: "help", label: "a hand", tags: ["friendly"], to: ["regard>0.1"], base: 1, regard: 1.5, mends: 0.1, deed: "helped", weight: 0.2 },
+    { id: "teach", label: "a lesson", tags: ["friendly"], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
+    {
+      id: "argue",
+      label: "an argument",
+      tags: ["hostile", "talk"],
+      topics: ["grievance", "*"],
+      turns: [3, 5],
+      base: -1,
+      traits: { temper: -1, patience: 1 },
+      regard: 1.5,
+      escalates: "fight",
+      weight: [{ name: "grudge", input: "grudge", out: [0.05, 2] }, { name: "regard", input: "regard", range: [-1, 0.5], out: [1.5, 0.2] }],
+      on: { row: { memory: 5 } }
+    },
+    {
+      id: "insult",
+      label: "an insult",
+      tags: ["hostile"],
+      to: ["regard<-0.2"],
+      base: -2.5,
+      traits: { temper: -1, forgiveness: 0.5 },
+      skill: { humor: 0.5 },
+      regard: 1.5,
+      grudge: 1.5,
+      escalates: "fight",
+      weight: [{ name: "dislike", input: "regard", range: [-1, -0.2], out: [1, 0.1] }]
+    },
+    {
+      id: "fight",
+      label: "a fight",
+      tags: ["hostile"],
+      turns: 2,
+      base: -4,
+      traits: { courage: 0.5 },
+      regard: 2,
+      grudge: 2,
+      crime: "fight",
+      weight: 0,
+      on: { sour: { feel: "fought", memory: 6 }, row: { feel: "fought", memory: 7 } }
+    },
+    {
+      id: "apologize",
+      label: "an apology",
+      tags: ["friendly"],
+      to: ["grudged>0.05"],
+      base: 0.5,
+      traits: { forgiveness: 1.5, temper: -0.5 },
+      skill: { warmth: 0.5 },
+      mends: 0.5,
+      weight: [{ name: "their grudge", input: "grudged", out: [0.3, 3] }, nature("warmth", 0.3, 1.5)],
+      on: { sour: { feel: ["snubbed", null] }, row: { feel: ["snubbed", null] } }
+    },
+    {
+      id: "make_up",
+      label: "making up",
+      tags: ["friendly"],
+      to: ["grudge>0.05", "grudged>0.05"],
+      turns: 3,
+      base: 0.5,
+      traits: { forgiveness: 1.5 },
+      mends: 0.6,
+      mutual: true,
+      weight: [nature("forgiveness", 0.3, 2)]
+    },
+    {
+      id: "avoid",
+      label: "the cold shoulder",
+      tags: ["hostile"],
+      to: ["grudge>0.3"],
+      turns: 1,
+      base: -1,
+      regard: 0.5,
+      grudge: 0,
+      weight: [{ name: "grudge", input: "grudge", out: [0, 2] }],
+      on: { end: { feel: [null, "snubbed"] } }
+    }
+  ];
+  const topics = [
+    { id: "small_talk", label: "this and that" },
+    { id: "news", label: "the news", from: "beliefs", weight: 1.5 },
+    { id: "old_times", label: "old times", from: "memories", tags: ["deep"], fit: [{ if: ["regard>0.3"], by: 0.5 }] },
+    { id: "doings", label: "what they've been up to", from: "events", weight: 1.2 },
+    { id: "pastimes", label: "what they love doing", from: "likes" },
+    { id: "here", label: "this place", from: "place", weight: 0.6 },
+    { id: "the_moment", label: "what they're at", from: "doing", weight: 0.8 },
+    { id: "troubles", label: "their troubles", tags: ["deep"], if: ["mood<0.45"], fit: [{ if: ["nature.warmth>0.6"], by: 0.5 }], kinds: ["deep_talk", "comfort"] },
+    { id: "sweet_nothings", label: "sweet nothings", tags: ["romantic"], kinds: ["flirt"], fit: [{ if: ["attraction>0.3"], by: 1 }] },
+    { id: "grievance", label: "what's wrong between them", from: "grudge", kinds: ["argue"], weight: 3 }
+  ];
+  const manners = [
+    { id: "plain", label: "plain", base: 0.1 },
+    { id: "warm", label: "warm", traits: { warmth: 2 }, fits: [{ if: ["mood>0.6"], by: 0.3 }], lands: [{ by: 0.25 }] },
+    { id: "witty", label: "witty", traits: { humor: 2 }, lands: [{ if: ["nature.humor>0.6"], by: 0.75 }, { if: ["nature.temper>0.7"], by: -0.5 }] },
+    { id: "ornery", label: "ornery", traits: { temper: 2 }, fits: [{ if: ["mood<0.4"], by: 0.5 }, { if: ["stress>0.5"], by: 0.5 }], lands: [{ by: -0.75 }] },
+    { id: "shy", label: "shy", traits: { talkative: -2 } },
+    { id: "gloomy", label: "gloomy", base: -0.6, fits: [{ if: ["mood<0.35"], by: 1.2 }], lands: [{ by: -0.25 }, { if: ["nature.warmth>0.6"], by: 0.25 }] }
+  ];
+  const keep = (list, ids) => ids ? list.filter((d) => ids.includes(d.id)) : list;
+  return { kinds: keep(kinds, opts.kinds), topics: keep(topics, opts.topics), manners: keep(manners, opts.manners) };
+}
+var Bree = class {
+  constructor(cfg = {}) {
+    this.name = "bree";
+    this.knobs = { warmth: "person", quarrels: "person", escalation: "person", grudges: "person", forgiveness: "person", talk: "person" };
+    this.kinds = /* @__PURE__ */ new Map();
+    this.topics = /* @__PURE__ */ new Map();
+    this.manners = /* @__PURE__ */ new Map();
+    /**
+     * Who sees an exchange go wrong (a definition: set it on every start, like
+     * Cradle's namer). Default null: everyone at the place, awake, not in it.
+     * The game owns sight: give it its own (a room indoors, shouting distance
+     * on a street), deterministic from the world's state.
+     */
+    this.witnesses = null;
+    /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
+    this.foeCache = null;
+    this.config = { ...DEFAULT_BREE, ...cfg };
+  }
+  get st() {
+    return this.w.s.mod.bree;
+  }
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).bree || (_a.bree = { n: 0, ids: 0, v: 0, ex: {}, of: {}, g: {}, feuds: {}, pairs: {}, recent: [] });
+  }
+  /** The config in force: as declared, under any world.tune. */
+  get c() {
+    return this.w.tuned(this.name, this.config);
+  }
+  /** A headline knob for someone: the world's, times their own. */
+  knob(name, id) {
+    return this.c[name] * this.w.own(id === void 0 ? void 0 : this.w.s.people[id], this.name, name);
+  }
+  /** How chatty people are together: the world's talk, times each one's own. */
+  talkOf(ids) {
+    let k = this.c.talk;
+    for (const id of ids) k *= this.w.own(this.w.s.people[id], this.name, "talk");
+    return k;
+  }
+  attach(w) {
+    this.w = w;
+    const L = w.lang;
+    const other = (c, a) => a && a !== "target" ? a : c.target ?? null;
+    L.term("nature", (c, a) => c.person ? this.nature(c.person, a) : w.cfg.traitDefault);
+    L.term("grudge", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.grudge(c.person.id, o) : 0;
+    });
+    L.term("grudged", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.grudge(o, c.person.id) : 0;
+    });
+    L.term("feud", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.feudBetween(c.person.id, o) : 0;
+    });
+    L.term("bond", (c, a) => {
+      const o = c.target ?? null;
+      if (!c.person || !o) return a ? false : null;
+      const b = this.bond(c.person.id, o);
+      return a ? b === a : b;
+    });
+    L.term("rowed", (c, a) => {
+      const o = other(c, a);
+      const row = c.person && o ? this.st?.pairs[pairKey(c.person.id, o)]?.row : void 0;
+      return row === void 0 ? null : round(w.s.now - row, 2);
+    });
+    L.term("exchanges", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.st?.pairs[pairKey(c.person.id, o)]?.n ?? 0 : 0;
+    });
+    const rv = w.reverie;
+    if (rv) {
+      for (const f of BREE_FEELINGS) if (!rv.feelingDefs.has(f.id)) rv.feelingDefs.set(f.id, f);
+    }
+    L.term("exchange", (c, a) => {
+      const ex = c.person ? this.exOf(c.person.id) : void 0;
+      return a ? ex?.kind === a : ex?.kind ?? null;
+    });
+    L.term("outcome", (c, a) => {
+      if (!c.person) return a ? false : null;
+      const ex = this.exOf(c.person.id);
+      const o = ex ? ex.score === null ? null : this.outcome(ex.score) : c.target ? this.st?.pairs[pairKey(c.person.id, c.target)]?.outcome ?? null : null;
+      return a ? o === a : o;
+    });
+    L.term("turn", (c, a) => {
+      const o = (c.person ? this.exOf(c.person.id)?.last : void 0) ?? null;
+      return a ? o === a : o;
+    });
+    L.term("manner", (c, a) => {
+      const m = c.person ? this.mannerOf(c.person.id) : null;
+      return a ? m === a : m;
+    });
+    L.term("subject", (c) => c.person ? this.exOf(c.person.id)?.topic?.subject ?? null : null);
+    L.effect("exchange", (c, a) => {
+      if (c.person && c.target && this.kinds.has(a) && !this.exOf(c.person.id) && !this.exOf(c.target)) this.begin(a, [c.person.id, c.target], "game");
+    });
+    w.defineInput("bree.start", (kind, a, others, opts) => this.applyStart(kind, a, others, opts ?? {}));
+    w.defineInput("bree.end", (which) => this.applyEnd(which));
+    w.defineInput("bree.witness", (exchange, seenBy) => this.applyWitnessed(exchange, seenBy));
+    w.defineInput("bree.grudge", (a, b, by, why) => this.applyGrudge(a, b, by, why ?? "the game"));
+    w.defineInput("bree.feud", (a, b, s, why) => this.applyFeud(a, b, s, why ?? "the game"));
+    w.defineInput("bree.reconcile", (a, b, why) => this.applyReconcile(a, b, why ?? "the game"));
+    L.effect("grudge", (c, a, op, v) => {
+      const o = other(c, a);
+      if (!c.person || !o) return;
+      const n = Number(v) || 0;
+      const by = op === "-=" ? -n : op === "=" ? n - this.grudge(c.person.id, o) : n;
+      this.applyGrudge(c.person.id, o, by, c.action ?? "an effect");
+    });
+    L.effect("reconcile", (c, a) => {
+      const o = other(c, a);
+      if (c.person && o) this.applyReconcile(c.person.id, o, c.action ?? "an effect");
+    });
+  }
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+  kind(def) {
+    this.kinds.set(def.id, def);
+    return this;
+  }
+  topic(def) {
+    this.topics.set(def.id, def);
+    return this;
+  }
+  manner(def) {
+    this.manners.set(def.id, def);
+    return this;
+  }
+  /** Declares the starter set (or some of it): kinds, topics and manners. Declare your own with the same ids after, to change them. */
+  starter(opts = {}) {
+    const s = breeStarter(opts);
+    for (const d of s.topics) this.topic(d);
+    for (const d of s.manners) this.manner(d);
+    for (const d of s.kinds) this.kind(d);
+    return this;
+  }
+  // -------------------------------------------------------------------------
+  // Reading people
+  // -------------------------------------------------------------------------
+  /** Someone's nature in a role (temper, warmth, humor, patience, courage, forgiveness, talkative), read from the term the config maps it to. */
+  nature(p, role) {
+    const term = this.c.traits[role];
+    const mid2 = this.w.cfg.traitDefault;
+    if (!term) return mid2;
+    const v = this.w.lang.value(term, this.w.ctx(p));
+    return typeof v === "number" && isFinite(v) ? v : mid2;
+  }
+  /** How a stands with b: 'partner', 'kin', 'rival', or by regard: 'close', 'friend', 'acquaintance', 'stranger', 'sour'. */
+  bond(a, b) {
+    const w = this.w, fs = w.fellowship, c = this.c;
+    if (fs?.partner(a) === b) return "partner";
+    if (fs) {
+      const h = fs.household(a);
+      if (h && h === fs.household(b)) return "kin";
+    }
+    const cr = w.cradle;
+    if (cr && (cr.parents(a).includes(b) || cr.parents(b).includes(a))) return "kin";
+    if (Math.min(this.animosity(a, b), this.animosity(b, a)) >= c.rivalAt) return "rival";
+    const r = fs ? fs.regard(a, b) : 0;
+    const [close, friend, acq, stranger] = c.bonds;
+    return r >= close ? "close" : r >= friend ? "friend" : r >= acq ? "acquaintance" : r >= stranger ? "stranger" : "sour";
+  }
+  /** Where a score falls on the scale. */
+  outcome(score) {
+    const s = this.c.scale;
+    for (let i = 0; i < s.length && i < OUTCOMES.length - 1; i++) if (score >= s[i]) return OUTCOMES[i];
+    return "row";
+  }
+  /** Is an outcome bad enough to escalate, send someone off, or be seen (config.escalateAt or worse)? */
+  bad(o) {
+    return OUTCOMES.indexOf(o) >= OUTCOMES.indexOf(this.c.escalateAt);
+  }
+  /** Is outcome x at least as good as y? */
+  atLeast(x, y) {
+    return OUTCOMES.indexOf(x) <= OUTCOMES.indexOf(y);
+  }
+  // -------------------------------------------------------------------------
+  // Grudges and feuds
+  // -------------------------------------------------------------------------
+  /** How readily someone forgives: their knob times their nature. */
+  forgiving(id) {
+    const p = this.w.s.people[id];
+    const c = this.c;
+    return this.knob("forgiveness", id) * (c.forgiveBase + c.forgiveTrait * (p ? this.nature(p, "forgiveness") : this.w.cfg.traitDefault));
+  }
+  /** a's grudge against b now, 0..1 (it fades from when it was last set). */
+  grudge(a, b) {
+    const g = this.st?.g[a]?.[b];
+    if (!g) return 0;
+    const days = (this.w.s.now - g[1]) / DAY;
+    return round(Math.max(0, g[0] - this.c.fade * this.forgiving(a) * days), 4);
+  }
+  /** Everyone a bears a grudge against: { id, strength, why }, strongest first. */
+  grudges(a) {
+    const out = [];
+    const g = this.st?.g[a];
+    if (g) for (const b of Object.keys(g)) {
+      const s = this.grudge(a, b);
+      if (s > 0) out.push({ id: b, strength: s, why: g[b][2] });
+    }
+    return out.sort((x, y) => y.strength - x.strength || (x.id < y.id ? -1 : 1));
+  }
+  /** Changes a's grudge against b (from the game: recorded). Negative eases it. */
+  grudgeAgainst(a, b, by, why) {
+    this.w.input("bree.grudge", [a, b, by, why ?? null]);
+  }
+  /** Changes a grudge inside the simulation. */
+  applyGrudge(a, b, by, why) {
+    var _a;
+    if (a === b || !this.w.s.people[a]) return;
+    const st = this.mut();
+    const now2 = this.w.s.now;
+    const s = clamp(this.grudge(a, b) + by);
+    const map = (_a = st.g)[a] || (_a[a] = {});
+    st.v++;
+    if (s <= 0) {
+      delete map[b];
+      if (!Object.keys(map).length) delete st.g[a];
+    } else map[b] = [round(s, 4), now2, by > 0 ? why : map[b]?.[2] ?? why];
+    this.w.log("grudge", a, { against: b, by: round(by, 4), strength: round(s, 4), why });
+    if (by > 0) this.w.emit("bree:grudge", { id: a, against: b, strength: round(s, 4), why });
+    const c = this.c;
+    if (by > 0 && s >= c.feudAt && this.grudge(b, a) >= c.feudAt && !st.feuds[pairKey(a, b)]) this.applyFeud(a, b, Math.min(s, this.grudge(b, a)), why);
+  }
+  /** How much of a grudge someone holds: their knob, more for a quick temper, less for a forgiving nature. */
+  grudging(p) {
+    const c = this.c;
+    return this.knob("grudges", p.id) * Math.max(0, 1 + (this.nature(p, "temper") - 0.5) * 2 * c.grudgeTemper) * Math.max(0, 1 - (this.nature(p, "forgiveness") - 0.5) * 2 * c.grudgeForgive);
+  }
+  /**
+   * Something mends: the holder's grudge against the other eases by this
+   * much (and a feud between them: a person's in full, their groups' by
+   * feudMends). A grudge eased to nothing is made up.
+   */
+  mend(holder, other, amount, why) {
+    if (!(amount > 0)) return;
+    const st = this.st;
+    if (!st) return;
+    const c = this.c;
+    const had = this.grudge(holder, other);
+    if (had > 0) {
+      this.applyGrudge(holder, other, -amount, why);
+      if (this.grudge(holder, other) <= 0) this.reconciled(holder, other, why);
+    }
+    for (const k of Object.keys(st.feuds)) {
+      const f = st.feuds[k];
+      const persons = f.a === holder && f.b === other || f.a === other && f.b === holder;
+      const groups = !persons && (this.inParty(holder, f.a) && this.inParty(other, f.b) || this.inParty(holder, f.b) && this.inParty(other, f.a));
+      if (!persons && !groups) continue;
+      const s = this.feudStrength(f) - amount * (persons ? 1 : c.feudMends);
+      this.applyFeud(f.a, f.b, s > 0 ? s : null, why);
+    }
+  }
+  /** A grudge made up: it ends, and a sentiment remembers it, with a feeling and a memory. */
+  reconciled(holder, other, why) {
+    const w = this.w, c = this.c, st = this.mut();
+    const g = st.g[holder];
+    if (g?.[other]) {
+      delete g[other];
+      if (!Object.keys(g).length) delete st.g[holder];
+      st.v++;
+    }
+    w.fellowship?.applySentiment(holder, other, c.reconcileLabel, c.reconcileSentiment);
+    const rv = w.reverie;
+    if (rv && c.reconcileFeeling) rv.applyFeel(holder, c.reconcileFeeling, other);
+    if (rv && c.reconcileMemory >= 1) rv.applyRemember(holder, { k: "made_up", about: other, imp: c.reconcileMemory, text: `made it up with ${w.s.people[other]?.name ?? other}` });
+    const pair = st.pairs[pairKey(holder, other)];
+    if (pair) pair.mended = w.s.now;
+    w.log("mended", holder, { with: other, why });
+    w.emit("bree:mended", { id: holder, with: other, why });
+  }
+  /** Two people make it up (from the game: recorded): grudges both ways and a feud between them end, and each keeps a sentiment for it. */
+  reconcile(a, b, why) {
+    this.w.input("bree.reconcile", [a, b, why ?? null]);
+  }
+  /** Makes it up inside the simulation. */
+  applyReconcile(a, b, why) {
+    if (a === b || !this.w.s.people[a] || !this.w.s.people[b]) return;
+    const st = this.mut();
+    this.reconciled(a, b, why);
+    this.reconciled(b, a, why);
+    if (st.feuds[pairKey(a, b)]) this.applyFeud(a, b, null, why);
+  }
+  /** A feud's strength now (it fades from when it was last set). */
+  feudStrength(f) {
+    const days = (this.w.s.now - f.t) / DAY;
+    return round(Math.max(0, f.s - this.c.feudFade * this.c.forgiveness * days), 4);
+  }
+  /** Is a person in a party (themselves, or a group they belong to)? */
+  inParty(id, party) {
+    return id === party || !!this.w.fellowship?.groupsOf(id).includes(party);
+  }
+  /** The feud between two people, as people or through their groups: its strength, 0 if none. */
+  feudBetween(a, b) {
+    const feuds = this.st?.feuds;
+    if (!feuds) return 0;
+    let best = 0;
+    for (const k of Object.keys(feuds)) {
+      const f = feuds[k];
+      if (this.inParty(a, f.a) && this.inParty(b, f.b) || this.inParty(a, f.b) && this.inParty(b, f.a)) best = Math.max(best, this.feudStrength(f));
+    }
+    return best;
+  }
+  /** Every feud: { a, b, strength, since, why }. */
+  feuds() {
+    const feuds = this.st?.feuds || {};
+    return Object.keys(feuds).sort().map((k) => ({ a: feuds[k].a, b: feuds[k].b, strength: this.feudStrength(feuds[k]), since: feuds[k].t, why: feuds[k].why })).filter((f) => f.strength > 0);
+  }
+  /** How much a has against b: their grudge or their feud, whichever is stronger. */
+  animosity(a, b) {
+    return Math.max(this.grudge(a, b), this.feudBetween(a, b));
+  }
+  /** Declares a feud between two people or two groups (from the game: recorded); a strength of 0 or null ends it. */
+  feud(a, b, strength, why) {
+    this.w.input("bree.feud", [a, b, strength, why ?? null]);
+  }
+  /** Sets a feud inside the simulation. */
+  applyFeud(a, b, s, why) {
+    if (a === b) return;
+    const st = this.mut();
+    const k = pairKey(a, b);
+    st.v++;
+    if (s === null || s <= 0) {
+      if (!st.feuds[k]) return;
+      delete st.feuds[k];
+      this.w.log("feud", a, { with: b, strength: 0, why });
+      this.w.emit("bree:feud", { a, b, strength: 0, why });
+      return;
+    }
+    const [x, y] = a < b ? [a, b] : [b, a];
+    st.feuds[k] = { a: x, b: y, s: round(clamp(s), 4), t: this.w.s.now, why };
+    this.w.log("feud", a, { with: b, strength: round(clamp(s), 4), why });
+    this.w.emit("bree:feud", { a, b, strength: round(clamp(s), 4), why });
+  }
+  // -------------------------------------------------------------------------
+  // Exchanges: starting one
+  // -------------------------------------------------------------------------
+  /** A stream of Bree's own: its draws leave people's own streams as they were. */
+  stream() {
+    const st = this.mut();
+    return new Stream(this.w.s.seed, "bree", st.n++);
+  }
+  /** Is someone free to talk: about, not walking, not doing something quiet (asleep)? */
+  free(p) {
+    if (!p || p.status !== "active" || !p.place || p.doing?.kind === "travel") return false;
+    const d = p.doing;
+    if (d && d.kind === "act") {
+      const tags = this.w.actions.get(d.action)?.tags;
+      if (tags && this.c.quiet.some((t) => tags.includes(t))) return false;
+    }
+    return true;
+  }
+  /** The exchange someone is in, or undefined. */
+  exOf(id) {
+    const st = this.st;
+    const n = st?.of[id];
+    return n === void 0 ? void 0 : st?.ex[n];
+  }
+  /**
+   * Starts an exchange of a kind (from the game: recorded, and it applies at
+   * once): `a` starts it with `b` (or several, a group). Anyone already in
+   * one leaves it. Returns it as it stands after the first turn, or null.
+   * `minutes`: the time they have (no turn after it); `turns`: how many.
+   */
+  start(kind, a, b, opts = {}) {
+    return this.w.input("bree.start", [kind, a, Array.isArray(b) ? b : [b], opts]) ?? null;
+  }
+  /** Ends an exchange now (by its id, or someone in it): someone walked away on screen (recorded). */
+  end(which) {
+    this.w.input("bree.end", [which]);
+  }
+  /** Starts an exchange inside the simulation (see start). */
+  applyStart(kind, a, others, opts = {}) {
+    const w = this.w;
+    const who = [a, ...others.filter((o, i) => o !== a && others.indexOf(o) === i)];
+    if (who.length < 2 || !this.kinds.has(kind) || who.some((id) => w.s.people[id]?.status !== "active")) return null;
+    for (const id of who) {
+      const ex2 = this.exOf(id);
+      if (ex2) this.finish(ex2, "interrupted");
+    }
+    const ex = this.begin(kind, who, "game", opts.minutes, opts.turns);
+    return ex ? this.view(ex) : null;
+  }
+  /** Ends an exchange inside the simulation. */
+  applyEnd(which) {
+    const ex = typeof which === "number" ? this.st?.ex[which] : this.exOf(which);
+    if (ex) this.finish(ex, "ended", typeof which === "string" ? which : void 0);
+  }
+  /** Begins an exchange: the turns it'll run to, the first turn now, the next on the clock. */
+  begin(kind, who, why, minutes, turns) {
+    const w = this.w;
+    const def = this.kinds.get(kind);
+    const p = w.s.people[who[0]];
+    if (!def || !p || who.some((id) => w.s.people[id]?.status !== "active")) return null;
+    const st = this.mut();
+    const r = this.stream();
+    const ex = {
+      id: ++st.ids,
+      kind,
+      first: kind,
+      who: who.slice(),
+      place: p.place ?? p.doing?.to ?? null,
+      t: w.s.now,
+      why,
+      n: 0,
+      turns: 1,
+      score: null,
+      heard: {},
+      sour: 0,
+      manners: {},
+      topics: [],
+      said: [],
+      next: w.s.now
+    };
+    if (minutes !== void 0 && isFinite(minutes)) ex.until = round(w.s.now + Math.max(0, minutes), 4);
+    if (def.tags?.includes("hostile")) ex.by = who[0];
+    if (def.group && def.topics?.length && why !== "game") for (const id of this.joiners(ex, r)) ex.who.push(id);
+    for (const id of ex.who) {
+      const m = this.mannerOf(id);
+      if (m) ex.manners[id] = m;
+    }
+    ex.turns = turns !== void 0 ? Math.max(1, Math.round(turns)) : this.plan(def, ex.who, r, minutes);
+    st.ex[ex.id] = ex;
+    for (const id of ex.who) st.of[id] = ex.id;
+    w.log("exchange", who[0], { id: ex.id, kind, with: ex.who.slice(1), why });
+    w.emit("bree:start", this.view(ex));
+    if (def.crime) this.breaksOut(ex, def);
+    this.turn(ex);
+    return ex;
+  }
+  /** The turns an exchange runs to: its own, or by how they stand, how talkative and how low they are; times talk; within the time they have. */
+  plan(def, who, r, minutes) {
+    const w = this.w, c = this.c;
+    const [a, b] = who;
+    const pa = w.s.people[a], pb = w.s.people[b];
+    let n;
+    if (typeof def.turns === "number") n = def.turns;
+    else if (Array.isArray(def.turns)) n = def.turns[0] + r.int(Math.max(0, def.turns[1] - def.turns[0]) + 1);
+    else if (def.topics?.length) {
+      n = c.turns[this.bond(a, b)] ?? c.turns.stranger ?? c.minTurns;
+      const talk = (pa ? this.nature(pa, "talkative") : 0.5) + (pb ? this.nature(pb, "talkative") : 0.5) - 1;
+      n += Math.round(talk * c.talkativeTurns);
+      const rv = w.reverie;
+      if (rv && (rv.mood(a) < c.lowMood || rv.mood(b) < c.lowMood)) n -= c.lowMoodTurns;
+      const j = Math.max(0, Math.round(c.turnsJitter));
+      if (j) n += r.int(2 * j + 1) - j;
+      n = clamp(n, c.minTurns, c.maxTurns);
+      if (def.group) n += Math.max(0, who.length - 2) * c.groupTurns;
+    } else n = c.quickTurns;
+    const k = this.talkOf(who);
+    if (k !== 1) n = Math.round(n * k);
+    n = Math.max(1, Math.round(n));
+    if (minutes !== void 0 && isFinite(minutes)) {
+      const gap = (c.turnGap[0] + (c.turnGap[1] ?? c.turnGap[0])) / 2;
+      n = Math.min(n, Math.max(1, Math.floor(minutes / Math.max(0.5, gap)) + 1));
+    }
+    return n;
+  }
+  /** The kinds the starter might strike up with someone, each with its weight. */
+  choices(s, o) {
+    const w = this.w, c = this.c;
+    const ctx = w.ctx(s, { target: o.id, place: s.place });
+    const out = [];
+    w.peek(() => {
+      for (const def of this.kinds.values()) {
+        if (def.weight === 0) continue;
+        if (!w.lang.all(def.who, ctx) || !w.lang.all(def.to, ctx) || !w.lang.all(def.if, ctx)) continue;
+        if (def.gives && !(w.have(s, def.gives) > 0)) continue;
+        if (def.teaches && !this.lesson(s, o)) continue;
+        let weight = 1;
+        if (typeof def.weight === "number") weight = def.weight;
+        else if (typeof def.weight === "function") weight = Number(def.weight(ctx)) || 0;
+        else if (def.weight) for (const k of def.weight) weight *= w.mind.consider(k, ctx);
+        if (def.relieves) {
+          let pull = 0;
+          for (const need in def.relieves) if (w.needs.has(need)) pull += def.relieves[need] * w.mind.urgency(s, need);
+          weight *= 1 + pull * c.needPull;
+        }
+        if (def.tags?.includes("hostile")) weight *= this.knob("quarrels", s.id);
+        if (weight > 0) out.push({ def, weight: round(weight, 6) });
+      }
+    });
+    return out;
+  }
+  /** The skill a teacher could teach someone: their best, well enough over the other's. */
+  lesson(t, o) {
+    const w = this.w;
+    let best = null, gap = this.c.teachOver;
+    for (const skill of Object.keys(w.skills.of(t))) {
+      const g = w.skills.level(t, skill) - w.skills.level(o, skill);
+      if (g >= gap) {
+        gap = g;
+        best = skill;
+      }
+    }
+    return best;
+  }
+  /** Who at the same place joins a group exchange as it starts: free, fond enough of one of them, by chance and their talk. */
+  joiners(ex, r) {
+    const w = this.w, c = this.c;
+    if (!ex.place || c.groupMax <= ex.who.length) return [];
+    const out = [];
+    for (const id of r.shuffle(w.ring.present(ex.place).filter((x) => !ex.who.includes(x)).sort())) {
+      if (ex.who.length + out.length >= c.groupMax) break;
+      if (!this.joins(ex, id, r)) continue;
+      out.push(id);
+    }
+    return out;
+  }
+  /** Would someone join an exchange now? */
+  joins(ex, id, r) {
+    const w = this.w, c = this.c, fs = w.fellowship;
+    const p = w.s.people[id];
+    if (!this.free(p) || this.exOf(id)) return false;
+    if (fs && !ex.who.some((m) => fs.regard(id, m) >= c.joinRegard)) return false;
+    return r.chance(clamp(c.joinChance * this.talkOf([id])));
+  }
+  /** Someone joins a group exchange in progress. */
+  join(ex, id) {
+    const st = this.mut();
+    ex.who.push(id);
+    st.of[id] = ex.id;
+    const m = this.mannerOf(id);
+    if (m) ex.manners[id] = m;
+    ex.turns += this.c.groupTurns;
+    this.w.log("joined", id, { id: ex.id });
+    this.w.emit("bree:joined", { id: ex.id, who: id });
+  }
+  /** The manner that fits someone best now (or null, with none declared): its base, rules, their nature, and a little of their own. */
+  mannerOf(id) {
+    const w = this.w, c = this.c;
+    const p = w.s.people[id];
+    if (!p || !this.manners.size) return null;
+    const ex = this.exOf(id);
+    if (ex?.manners[id]) return ex.manners[id];
+    const ctx = w.ctx(p);
+    let best = null, top = -Infinity;
+    w.peek(() => {
+      for (const m of this.manners.values()) {
+        if (m.if && !w.lang.all(m.if, ctx)) continue;
+        let v = landing(w.lang, m.base ?? 0, m.fits, ctx);
+        for (const role in m.traits || {}) v += m.traits[role] * (this.nature(p, role) - 0.5) * 2;
+        v += hash01(w.s.seed, "manner", id, m.id) * c.mannerJitter;
+        if (v > top) {
+          top = v;
+          best = m.id;
+        }
+      }
+    });
+    return best;
+  }
+  /** Is a kind a conversation, topic by topic? (One with topics, in a world that declares some; without any, it goes turn about.) */
+  talks(def) {
+    return !!def.topics?.length && this.topics.size > 0;
+  }
+  /** Does a topic fit a kind? */
+  fits(t, def) {
+    const list = def.topics;
+    if (!list?.length) return false;
+    if (list.includes(t.id)) return true;
+    if (t.tags && list.some((x) => x.startsWith("tag:") && t.tags?.includes(x.slice(4)))) return true;
+    if (!list.includes("*")) return false;
+    return !t.kinds || t.kinds.some((k) => k === def.id || k.startsWith("tag:") && !!def.tags?.includes(k.slice(4)));
+  }
+  /** How much someone (they love doing it) likes an action: instinct times habit. */
+  taste(p, action) {
+    return (p.def.instincts?.[action] ?? 1) * this.w.mind.habit(p, action);
+  }
+  /** What a topic would be about, raised by the speaker to the listener now: undefined if it can't be raised, null if it needs nothing. A look. */
+  subject(topic, speaker, listener) {
+    const t = this.topics.get(topic), s = this.w.s.people[speaker], l = this.w.s.people[listener];
+    return t && s && l ? this.w.peek(() => this.subjectOf(t, s, l)) : void 0;
+  }
+  subjectOf(t, s, l) {
+    const w = this.w, c = this.c, rv = w.reverie;
+    switch (t.from) {
+      case void 0:
+        return null;
+      case "beliefs": {
+        if (!rv) return void 0;
+        const wt = w.wormtongue;
+        if (wt) {
+          if (!(Number(w.tuning("wormtongue", s.id).gossip) > 0)) return void 0;
+          return wt.news(s.id, l.id)?.key;
+        }
+        const best = rv.beliefs(s.id).find((b) => !b.silenced && !b.key.startsWith("@") && !b.key.startsWith(`did:${l.id}:`) && rv.belief(l.id, b.key) !== b.v);
+        return best?.key;
+      }
+      case "memories": {
+        if (!rv) return void 0;
+        const theirs = rv.memories(l.id);
+        const m = rv.memories(s.id).find((x) => x.about === l.id || theirs.some((y) => y.k === x.k && Math.abs(y.t - x.t) <= c.shareWindow));
+        return m?.k;
+      }
+      case "events": {
+        if (!rv) return void 0;
+        return rv.memories(s.id).find((m) => w.s.now - m.t <= c.recentMinutes && m.about !== l.id)?.k;
+      }
+      case "likes": {
+        let best, top = c.likeAbove;
+        for (const a of [.../* @__PURE__ */ new Set([...Object.keys(s.def.instincts || {}), ...Object.keys(s.habits)])].sort()) {
+          const v = this.taste(s, a);
+          if (v > top) {
+            top = v;
+            best = a;
+          }
+        }
+        return best;
+      }
+      case "doing":
+        return s.doing?.kind === "act" ? s.doing.action : void 0;
+      case "place":
+        return s.place ? w.ring.root(s.place) : void 0;
+      case "grudge":
+        return this.st?.g[s.id]?.[l.id]?.[2] ?? void 0;
+    }
+    return void 0;
+  }
+  /** How much a topic is to someone's taste: its rules, and what they share of it. */
+  fitOf(t, p, other, subject) {
+    const w = this.w, c = this.c;
+    let v = t.fit ? landing(w.lang, 0, t.fit, w.ctx(p, { target: other.id, topic: t.id, data: { subject: subject ?? null } })) : 0;
+    if (typeof subject === "string") {
+      if (t.from === "likes") v += this.taste(p, subject) - 1;
+      if (t.from === "doing" && p.doing?.kind === "act" && p.doing.action === subject) v += c.shareFit;
+      if (t.from === "memories" && w.reverie?.memories(p.id).some((m) => m.k === subject)) v += c.shareFit;
+    }
+    return round(v, 4);
+  }
+  /** The topic someone opens next: one that fits the kind, not talked of yet, with something to it, drawn by weight, taste and how fresh it is between them. */
+  pickTopic(ex, def, s, l, r) {
+    const w = this.w, c = this.c, now2 = w.s.now;
+    const pair = this.st?.pairs[pairKey(s.id, l.id)];
+    const out = [];
+    w.peek(() => {
+      for (const t of this.topics.values()) {
+        if (ex.topics.includes(t.id) || !this.fits(t, def)) continue;
+        const subject = this.subjectOf(t, s, l);
+        if (subject === void 0) continue;
+        const ctx = w.ctx(s, { target: l.id, place: ex.place, topic: t.id, data: { subject } });
+        if (t.if && !w.lang.all(t.if, ctx)) continue;
+        let weight = 1;
+        if (typeof t.weight === "number") weight = t.weight;
+        else if (typeof t.weight === "function") weight = Number(t.weight(ctx)) || 0;
+        else if (t.weight) for (const k of t.weight) weight *= w.mind.consider(k, ctx);
+        const seen = pair?.topics?.[t.id];
+        if (seen !== void 0) weight *= 1 - Math.exp(-(now2 - seen) / Math.max(1, c.topicCooldown));
+        weight *= Math.max(0, 1 + this.fitOf(t, s, l, subject) * c.topicPull);
+        if (weight > 0) out.push({ t, subject, weight: round(weight, 6) });
+      }
+    });
+    const pick = r.weighted(out, (x) => x.weight);
+    return pick && pick.weight > 0 ? { t: pick.t, subject: pick.subject } : null;
+  }
+  /** A topic's steps, round the group: the opener opens it, each of the others answers, the opener follows it up, and one has the last word. */
+  stepsOf(t, ex, opener, r) {
+    const others = ex.who.filter((id) => id !== opener);
+    const first = others[0];
+    const out = [["open", opener, first]];
+    for (const o of others) out.push(["reply", o, opener]);
+    const n = clamp(Math.round(t.steps ?? 4), 2, 4);
+    if (n >= 3) out.push(["more", opener, first]);
+    if (n >= 4) out.push(["back", others.length > 1 ? r.pick(others) : first, opener]);
+    return out;
+  }
+  /** A topic talked through: when it came up between them, and its effects for each. */
+  topicDone(ex) {
+    var _a, _b;
+    const w = this.w, c = this.c, st = this.mut();
+    const tp = ex.topic;
+    if (!tp) return;
+    delete ex.topic;
+    const def = this.topics.get(tp.id);
+    const others = ex.who.filter((id) => id !== tp.by);
+    if (others[0]) {
+      const pair = (_a = st.pairs)[_b = pairKey(tp.by, others[0])] || (_a[_b] = { n: 0, last: w.s.now });
+      const topics = pair.topics || (pair.topics = {});
+      delete topics[tp.id];
+      topics[tp.id] = w.s.now;
+      const keys = Object.keys(topics);
+      for (let i = 0; i < keys.length - c.topicMemory; i++) delete topics[keys[i]];
+    }
+    if (def?.then) for (const id of ex.who) {
+      const p = w.s.people[id];
+      if (p) w.lang.applyAll(def.then, w.ctx(p, { target: id === tp.by ? others[0] ?? null : tp.by, topic: tp.id, data: { subject: tp.subject ?? null } }));
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Exchanges: how a turn lands
+  // -------------------------------------------------------------------------
+  /**
+   * How words of a kind from the speaker land with the listener now: the
+   * score from the listener's side with its parts, and where it falls,
+   * before the luck of the turn. A look: it changes nothing.
+   */
+  weigh(kind, speaker, listener, opts = {}) {
+    const def = this.kinds.get(kind);
+    const s = this.w.s.people[speaker], l = this.w.s.people[listener];
+    if (!def || !s || !l) return null;
+    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner ?? this.mannerOf(speaker) ?? void 0));
+    const score = round(parts.reduce((a, [, v]) => a + v, 0), 4);
+    return { score, outcome: this.outcome(score), parts };
+  }
+  /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
+  parts(def, s, l, place, topic, subject, manner) {
+    const w = this.w, c = this.c, L = w.lang;
+    const out = [];
+    const add = (name, v) => {
+      if (v && isFinite(v)) out.push([name, round(v, 4)]);
+    };
+    const lctx = w.ctx(l, { target: s.id, place: place ?? null });
+    const sctx = w.ctx(s, { target: l.id, place: place ?? null });
+    add("base", def.base ?? 0);
+    if (def.lands) add("lands", landing(L, 0, def.lands, lctx));
+    const ap = def.approach ? w.voice?.approaches.get(def.approach) : void 0;
+    if (ap) add("approach", landing(L, ap.base ?? 0, ap.lands, lctx));
+    if (def.knack) add("knack", landing(L, 0, def.knack, sctx));
+    let nat = 0, skill = 0;
+    for (const role in def.traits || {}) nat += def.traits[role] * (this.nature(l, role) - 0.5) * 2;
+    for (const role in def.skill || {}) skill += def.skill[role] * (this.nature(s, role) - 0.5) * 2;
+    add("nature", nat);
+    add("skill", skill);
+    const fs = w.fellowship, rv = w.reverie;
+    if (fs) {
+      add("regard", c.regardWeight * fs.regard(l.id, s.id));
+      add("compat", c.compatWeight * fs.compat(l.id, s.id));
+      if (def.tags?.includes("romantic")) add("attraction", c.attractWeight * fs.attraction(l.id, s.id));
+    }
+    if (rv) {
+      add("mood", c.moodWeight * (rv.mood(l.id) - 0.5) * 2);
+      add("stress", -c.stressWeight * rv.stress(l.id));
+    }
+    if (def.relieves) {
+      let need = 0;
+      for (const n in def.relieves) if (w.needs.has(n)) need += def.relieves[n] * w.mind.urgency(l, n);
+      add("need", c.needWeight * need);
+    }
+    add("grudge", -c.grudgeWeight * this.animosity(l.id, s.id));
+    const row = this.st?.pairs[pairKey(l.id, s.id)]?.row;
+    if (row !== void 0) add("row", -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
+    const cs = w.cityspeak;
+    if (cs && place) add("room", c.roomWeight * (cs.room(place) - 0.5) * 2);
+    const t = topic ? this.topics.get(topic) : void 0;
+    if (t) add("topic", c.topicWeight * this.fitOf(t, l, s, subject));
+    const m = manner ? this.manners.get(manner) : void 0;
+    if (m?.lands) add("manner", c.mannerWeight * landing(L, 0, m.lands, lctx));
+    return out;
+  }
+  /** The luck of a turn: two draws, so mostly near nothing. */
+  luck(r) {
+    return (r.next() + r.next() - 1) * this.c.spread;
+  }
+  // -------------------------------------------------------------------------
+  // Exchanges: turns
+  // -------------------------------------------------------------------------
+  /** Are they all still together and awake, where it began? */
+  together(ex) {
+    const w = this.w;
+    const root = ex.place ? w.ring.root(ex.place) : null;
+    for (const id of ex.who) {
+      const p = w.s.people[id];
+      if (!this.free(p)) return id;
+      if (root && w.ring.root(p.place) !== root) return id;
+    }
+    return null;
+  }
+  /**
+   * Who speaks to whom next, and the step. A conversation (a kind with
+   * topics) goes topic by topic: the next opener raises one, the others
+   * answer, and when the turns they have are done (or there's nothing left
+   * to say), whoever's turn it is takes their leave. Anything else goes turn
+   * about, the one who leads first.
+   */
+  nextStep(ex, def, r) {
+    const w = this.w;
+    if (this.talks(def)) {
+      const tp = ex.topic;
+      const rot = (after) => after === void 0 ? ex.lead ?? ex.who[0] : ex.who[(ex.who.indexOf(after) + 1) % ex.who.length] ?? ex.who[0];
+      if (tp && tp.i < tp.steps.length) {
+        if (ex.n >= ex.turns && (tp.i !== 1 || ex.turns <= 1)) {
+          const who4 = rot(tp.by);
+          return { who: who4, to: who4 === tp.by ? rot(who4) : tp.by, step: "bye" };
+        }
+        const [step2, who3, to2] = tp.steps[tp.i];
+        return { who: who3, to: to2, step: step2, topic: this.topics.get(tp.id) };
+      }
+      if (tp) this.topicDone(ex);
+      const opener = rot(ex.opener);
+      const to = opener === ex.who[0] ? ex.who[1] : ex.who[0];
+      if (ex.n >= ex.turns) return { who: opener, to: ex.opener ?? to, step: "bye" };
+      const s = w.s.people[opener], l = w.s.people[to];
+      const pick = s && l ? this.pickTopic(ex, def, s, l, r) : null;
+      if (!pick) return { who: opener, to, step: "bye" };
+      ex.topic = { id: pick.t.id, by: opener, steps: this.stepsOf(pick.t, ex, opener, r), i: 0 };
+      if (pick.subject !== null && pick.subject !== void 0) ex.topic.subject = pick.subject;
+      ex.opener = opener;
+      ex.topics.push(pick.t.id);
+      const [step, who2, too] = ex.topic.steps[0];
+      return { who: who2, to: too, step, topic: pick.t };
+    }
+    const steps = ["open", "reply", "more", "back"];
+    const lead = ex.lead ?? ex.who[0];
+    const other = (id) => id === ex.who[0] ? ex.who[1] : ex.who[0];
+    const who = ex.lastWho === void 0 ? lead : other(ex.lastWho);
+    return { who, to: other(who), step: steps[(ex.i ?? 0) % steps.length] };
+  }
+  /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
+  turn(ex) {
+    const w = this.w, c = this.c;
+    const def = this.kinds.get(ex.kind);
+    if (!def) {
+      this.finish(ex, "ended");
+      return;
+    }
+    const gone = ex.n === 0 && ex.why === "game" ? null : this.together(ex);
+    if (gone !== null) {
+      this.finish(ex, "parted", gone);
+      return;
+    }
+    if (ex.until !== void 0 && w.s.now > ex.until + 1e-6) {
+      this.finish(ex, "parted");
+      return;
+    }
+    const r = this.stream();
+    const { who, to, step, topic } = this.nextStep(ex, def, r);
+    if (step === "bye") {
+      ex.n++;
+      this.tell(ex, { who, to, step, landed: null, end: true });
+      this.finish(ex, "done");
+      return;
+    }
+    const s = w.s.people[who], l = w.s.people[to];
+    const subject = topic ? ex.topic?.subject : void 0;
+    const parts = this.parts(def, s, l, ex.place, topic?.id, subject, ex.manners[who]);
+    const score = round(parts.reduce((acc, [, v]) => acc + v, 0) + this.luck(r), 4);
+    const landed = this.outcome(score);
+    ex.heard[to] = ex.heard[to] === void 0 ? score : round(ex.heard[to] + (score - ex.heard[to]) * c.sway, 4);
+    ex.score = ex.score === null ? score : round(ex.score + (score - ex.score) * c.sway, 4);
+    ex.last = landed;
+    ex.lastWho = who;
+    if (topic && ex.topic) ex.topic.i++;
+    else ex.i = (ex.i ?? 0) + 1;
+    ex.n++;
+    if (topic && step === "open" && typeof subject === "string") this.opened(ex, topic, s, subject, landed, r);
+    let act = { act: "none" };
+    if (this.bad(landed)) {
+      ex.sour++;
+      ex.sourBy = who;
+      act = this.react(ex, def, s, l, r);
+    }
+    const ends = act.act === "leave" || act.act === "step_in";
+    const kd = this.kinds.get(ex.kind);
+    const over = ends || act.act !== "escalate" && !(kd && this.talks(kd)) && ex.n >= ex.turns;
+    this.tell(ex, { who, to, step, landed, end: over && !ends });
+    if (act.act === "calm") {
+      ex.n++;
+      ex.lastWho = who;
+      this.tell(ex, { who, to, step: "calm", landed: null, end: over });
+    } else if (act.act === "step_in" && act.by) {
+      ex.n++;
+      ex.mediator = act.by;
+      this.tell(ex, { who: act.by, to, step: "step_in", landed: null, end: true });
+    } else if (act.act === "leave") {
+      ex.n++;
+      this.tell(ex, { who: to, to: who, step: "leave", landed: null, end: true });
+    } else if (act.act === "escalate") this.escalate(ex, def, l, s, r);
+    if (over) {
+      this.finish(ex, act.act === "leave" ? "left" : act.act === "step_in" ? "stepped in" : "done", act.act === "leave" ? to : void 0);
+      return;
+    }
+    this.schedule(ex, r);
+  }
+  /** A topic is opened: news told to everyone in it who'd hear it (through Wormtongue's telling, when it's on), or a memory brought to mind. */
+  opened(ex, topic, s, subject, landed, r) {
+    const w = this.w, c = this.c, rv = w.reverie;
+    if (!rv) return;
+    if (topic.from === "beliefs" && this.atLeast(landed, c.tellAt)) {
+      const wt = w.wormtongue;
+      for (const id of ex.who) {
+        if (id === s.id || subject.startsWith(`did:${id}:`)) continue;
+        if (wt) {
+          const news = wt.news(s.id, id, subject);
+          if (news) wt.applyTell(s.id, id, news, r);
+          continue;
+        }
+        const b = rv.beliefRecord(s.id, subject);
+        if (b && rv.belief(id, subject) !== b.v) rv.applyBelieve(id, subject, b.v, "told", s.id, round(b.str * c.trust, 4), b.hops + 1);
+      }
+    }
+    if (topic.from === "memories") {
+      for (const id of ex.who) if (id === s.id || rv.memories(id).some((m) => m.k === subject)) rv.applyRecall(id, { k: subject }, 1);
+    }
+    if (topic.from === "events") rv.applyRecall(s.id, { k: subject }, 1);
+  }
+  /**
+   * Words landed badly with the one who heard them (l): do they answer back
+   * harder (and does the other keep their patience, or someone step in), or
+   * walk off, or let it go?
+   */
+  react(ex, def, s, l, r) {
+    const w = this.w, c = this.c, fs = w.fellowship, rv = w.reverie;
+    const regard = (x, y) => fs ? fs.regard(x, y) : 0;
+    if (def.escalates && this.kinds.has(def.escalates)) {
+      const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, "temper") - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0) + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob("escalation", l.id);
+      if (r.chance(p)) {
+        if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, "patience") + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: "calm" };
+        let best = null;
+        for (const id of this.seers(ex)) {
+          const m = w.s.people[id];
+          const like = Math.max(regard(id, s.id), regard(id, l.id));
+          if (!m || like < c.stepInFrom) continue;
+          const v = like + (this.nature(m, "courage") - 0.5) * 2 * c.stepInCourage;
+          if (!best || v > best.v) best = { id, v };
+        }
+        if (best) {
+          const m = w.s.people[best.id];
+          const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
+          if (r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, "courage") - 0.5) * 2))) return { act: "step_in", by: best.id };
+        }
+        return { act: "escalate" };
+      }
+    }
+    if (ex.who.length === 2) {
+      const p = clamp(c.leaveBase + c.leaveTemper * this.nature(l, "temper") - c.leaveRegard * regard(l.id, s.id) + c.leaveSour * Math.max(0, ex.sour - 1));
+      if (r.chance(p)) return { act: "leave" };
+    }
+    return { act: "none" };
+  }
+  /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
+  escalate(ex, def, angry, other, r) {
+    const w = this.w, st = this.mut();
+    const next = this.kinds.get(def.escalates);
+    const from = ex.kind;
+    ex.kind = next.id;
+    ex.by = angry.id;
+    ex.esc = (ex.esc ?? 0) + 1;
+    for (const id of ex.who) if (id !== angry.id && id !== other.id && st.of[id] === ex.id) delete st.of[id];
+    ex.who = [angry.id, other.id];
+    ex.lead = angry.id;
+    ex.i = 0;
+    delete ex.lastWho;
+    delete ex.topic;
+    delete ex.opener;
+    const left = ex.until !== void 0 ? ex.until - w.s.now : void 0;
+    ex.turns = ex.n + this.plan(next, ex.who, r, left);
+    w.log("escalated", angry.id, { id: ex.id, from, to: next.id, against: other.id });
+    w.emit("bree:escalated", { id: ex.id, from, to: next.id, by: angry.id, against: other.id });
+    this.breaksOut(ex, next);
+  }
+  /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */
+  breaksOut(ex, def) {
+    if (def.seen === false) return;
+    const seers = this.seers(ex);
+    const wt = this.w.wormtongue;
+    const crime = !!(def.crime && wt?.crimes.has(def.crime));
+    const by = ex.by ?? ex.who[0];
+    const other = ex.who.find((id) => id !== by) ?? ex.who[1];
+    if (crime) wt?.sensed({ kind: def.crime, actor: by, what: other, place: ex.place, seenBy: [other, ...seers] });
+    this.witness(ex, seers, crime);
+    const c = this.c, fs = this.w.fellowship;
+    if (def.crime && c.feudSpread > 0 && fs) {
+      const ha = fs.household(by), hb = fs.household(other);
+      if (ha && hb && ha !== hb) {
+        const f = this.mut().feuds[pairKey(ha, hb)];
+        this.applyFeud(ha, hb, (f ? this.feudStrength(f) : 0) + c.feudSpread, def.id);
+      }
+    }
+  }
+  /** Who's about to see what happens in an exchange: the game's own say (bree.witnesses), or everyone at the place, awake, not in it. */
+  seers(ex) {
+    const w = this.w;
+    if (this.witnesses) return w.peek(() => this.witnesses(this.view(ex), w)).filter((id) => !ex.who.includes(id) && w.s.people[id]?.status === "active");
+    if (!ex.place) return [];
+    return w.ring.present(w.ring.root(ex.place)).filter((id) => !ex.who.includes(id) && this.free(w.s.people[id]));
+  }
+  /**
+   * People see an exchange go wrong: they believe what they saw (did:<who
+   * started it>:<kind>, the other as its value: gossip, through Wormtongue),
+   * remember it, feel it, and think less of whoever started it. Once a kind,
+   * each. With `crime`, Wormtongue has seen to the belief, memory and feeling.
+   */
+  witness(ex, seers, crime = false) {
+    const w = this.w, c = this.c, rv = w.reverie, fs = w.fellowship;
+    const by = ex.by ?? ex.sourBy ?? ex.who[0];
+    const against = ex.who.find((id) => id !== by) ?? ex.who[1];
+    const def = this.kinds.get(ex.kind);
+    const outcome = ex.outcome ?? this.outcome(ex.score ?? 0);
+    const seen = ex.seen || (ex.seen = {});
+    for (const id of seers) {
+      if (seen[id] === ex.kind || id === by || id === against || !w.s.people[id]) continue;
+      seen[id] = ex.kind;
+      if (rv && !crime) {
+        rv.applyBelieve(id, `did:${by}:${ex.kind}`, against ?? true, "saw", null, c.witnessStrength);
+        rv.applyRemember(id, { k: "saw:" + ex.kind, about: by, place: ex.place ?? void 0, imp: c.witnessMemory, text: `saw ${w.s.people[by]?.name ?? by} and ${w.s.people[against]?.name ?? against}: ${def?.label ?? ex.kind}` });
+        if (c.witnessFeeling) rv.applyFeel(id, c.witnessFeeling, by);
+      }
+      if (fs) {
+        const d = c.witnessRegard * (c.regard[outcome] ?? 0) * (def?.regard ?? 1);
+        if (d) fs.applyRegard(id, by, round(d * (d > 0 ? this.knob("warmth", id) : this.knob("quarrels", id)), 4));
+      }
+      w.log("saw", id, { exchange: ex.id, actor: by, kind: ex.kind, against });
+      w.emit("bree:witnessed", { id, exchange: ex.id, actor: by, kind: ex.kind, against });
+    }
+  }
+  /** The game says who saw an exchange (in progress, or lately finished): they see what it came to (recorded). */
+  witnessed(exchange, seenBy) {
+    this.w.input("bree.witness", [exchange, seenBy]);
+  }
+  /** Witnesses reported by the game, inside the simulation. */
+  applyWitnessed(exchange, seenBy) {
+    const st = this.st;
+    if (!st) return;
+    const ex = st.ex[exchange];
+    if (ex) {
+      this.witness(ex, seenBy);
+      return;
+    }
+    const done = st.recent.find((f) => f.id === exchange);
+    if (done) this.witness({ id: done.id, kind: done.kind, who: done.who, place: done.place, by: done.by, outcome: done.outcome, seen: {} }, seenBy);
+  }
+  /** Puts the next turn on the clock. */
+  schedule(ex, r) {
+    const [lo, hi] = this.c.turnGap;
+    ex.next = round(this.w.s.now + Math.max(0.5, r.range(lo, hi ?? lo)), 4);
+    this.w.clock.schedule({ t: ex.next, k: "module", ref: this.name, data: { ex: ex.id, n: ex.n } });
+  }
+  /** Tells the game about a turn. */
+  tell(ex, t) {
+    const w = this.w;
+    const tp = ex.topic && ["open", "reply", "more", "back"].includes(t.step) ? ex.topic : void 0;
+    const tries = [...tp ? [`${tp.id}.${t.step}`] : [], `${this.kinds.get(ex.kind)?.line ?? ex.kind}.${t.step}`, `bree.${t.step}`];
+    const turn = {
+      id: ex.id,
+      kind: ex.kind,
+      n: ex.n,
+      who: t.who,
+      to: t.to,
+      step: t.step,
+      topic: tp?.id ?? null,
+      landed: t.landed,
+      outcome: ex.score === null ? null : this.outcome(ex.score),
+      line: tries[0],
+      end: t.end
+    };
+    if (tp && tp.subject !== void 0) turn.subject = tp.subject;
+    if (ex.manners[t.who]) turn.manner = ex.manners[t.who];
+    const cs = w.cityspeak;
+    if (cs && w.s.people[t.who]) {
+      for (const topic of tries) {
+        const said = cs.choose(t.who, { to: t.to, topic, exact: true, salt: [ex.id, ex.n], avoid: (key2) => ex.said.includes(key2) });
+        if (!said) continue;
+        turn.line = topic;
+        turn.key = said.key;
+        if (said.text !== void 0) turn.text = said.text;
+        ex.said.push(said.key);
+        if (ex.said.length > 24) ex.said.shift();
+        break;
+      }
+    }
+    w.emit("bree:turn", turn);
+  }
+  /** The exchange as the game sees it. */
+  view(ex) {
+    const v = {
+      id: ex.id,
+      kind: ex.kind,
+      first: ex.first,
+      who: ex.who.slice(),
+      place: ex.place,
+      t: ex.t,
+      why: ex.why,
+      turn: ex.n,
+      turns: ex.turns,
+      outcome: ex.score === null ? null : this.outcome(ex.score),
+      score: ex.score,
+      topic: ex.topic ? { id: ex.topic.id, ...ex.topic.subject !== void 0 ? { subject: ex.topic.subject } : {} } : null,
+      manners: { ...ex.manners }
+    };
+    if (ex.by) v.by = ex.by;
+    return v;
+  }
+  /** The exchange someone's in (by its id, or someone in it), as the game sees it, or null. */
+  exchange(which) {
+    const ex = typeof which === "number" ? this.st?.ex[which] : this.exOf(which);
+    return ex ? this.view(ex) : null;
+  }
+  /** Every exchange in progress. */
+  exchanges() {
+    const st = this.st;
+    return st ? Object.keys(st.ex).map((k) => this.view(st.ex[k])) : [];
+  }
+  /** Finished exchanges (the last config.recent), newest last; those of a pair, with both given. */
+  history(a, b) {
+    return (this.st?.recent || []).filter((f) => (!a || f.who.includes(a)) && (!b || f.who.includes(b))).map((f) => ({ ...f, who: f.who.slice(), outcomes: { ...f.outcomes } }));
+  }
+  // -------------------------------------------------------------------------
+  // Exchanges: the end, and what it leaves
+  // -------------------------------------------------------------------------
+  /** Ends an exchange: what each outcome does, for each of them. */
+  finish(ex, why, left) {
+    var _a, _b;
+    const w = this.w, c = this.c, st = this.mut();
+    delete st.ex[ex.id];
+    for (const id of ex.who) if (st.of[id] === ex.id) delete st.of[id];
+    const def = this.kinds.get(ex.kind);
+    const outcome = this.outcome(ex.score ?? 0);
+    const outcomes = {};
+    for (const id of ex.who) outcomes[id] = ex.heard[id] === void 0 ? outcome : this.outcome(ex.heard[id]);
+    if (def && ex.n > 0) {
+      this.leave(ex, def, outcomes, why === "left" ? left : void 0);
+      if (def.seen !== false && OUTCOMES.indexOf(outcome) >= OUTCOMES.indexOf(c.seenAt)) this.witness({ ...ex, outcome }, this.seers(ex), !!(def.crime && w.wormtongue?.crimes.has(def.crime)));
+    }
+    const [a, b] = ex.who;
+    if (ex.n > 0) {
+      const pair = (_a = st.pairs)[_b = pairKey(a, b)] || (_a[_b] = { n: 0, last: w.s.now });
+      pair.n++;
+      pair.last = w.s.now;
+      pair.outcome = outcome;
+      if (!this.atLeast(outcome, "awkward")) {
+        pair.row = w.s.now;
+        if (ex.by) pair.by = ex.by;
+        else delete pair.by;
+      }
+    }
+    const done = { id: ex.id, kind: ex.kind, first: ex.first, who: ex.who.slice(), place: ex.place, t: ex.t, end: w.s.now, outcome, outcomes, n: ex.n, why };
+    if (ex.by) done.by = ex.by;
+    if (left) done.left = left;
+    if (ex.mediator) done.mediator = ex.mediator;
+    st.recent.push(done);
+    while (st.recent.length > Math.max(0, c.recent)) st.recent.shift();
+    w.log("exchanged", a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
+    w.emit("bree:end", { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
+  }
+  /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */
+  leave(ex, def, outcomes, left) {
+    const w = this.w, c = this.c, fs = w.fellowship, rv = w.reverie;
+    const who = ex.who, starter = who[0];
+    const group = who.length > 2;
+    const share = group ? c.groupShare : 1;
+    const romantic = !!def.tags?.includes("romantic");
+    const frac = clamp(ex.n / Math.max(1, ex.turns));
+    const long = ex.n >= c.longTurns;
+    for (const x of who) {
+      const p = w.s.people[x];
+      if (!p || p.status === "gone") continue;
+      const o = outcomes[x];
+      const y = x === starter ? who[1] : starter;
+      if (fs) for (const z of who) {
+        if (z === x || !group && z !== y) continue;
+        let d = (c.regard[o] ?? 0) * (def.regard ?? 1) * share;
+        d *= d > 0 ? this.knob("warmth", x) : this.knob("quarrels", x);
+        if (d) fs.applyRegard(x, z, round(d, 4));
+        if (romantic && z === y) {
+          let a = (c.attraction[o] ?? 0) * (def.attraction ?? 1);
+          a *= a > 0 ? this.knob("warmth", x) : this.knob("quarrels", x);
+          if (a) fs.applyAttraction(x, z, round(a, 4));
+        }
+      }
+      const does = [];
+      const own = def.on?.[o];
+      does.push({ feel: own && "feel" in own ? own.feel : c.feel[o] ?? null, memory: own?.memory ?? c.memory[o] ?? 0, sentiment: own?.sentiment, then: own?.then });
+      if (long && this.atLeast(o, "fine")) {
+        const lg = def.on?.long;
+        does.push({ feel: lg && "feel" in lg ? lg.feel : c.feel.long ?? null, memory: lg?.memory ?? c.memory.long ?? 0, sentiment: lg?.sentiment, then: lg?.then });
+      }
+      if (left === x) {
+        const lf = def.on?.left;
+        does.push({ feel: lf && "feel" in lf ? lf.feel : c.feel.left ?? null, memory: lf?.memory ?? c.memory.left ?? 0, sentiment: lf?.sentiment, then: lf?.then });
+        if (fs && c.leftRegard) fs.applyRegard(x, y, round(c.leftRegard * (c.leftRegard > 0 ? this.knob("warmth", x) : this.knob("quarrels", x)), 4));
+      }
+      if (def.on?.end) does.push(def.on.end);
+      if (ex.mediator && fs && c.mediateRegard) fs.applyRegard(x, ex.mediator, round(c.mediateRegard * this.knob("warmth", x), 4));
+      const ctx = w.ctx(p, { target: y, place: ex.place });
+      for (const d of does) {
+        const f = Array.isArray(d.feel) ? d.feel[x === starter ? 0 : 1] : d.feel;
+        if (f && rv) rv.applyFeel(x, f, y);
+        if (rv && (d.memory ?? 0) >= 1) rv.applyRemember(x, { k: `${ex.kind}:${o}`, about: group ? void 0 : y, place: ex.place ?? void 0, imp: d.memory, text: `${def.label ?? ex.kind} with ${w.s.people[y]?.name ?? y}` });
+        if (d.sentiment && fs && (x !== starter || d.sentiment.both)) fs.applySentiment(x, y, d.sentiment.label, d.sentiment.by ?? c.regard[o] ?? 0, d.sentiment.minutes);
+        if (d.then) w.lang.applyAll(d.then, ctx);
+      }
+      for (const z of who) {
+        if (z === x || !group && z !== y) continue;
+        const g = (c.grudge[o] ?? 0) * (def.grudge ?? 1) * share * this.grudging(p);
+        if (g > 0) this.applyGrudge(x, z, round(g, 4), ex.kind);
+        if (ex.mediator && c.mediateMends > 0) this.mend(x, z, c.mediateMends * this.forgiving(x), "a go-between");
+      }
+      if (def.relieves) for (const need in def.relieves) {
+        if (!w.needs.has(need)) continue;
+        w.mind.setLevel(p, need, w.mind.level(p, need) - def.relieves[need] * frac);
+      }
+    }
+    if (def.mends) {
+      const [a, b] = who;
+      const mb = c.mends[outcomes[b]] ?? 0;
+      if (mb > 0) this.mend(b, a, def.mends * mb * this.forgiving(b), ex.kind);
+      const ma = def.mutual ? c.mends[outcomes[a]] ?? 0 : 0;
+      if (ma > 0) this.mend(a, b, def.mends * ma * this.forgiving(a), ex.kind);
+    }
+    const other = w.s.people[who[1]];
+    const s = w.s.people[starter];
+    if (s && other && this.atLeast(outcomes[who[1]], "fine")) {
+      if (def.deed) {
+        const data = { for: other.id };
+        if (ex.place) data.place = ex.place;
+        w.log("did", starter, { verb: def.deed, for: other.id });
+        for (const m of w.hooks) m.did?.(starter, def.deed, data);
+      }
+      if (def.gives && w.have(s, def.gives) > 0) {
+        w.takeItem(s, def.gives, 1);
+        other.inv[def.gives] = (other.inv[def.gives] || 0) + 1;
+      }
+      if (def.owes && w.wormtongue) w.wormtongue.applyOwe(starter, other.id, def.owes);
+      if (def.teaches) {
+        const skill = this.lesson(s, other);
+        if (skill) w.skills.applyTrain(other, skill, def.teaches * frac);
+      }
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Hooks
+  // -------------------------------------------------------------------------
+  /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
+  foes(p) {
+    const st = this.st, w = this.w;
+    const key2 = `${p.id}@${w.s.now}@${w.s.seq}@${st.v}`;
+    const hit = this.foeCache;
+    if (hit && hit.st === st && hit.key === key2) return hit.list;
+    const ids = new Set(Object.keys(st.g[p.id] || {}));
+    const fs = w.fellowship;
+    for (const k of Object.keys(st.feuds)) {
+      const f = st.feuds[k];
+      for (const [mine, theirs] of [[f.a, f.b], [f.b, f.a]]) {
+        if (!this.inParty(p.id, mine)) continue;
+        if (w.s.people[theirs]) ids.add(theirs);
+        else if (fs) for (const m of fs.members(theirs)) ids.add(m);
+      }
+    }
+    const from = this.c.avoidFrom;
+    const list = [];
+    for (const id of [...ids].sort()) {
+      if (id === p.id) continue;
+      const a = this.animosity(p.id, id);
+      if (a >= from) list.push({ id, a });
+    }
+    list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
+    this.foeCache = { st, key: key2, list };
+    return list;
+  }
+  /**
+   * Avoidance: someone with a grudge or in a feud weighs what they might do
+   * where the other is lower, and anything social aimed at them lower still;
+   * a hostile interaction aimed at them weighs more.
+   */
+  consider(p, cand) {
+    const st = this.st;
+    if (!st || !st.g[p.id] && !Object.keys(st.feuds).length) return;
+    const foes = this.foes(p);
+    if (!foes.length) return;
+    const w = this.w, c = this.c;
+    const out = [];
+    const name = (id) => w.s.people[id]?.name ?? id;
+    if (cand.target) {
+      const f = foes.find((x) => x.id === cand.target);
+      const a = cand.kind === "action" ? w.actions.get(cand.id) : void 0;
+      if (f && a) {
+        const k = a.interact ? this.kinds.get(a.interact) : void 0;
+        if (k?.tags?.includes("hostile")) out.push([`a grudge against ${name(f.id)}`, round(1 + f.a * c.hostilePull, 4)]);
+        else if (a.interact || a.tags?.includes("social")) out.push([`avoiding ${name(f.id)}`, round(Math.max(c.avoidFloor, 1 - f.a * c.avoidTarget), 4)]);
+      }
+    }
+    const place = cand.place ?? p.place;
+    if (place) {
+      const root = w.ring.root(place);
+      for (const f of foes) {
+        if (f.id === cand.target) continue;
+        const q = w.s.people[f.id];
+        if (!q || q.status !== "active" || !q.place || q.doing?.kind === "travel" || w.ring.root(q.place) !== root) continue;
+        out.push([`avoiding ${name(f.id)}`, round(Math.max(c.avoidFloor, 1 - f.a * c.avoidPlace), 4)]);
+        break;
+      }
+    }
+    return out;
+  }
+  /** Two people spend time together: now and then one strikes up an exchange. */
+  met(a, b, _place, minutes) {
+    if (!this.kinds.size) return;
+    const c = this.c;
+    if (!this.free(a) || !this.free(b)) return;
+    const ea = this.exOf(a.id), eb = this.exOf(b.id);
+    if (ea || eb) {
+      const ex = ea ?? eb, newcomer = ea ? b : a;
+      if (ea && eb || !this.kinds.get(ex.kind)?.group || !this.talks(this.kinds.get(ex.kind)) || ex.who.length >= c.groupMax || !ex.place || !this.w.ring.within(newcomer.place, ex.place)) return;
+      if (!(c.joinChance * this.talkOf([newcomer.id]) > 0)) return;
+      if (this.joins(ex, newcomer.id, this.stream())) this.join(ex, newcomer.id);
+      return;
+    }
+    const k = c.strike * this.talkOf([a.id, b.id]);
+    if (!(k > 0)) return;
+    const r = this.stream();
+    if (!r.chance(k)) return;
+    const ta = this.nature(a, "talkative"), tb = this.nature(b, "talkative");
+    const [s, o] = r.chance((0.5 + ta) / Math.max(1e-6, 1 + ta + tb)) ? [a, b] : [b, a];
+    const pick = r.weighted(this.choices(s, o), (x) => x.weight);
+    if (pick) this.begin(pick.def.id, [s.id, o.id], "meet", minutes);
+  }
+  /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+  started(p, d) {
+    if (d.kind !== "act" || !d.target) return;
+    const kind = this.w.actions.get(d.action)?.interact;
+    if (!kind || !this.kinds.has(kind) || this.exOf(p.id) || this.exOf(d.target)) return;
+    const o = this.w.s.people[d.target];
+    if (!this.free(o) || !p.place || this.w.ring.root(o.place) !== this.w.ring.root(p.place)) return;
+    this.begin(kind, [p.id, o.id], "action", d.end - this.w.s.now);
+  }
+  /** The next turn of an exchange comes due. */
+  timer(item) {
+    const id = Number(item.data?.ex);
+    const ex = this.st?.ex[id];
+    if (!ex || ex.n !== Number(item.data?.n)) return;
+    this.turn(ex);
+  }
+  day() {
+    const st = this.st;
+    if (!st) return;
+    const floor = this.c.grudgeFloor;
+    for (const a of Object.keys(st.g)) {
+      for (const b of Object.keys(st.g[a])) if (this.grudge(a, b) < floor) delete st.g[a][b];
+      if (!Object.keys(st.g[a]).length) delete st.g[a];
+    }
+    for (const k of Object.keys(st.feuds)) if (this.feudStrength(st.feuds[k]) < floor) delete st.feuds[k];
+    const days = this.c.pairDays, now2 = this.w.s.now;
+    if (days > 0) {
+      for (const k of Object.keys(st.pairs)) if (now2 - st.pairs[k].last > days * DAY) delete st.pairs[k];
+    }
+  }
+  removed(p) {
+    const st = this.st;
+    if (!st) return;
+    const ex = this.exOf(p.id);
+    if (ex) this.finish(ex, "gone", p.id);
+    delete st.g[p.id];
+    for (const a of Object.keys(st.g)) {
+      delete st.g[a][p.id];
+      if (!Object.keys(st.g[a]).length) delete st.g[a];
+    }
+    for (const k of Object.keys(st.feuds)) if (st.feuds[k].a === p.id || st.feuds[k].b === p.id) delete st.feuds[k];
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
+  // asked for by name: exchanges between people (Bree) make sense
+  interactions: {
+    name: "interactions",
+    sample(w, acc, fail) {
+      const b = w.bree;
+      if (!b) return;
+      const seen = /* @__PURE__ */ new Set();
+      for (const ex of b.exchanges()) {
+        if (w.now - ex.t > 6 * HOUR && !acc["long:" + ex.id]) {
+          acc["long:" + ex.id] = true;
+          fail(`exchange ${ex.id} (${ex.kind}) has gone on for over 6 hours (day ${w.day})`);
+        }
+        for (const id of ex.who) {
+          if (seen.has(id)) fail(`${id} is in two exchanges at once at ${w.now}`);
+          seen.add(id);
+        }
+      }
+      for (const p of w.people()) for (const g of b.grudges(p.id)) if (!(g.strength > 0 && g.strength <= 1)) fail(`${p.id}'s grudge against ${g.id} is ${g.strength}`);
+    }
+  },
   "nobody-starves": {
     name: "nobody-starves",
     sample(w, acc, fail) {
@@ -7840,6 +9564,20 @@ function run(opts) {
   w.on("decided", () => {
     decisions++;
   });
+  let inter = null;
+  const tally = () => inter || (inter = { exchanges: 0, turns: 0, kinds: {}, outcomes: {}, escalations: 0, walkedOff: 0, steppedIn: 0, grudges: 0, feuds: 0 });
+  w.on("bree:end", (e) => {
+    const t = tally();
+    t.exchanges++;
+    t.turns += e.n;
+    t.kinds[e.kind] = (t.kinds[e.kind] || 0) + 1;
+    t.outcomes[e.outcome] = (t.outcomes[e.outcome] || 0) + 1;
+    if (e.why === "left") t.walkedOff++;
+    if (e.why === "stepped in") t.steppedIn++;
+  });
+  w.on("bree:escalated", () => {
+    tally().escalations++;
+  });
   for (let t = start + every; t <= end + 1e-6; t += every) {
     w.advanceTo(t);
     for (const c of checks) c.sample?.(w, acc, fail);
@@ -7896,13 +9634,27 @@ function run(opts) {
     copy.advance(3 * HOUR);
     if (copy.hash() !== w.hash()) fail("a loaded world ran differently from the original");
   }
+  const stats = { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 };
+  const done = inter;
+  if (done && w.bree) {
+    const sorted = (o) => {
+      const out = {};
+      for (const k of Object.keys(o).sort()) out[k] = o[k];
+      return out;
+    };
+    done.kinds = sorted(done.kinds);
+    done.outcomes = sorted(done.outcomes);
+    done.grudges = w.people().reduce((n, p) => n + w.bree.grudges(p.id).length, 0);
+    done.feuds = w.bree.feuds().length;
+    stats.interactions = done;
+  }
   return {
     seed,
     days,
     passed: failures.length === 0,
     failures,
     checks: names.map((c) => typeof c === "string" ? c : c.name),
-    stats: { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 },
+    stats,
     hash: hash2
   };
 }
@@ -7920,7 +9672,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -7936,7 +9688,8 @@ function create(opts = {}) {
     joi: () => new Joi(cfg.joi),
     athelas: () => new Athelas(cfg.athelas),
     delos: () => new Delos(cfg.delos),
-    voice: () => new Voice(cfg.voice)
+    voice: () => new Voice(cfg.voice),
+    bree: () => new Bree(cfg.bree)
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -7957,10 +9710,12 @@ var MODULE_DEFAULTS = {
   joi: DEFAULT_JOI,
   athelas: DEFAULT_ATHELAS,
   delos: DEFAULT_DELOS,
-  voice: DEFAULT_VOICE
+  voice: DEFAULT_VOICE,
+  bree: DEFAULT_BREE
 };
 export {
   Athelas,
+  Bree,
   CORE_KNOBS,
   Ceres,
   Cityspeak,
@@ -7976,6 +9731,7 @@ export {
   MODULES,
   MODULE_DEFAULTS,
   Mentat,
+  OUTCOMES,
   Reverie,
   SCHEMA,
   Stream,
@@ -7984,6 +9740,7 @@ export {
   VoightKampff,
   World,
   Wormtongue,
+  breeStarter,
   clamp,
   create,
   curveAt,

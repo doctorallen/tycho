@@ -85,6 +85,7 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 | Athelas | [athelas.md](modules/athelas.md) | Conditions that run a course: phases, needs' rates, weights, contagion, immunity |
 | Delos | [delos.md](modules/delos.md) | Genomes: genes with dominance, blended traits, talents and instincts, mutations |
 | Voice | [voice.md](modules/voice.md) | Branching conversations: threads, beats, answers with approaches, promises |
+| Bree | [bree.md](modules/bree.md) | Interactions between people: outcomes by degrees, conversations over turns, escalation, grudges, feuds, avoidance, making up |
 
 ## Glossary
 
@@ -108,6 +109,8 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **Doing.** What someone is doing right now: an action (`act`), a walk (`travel`) or a wait, with its start, end, rank and layer.
 
+**Exchange.** An interaction between two people (or a table of them): a chat, a joke, an argument, an apology. It runs over turns and comes out by degrees: warm, good, fine, awkward, sour or a row (Bree).
+
 **Emotion.** The one named emotion a person shows ('angry', 'tired', 'fine'), from their feelings and pressing needs (Reverie).
 
 **Esper.** Time walk: snapshots of the state plus a log of every input, so the world can go back to any remembered moment and replay forward exactly.
@@ -116,7 +119,11 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **Feeling.** A short-lived weight on someone's mood, with a label, a lifetime and a stack limit (Reverie).
 
+**Feud.** A quarrel between two people or two groups, both ways: every member of one against every member of the other (Bree).
+
 **Focus.** The regions the game has loaded (`world.focus`). People in them are near.
+
+**Grudge.** One person's against another: a strength that fades, and a reason, left by a bad exchange or set by the game; it colors what they do after (Bree).
 
 **Headline knob.** A plain multiplier on a whole behavior (`friendship`, `breaks`, `gossip`...), 1 by default, so 2 is twice as much and 0 none; a person can have their own (`PersonDef.tune`). See [Tuning](tuning.md).
 

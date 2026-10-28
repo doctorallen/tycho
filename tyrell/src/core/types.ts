@@ -221,6 +221,8 @@ export interface ActionDef {
   wage?: number;
   /** A social act resolved with the target at the end (Cityspeak). */
   social?: Id;
+  /** An interaction (a Bree kind) begun with the target as it starts: a conversation over its length. */
+  interact?: Id;
   /** Feelings the person gets at the end (Reverie). */
   feels?: Id[];
   /** A deed recorded in the target's file on the person (Reverie, Fellowship): see world.deed(). */

@@ -301,6 +301,14 @@ show(view.lines, view.answers);                       // { who, key, text } line
 view = world.voice.answer(chosen.i);                  // the next beat (an input too)
 ```
 
+For what passes between the people themselves, on screen and off, use [Bree](modules/bree.md): exchanges that come out by degrees, conversations over turns on topics in each one's manner, quarrels that escalate, grudges and making up. They strike them up when they meet; the game shows each turn as it comes:
+
+```js
+world.bree.starter();                                 // or declare your own kinds, topics and manners
+world.on('bree:turn', (t) => showBubble(t.who, t.text ?? myStrings[t.line]));
+world.on('bree:escalated', (e) => shake(e.by));
+```
+
 ## Directing the story
 
 ```js

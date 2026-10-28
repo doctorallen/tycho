@@ -16,6 +16,7 @@ import type { Module } from '../core/module';
 import type { Id, PersonState, Stimulus, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, HOUR, clamp, round } from '../core/util';
+import type { Stream } from '../core/util';
 
 export interface CrimeDef {
   kind: string;
@@ -322,23 +323,53 @@ export class Wormtongue implements Module {
     const talkative = a.def.traits?.talkative ?? w.cfg.traitDefault;
     // the headline knob scales the chance, for the teller
     if (!r.chance(c.gossipChance * (0.5 + talkative) * this.knob('gossip', a.id))) return;
+    const best = this.news(a.id, b.id);
+    if (!best) return;
+    this.applyTell(a.id, b.id, best, r);
+  }
+
+  /**
+   * What a would most want to tell b now (gossip's pick): a belief not
+   * silenced, not too many tellings on, not private ('@'), not something b
+   * already believes, not about b, a secret only out of spite; scored by
+   * how juicy, how strong and how fresh. With `key`, that belief alone, if
+   * it could be told. Null if there's nothing. A look: it changes nothing.
+   */
+  news(a: Id, b: Id, key?: string): { key: string; v: Value; str: number; hops: number; score: number } | null {
+    const w = this.w, rv = w.reverie;
+    if (!rv) return null;
+    const c = this.c;
     const now = w.s.now;
     let best: { key: string; v: Value; str: number; hops: number; score: number } | null = null;
-    for (const bl of rv.beliefs(a.id)) {
+    for (const bl of rv.beliefs(a)) {
+      if (key !== undefined && bl.key !== key) continue;
       if (bl.silenced || bl.hops >= c.maxHops) continue;
       if (bl.key.startsWith('@')) continue;
-      const theirs = rv.belief(b.id, bl.key);
+      const theirs = rv.belief(b, bl.key);
       if (theirs === bl.v) continue;
       const secret = this.secretFor(bl.key);
-      if (secret && !(secret.about !== a.id && w.fellowship && w.fellowship.regard(a.id, secret.about) < c.secretSpite)) continue;
+      if (secret && !(secret.about !== a && w.fellowship && w.fellowship.regard(a, secret.about) < c.secretSpite)) continue;
       const subject = subjectOf(bl.key);
-      if (subject === b.id) continue; // not to their face
+      if (subject === b) continue; // not to their face
       const juicy = bl.key.startsWith('did:') ? (this.crimes.has(bl.key.split(':')[2]) ? c.juicyCrime : c.juicyDeed) : 1;
       const recency = Math.pow(c.gossipRecency, (now - bl.t) / HOUR);
       const score = juicy * bl.str * recency;
       if (!best || score > best.score) best = { key: bl.key, v: bl.v, str: bl.str, hops: bl.hops, score };
     }
-    if (!best) return;
+    return best;
+  }
+
+  /**
+   * a tells b something they believe (inside the simulation; gossip, and
+   * Bree's talk): a liar may shift the blame, b believes it as far as they
+   * trust a, a secret spreads, and a member of the authority takes a crime
+   * as a report. `r` is the stream its draws come from.
+   */
+  applyTell(teller: Id, listener: Id, best: { key: string; v: Value; str: number; hops: number }, r: Stream): void {
+    const w = this.w, rv = w.reverie;
+    const a = w.s.people[teller], b = w.s.people[listener];
+    if (!rv || !a || !b) return;
+    const c = this.c;
     let key = best.key, lie = false;
     const v = best.v;
     const subject = subjectOf(key);

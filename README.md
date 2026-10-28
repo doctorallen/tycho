@@ -51,7 +51,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 |---|---|---|
 | Core | `seed` (hashes, value noise, seeded streams), `math`, `color` (mixing, shading, painter's ramps), `loop` (fixed steps, frame samples, the quality governor) | In |
 | Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade); then sprite, figure, paint, fx, life, sky | Partly in |
-| World | grid, shapes, space, collide, move, path, gen, liquid, tilelight | Planned |
+| World | `grid` (tile layers in chunks, changes from the seed), `collide` (one query over shapes and tiles), `move` (a platform runner, a top-down body), `path` (flow fields, A*, routes over places); then gen, liquid, tilelight | Partly in |
 | Play | input, interact, items, craft, trade, build, mine, guide | Planned |
 | Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices); then ui, hud, map, audio, inspect | Partly in |
 

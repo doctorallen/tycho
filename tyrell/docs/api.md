@@ -221,15 +221,15 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | Event | Payload | Emitted |
 |---|---|---|
 | `embody` | Body | Someone comes into view |
-| `disembody` | `{ id }` | Someone leaves view (also every near body before a backward seek or a load) |
-| `step` | Body | A near person starts something |
+| `disembody` | `{ id }` | Someone leaves view (also every near body before a load) |
+| `step` | Body | A near person starts something (or, after a backward seek, is doing something else than before it) |
 | `arrive` | `{ id, place }` | Anyone arrives anywhere |
 | `failed` | `{ id, why }` | Anyone's action or walk failed |
 | `decided` | `{ who, picked, place }` | Anyone decided (`picked` is the option's id, or `null`) |
 | `log` | LogEntry | Every log entry |
 | `timer` | `{ name, data, t }` | A game timer fired |
 | `timer:<name>` | `{ name, data, t }` | The same, by name |
-| `seek` | `{ from, to }` | After a backward seek, before the new bodies are embodied |
+| `seek` | `{ from, to }` | After a backward seek, before bodies are updated (disembody, step, embody) |
 | `branch` | `{ t, dropped }` | A new input in the past dropped the recorded future |
 | `esper:start` | `{ t }` | Playing backward reached the start of history (speed set to 0) |
 | `back` | `{ id, summary }` | Someone came back from being away |

@@ -425,7 +425,7 @@ function releaseRewind() {
 
 What makes it work:
 
-- A negative speed plays history backward a little each frame, as a small seek. Each frame emits `seek` and re-embodies the people near: keep sprites by id so that's cheap.
+- A negative speed plays history backward a little each frame, as a small seek. Each frame emits `seek`, and a `step` for anyone in view whose doing changed: sprites stay where they are.
 - The world rewinds itself; the player's own state is the game's, restored here from a trail keyed by game time.
 - Letting go makes an input, which branches: the player's recorded actions after this point are dropped instead of replaying.
 - Esper's `keep` option bounds how far back the player can go; `esper:start` says when they hit the limit.

@@ -1634,15 +1634,33 @@ var Entmoot = class {
     if (d && d.kind === "travel") return this.regions.has(w.ring.region(d.from)) || this.regions.has(w.ring.region(d.to));
     return !!p.place && this.regions.has(w.ring.region(p.place));
   }
-  /** Emits embody and disembody for whoever came into or left view. */
-  refreshBodies() {
+  /**
+   * Emits embody and disembody for whoever came into or left view. After a
+   * seek, given what the bodies were before it (shown()), also a step for
+   * each body that stayed in view but changed.
+   */
+  refreshBodies(before) {
     const w = this.w;
     if (w.replaying) return;
     const now2 = /* @__PURE__ */ new Set();
     for (const id in w.s.people) if (this.isNear(w.s.people[id])) now2.add(id);
     for (const id of this.near) if (!now2.has(id)) w.emit("disembody", { id });
-    for (const id of now2) if (!this.near.has(id)) w.emit("embody", this.body(id));
+    for (const id of now2) {
+      if (!this.near.has(id)) w.emit("embody", this.body(id));
+      else if (before && before.get(id) !== this.sig(id)) w.emit("step", this.body(id));
+    }
     this.near = now2;
+  }
+  /** What each near body is now, to tell after a seek which of them changed. */
+  shown() {
+    const out = /* @__PURE__ */ new Map();
+    for (const id of this.near) out.set(id, this.sig(id));
+    return out;
+  }
+  /** The parts of a body that say what it's doing (not how far through it is). */
+  sig(id) {
+    const b = this.body(id);
+    return b ? [b.action, b.next, b.place, b.slot, b.target, b.pose, b.start, b.end].join("|") : "";
   }
   /** Tells the game a near person started something new. */
   announce(p) {
@@ -1845,7 +1863,6 @@ var Esper = class {
     let snap = this.snaps[0];
     for (const s of this.snaps) if (s.t <= target) snap = s;
     const from = w.s.now;
-    w.clock.reset();
     w.s = JSON.parse(snap.s);
     this.cursor = snap.input;
     this.seeking = true;
@@ -2338,7 +2355,12 @@ var World = class {
       if (to >= this.s.now) {
         this._speed = 0;
         this.emit("esper:start", { t: this.s.now });
-      } else this.esper.seek(to);
+      } else {
+        const before = this.clock.shown();
+        this.esper.seek(to);
+        this.clock.refreshBodies(before);
+        return;
+      }
     }
     this.clock.refreshBodies();
   }
@@ -2355,8 +2377,9 @@ var World = class {
       this.runTo(t);
       return;
     }
+    const before = this.clock.shown();
     this.esper.seek(t);
-    this.clock.refreshBodies();
+    this.clock.refreshBodies(before);
   }
   /** Is the engine in the middle of something: moving time, an event, an input, a listener, a replay? */
   busy() {

@@ -90,8 +90,8 @@ world.body('ruth');   // anyone's body, near or not (null if they're away or gon
 | Event | Payload | When |
 |---|---|---|
 | `embody` | Body | Someone comes into view: on focus, after time moves, after a seek or a load. They may be mid-walk or mid-meal |
-| `step` | Body | A near person starts something: sets out, starts an action, starts waiting (a plan's wait, or nothing to do), follows a leader |
-| `disembody` | `{ id }` | Someone leaves view: walked out of the focused regions, went away, left for good, or every body before a backward seek or a load |
+| `step` | Body | A near person starts something: sets out, starts an action, starts waiting (a plan's wait, or nothing to do), follows a leader; or, after a backward seek, is doing something else than before it |
+| `disembody` | `{ id }` | Someone leaves view: walked out of the focused regions, went away, left for good, wasn't in view at the time a seek went to, or every body before a load |
 | `arrive` | `{ id, place }` | Anyone arrives anywhere, near or far |
 | `failed` | `{ id, why }` | Anyone's action or walk failed (a closed door, a taken stool, a report) |
 

@@ -110,14 +110,13 @@ The first snapshot, the earliest point you can go back to, is taken the first ti
 
 A backward seek, from `world.seek`, `world.rewind`, `world.advanceTo` with a past time, or a `tick` at negative speed, does this, in order:
 
-1. emits `disembody` for every near body;
-2. restores the snapshot and replays up to the target, silently;
-3. emits `seek` with `{ from, to }`;
-4. emits `embody` for everyone near at the new time.
+1. restores the snapshot and replays up to the target, silently;
+2. emits `seek` with `{ from, to }`;
+3. emits `disembody` for everyone who was near and isn't at the new time, `step` for everyone near at both times whose doing differs (another action, place, slot, or start and end), and `embody` for everyone near only at the new time.
 
-Palantír's decision history is cleared (it isn't part of the state). Moving forward again afterward is ordinary running: `step`, `arrive`, timers and the rest are emitted again.
+Bodies that stay in view are never taken back and handed out again. Palantír's decision history is cleared (it isn't part of the state). Moving forward again afterward is ordinary running: `step`, `arrive`, timers and the rest are emitted again.
 
-Playing backward with a negative speed is a small backward seek every frame. So each frame of reverse playback disembodies and re-embodies every near body and emits `seek`. A game that destroys sprites on `disembody` and makes them on `embody` will do that every frame; either make that cheap, or keep sprites by id and treat a `disembody` followed by an `embody` in the same frame as an update.
+Playing backward with a negative speed is a small backward seek every frame, so each frame emits `seek`, and a `step` for each person in view whose doing changed in that stretch. A game that draws from `embody`, `step` and `disembody` (and places walkers by `world.now`) shows reverse playback without doing anything special.
 
 Seeking is fast (a few milliseconds for Rocinante), because only the minutes after the nearest snapshot are replayed.
 

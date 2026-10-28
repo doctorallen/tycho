@@ -79,8 +79,16 @@ export declare class Entmoot {
     regionsInFocus(): string[];
     /** Is someone in a focused region (or does the shell say they're visible)? */
     isNear(p: PersonState): boolean;
-    /** Emits embody and disembody for whoever came into or left view. */
-    refreshBodies(): void;
+    /**
+     * Emits embody and disembody for whoever came into or left view. After a
+     * seek, given what the bodies were before it (shown()), also a step for
+     * each body that stayed in view but changed.
+     */
+    refreshBodies(before?: Map<Id, string>): void;
+    /** What each near body is now, to tell after a seek which of them changed. */
+    shown(): Map<Id, string>;
+    /** The parts of a body that say what it's doing (not how far through it is). */
+    private sig;
     /** Tells the game a near person started something new. */
     announce(p: PersonState): void;
     /** Is this person embodied right now? */

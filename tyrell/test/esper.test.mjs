@@ -157,6 +157,19 @@ test('bodies are refreshed after a rewind', () => {
   assert.deepEqual(w.bodies().map((b) => b.id).sort(), w.people().filter((p) => w.clock.isNear(p)).map((p) => p.id).sort());
 });
 
+test('playing backward keeps the bodies that stay in view, with a step for each change', () => {
+  const w = rocinante();
+  w.focus(['main', 'blocks', 'river']); // everyone is in view
+  w.advance(10 * HOUR);
+  const events = [];
+  for (const k of ['embody', 'disembody', 'step']) w.on(k, (b) => events.push([k, b.id]));
+  w.speed = -60;
+  for (let i = 0; i < 10; i++) w.tick(0.1); // an hour back, six minutes a frame
+  assert.deepEqual(events.filter(([k]) => k !== 'step'), [], 'no sprite was destroyed and made again');
+  assert.ok(events.some(([k]) => k === 'step'), 'changes come as steps');
+  assert.deepEqual(w.bodies().map((b) => b.id).sort(), w.people().filter((p) => w.clock.isNear(p)).map((p) => p.id).sort());
+});
+
 test('calls made inside a listener replay at the same point', () => {
   // a game that reports a failure the moment a body starts walking to the bar
   const run = () => {

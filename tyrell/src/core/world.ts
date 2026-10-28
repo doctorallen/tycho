@@ -178,7 +178,12 @@ export class World {
     else if (minutes < 0) {
       const to = Math.max(this.esper.earliest(), this.s.now + minutes);
       if (to >= this.s.now) { this._speed = 0; this.emit('esper:start', { t: this.s.now }); }
-      else this.esper.seek(to);
+      else {
+        const before = this.clock.shown();
+        this.esper.seek(to);
+        this.clock.refreshBodies(before);
+        return;
+      }
     }
     this.clock.refreshBodies();
   }
@@ -191,8 +196,9 @@ export class World {
 
   private runSeek(t: number): void {
     if (t >= this.s.now) { this.runTo(t); return; }
+    const before = this.clock.shown();
     this.esper.seek(t);
-    this.clock.refreshBodies();
+    this.clock.refreshBodies(before);
   }
 
   /** Is the engine in the middle of something: moving time, an event, an input, a listener, a replay? */

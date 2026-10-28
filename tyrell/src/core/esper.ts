@@ -168,7 +168,7 @@ export class Esper {
     let snap = this.snaps[0];
     for (const s of this.snaps) if (s.t <= target) snap = s;
     const from = w.s.now;
-    w.clock.reset();
+    // bodies stay handed out: the clock tells the game what changed once the seek is done
     w.s = JSON.parse(snap.s) as WorldState;
     this.cursor = snap.input;
     this.seeking = true;

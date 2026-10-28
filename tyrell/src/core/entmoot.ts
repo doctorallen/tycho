@@ -570,15 +570,35 @@ export class Entmoot {
     return !!p.place && this.regions.has(w.ring.region(p.place));
   }
 
-  /** Emits embody and disembody for whoever came into or left view. */
-  refreshBodies(): void {
+  /**
+   * Emits embody and disembody for whoever came into or left view. After a
+   * seek, given what the bodies were before it (shown()), also a step for
+   * each body that stayed in view but changed.
+   */
+  refreshBodies(before?: Map<Id, string>): void {
     const w = this.w;
     if (w.replaying) return;
     const now = new Set<Id>();
     for (const id in w.s.people) if (this.isNear(w.s.people[id])) now.add(id);
     for (const id of this.near) if (!now.has(id)) w.emit('disembody', { id });
-    for (const id of now) if (!this.near.has(id)) w.emit('embody', this.body(id));
+    for (const id of now) {
+      if (!this.near.has(id)) w.emit('embody', this.body(id));
+      else if (before && before.get(id) !== this.sig(id)) w.emit('step', this.body(id));
+    }
     this.near = now;
+  }
+
+  /** What each near body is now, to tell after a seek which of them changed. */
+  shown(): Map<Id, string> {
+    const out = new Map<Id, string>();
+    for (const id of this.near) out.set(id, this.sig(id));
+    return out;
+  }
+
+  /** The parts of a body that say what it's doing (not how far through it is). */
+  private sig(id: Id): string {
+    const b = this.body(id);
+    return b ? [b.action, b.next, b.place, b.slot, b.target, b.pose, b.start, b.end].join('|') : '';
   }
 
   /** Tells the game a near person started something new. */

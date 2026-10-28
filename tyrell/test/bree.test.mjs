@@ -318,3 +318,132 @@ test('time walk across an exchange gives the same world; so does saving mid-way'
   u.advance(HOUR + 7);
   assert.equal(u.hash(), h, 'the same seed and inputs');
 });
+
+// ---------------------------------------------------------------------------
+// Escalation, and what stops it
+// ---------------------------------------------------------------------------
+
+/** A table where talk goes badly: chat -> argument -> fight, with the chances set by the test. */
+function hot(opts = {}) {
+  const w = table({ ...opts, bree: { escalateBase: 1, escalateTemper: 0, escalateRegard: 0, calmBase: 0, calmPatience: 0, calmRegard: 0, stepInBase: 0, stepInRegard: 0, stepInCourage: 0, leaveBase: 0, leaveTemper: 0, leaveSour: 0, compatWeight: 0, moodWeight: 0, roomWeight: 0, ...(opts.bree || {}) } });
+  w.bree.kind({ id: 'chat', base: -3, turns: 4, escalates: 'argue' });
+  w.bree.kind({ id: 'argue', tags: ['hostile'], base: -3, turns: 3, escalates: 'fight', weight: 0 });
+  w.bree.kind({ id: 'fight', tags: ['hostile'], base: -4, turns: 2, crime: 'fight', weight: 0, on: { row: { feel: 'fought' } } });
+  w.advance(10);
+  return w;
+}
+const record = (w, kind) => { const out = []; w.on(kind, (e) => out.push(e)); return out; };
+
+test('a sour turn turns talk into an argument, and an argument into a fight; escalation 0 stops it', () => {
+  const w = hot();
+  const esc = record(w, 'bree:escalated'), turns = record(w, 'bree:turn');
+  const ex = w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  assert.deepEqual(esc.map((e) => [e.from, e.to, e.by]), [['chat', 'argue', 'b'], ['argue', 'fight', 'a']], 'each time, the one hurt answers back harder');
+  const done = w.bree.history().at(-1);
+  assert.equal(done.id, ex.id);
+  assert.equal(done.first, 'chat');
+  assert.equal(done.kind, 'fight');
+  assert.equal(done.by, 'a', 'who threw the first punch');
+  assert.equal(done.outcome, 'row');
+  assert.equal(turns.find((t) => t.kind === 'argue').who, 'b', 'the one who escalated speaks first');
+  assert.ok(w.reverie.feelings('a').some((f) => f.id === 'fought'));
+  assert.ok(w.lang.value('rowed', w.ctx(w.get('a'), { target: 'b' })) < HOUR);
+  const calm = hot({ bree: { escalation: 0 } });
+  const none = record(calm, 'bree:escalated');
+  calm.bree.start('chat', 'a', 'b');
+  calm.advance(HOUR);
+  assert.equal(none.length, 0);
+  assert.equal(calm.bree.history().at(-1).kind, 'chat');
+  const own = hot({ defs: { b: { tune: { bree: { escalation: 0 } } } } });
+  const ownEsc = record(own, 'bree:escalated');
+  own.bree.start('chat', 'a', 'b');
+  own.advance(HOUR);
+  assert.ok(ownEsc.every((e) => e.by !== 'b'), 'b never rises to it');
+});
+
+test('the other can keep their patience; someone there can step in', () => {
+  const w = hot({ bree: { calmBase: 1 } });
+  const turns = record(w, 'bree:turn'), esc = record(w, 'bree:escalated');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  assert.equal(esc.length, 0);
+  assert.ok(turns.some((t) => t.step === 'calm' && t.who === 'a'), 'a keeps their patience');
+  // a third at the table, fond of both, steps in
+  const m = hot({ people: ['a', 'b', 'c'], bree: { stepInBase: 1 } });
+  for (const x of ['a', 'b']) m.fellowship.adjust('c', x, 0.5);
+  const mt = record(m, 'bree:turn');
+  m.bree.start('chat', 'a', 'b');
+  m.advance(HOUR);
+  const step = mt.find((t) => t.step === 'step_in');
+  assert.equal(step.who, 'c');
+  assert.ok(step.end);
+  const done = m.bree.history().at(-1);
+  assert.equal(done.why, 'stepped in');
+  assert.equal(done.mediator, 'c');
+  assert.equal(done.kind, 'chat', 'it went no further');
+  assert.equal(m.fellowship.regard('a', 'c'), 0.03, 'thanked for it');
+  assert.equal(m.fellowship.regard('b', 'c'), 0.03);
+  // nobody steps in for people they don't care for
+  const cold = hot({ people: ['a', 'b', 'c'], bree: { stepInBase: 1 } });
+  const ct = record(cold, 'bree:turn');
+  cold.bree.start('chat', 'a', 'b');
+  cold.advance(HOUR);
+  assert.ok(!ct.some((t) => t.step === 'step_in'));
+});
+
+test('the one hurt may walk off instead: brushed off, and fonder of the other no more', () => {
+  const w = hot({ bree: { escalation: 0, leaveBase: 1 } });
+  const turns = record(w, 'bree:turn');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  const leave = turns.find((t) => t.step === 'leave');
+  assert.equal(leave.who, 'b', 'a\'s words landed badly with b');
+  assert.ok(leave.end);
+  const done = w.bree.history().at(-1);
+  assert.equal(done.why, 'left');
+  assert.equal(done.left, 'b');
+  assert.equal(done.n, 2);
+  assert.ok(w.reverie.feelings('b').some((f) => f.id === 'snubbed'));
+  assert.ok(w.fellowship.regard('b', 'a') < w.fellowship.regard('a', 'b'), 'the one who walked off thinks less of them');
+});
+
+test('people about see it: they believe it, remember it, feel it, think less of whoever started it, and gossip it', () => {
+  const w = hot({ people: ['a', 'b', 'c', 'd'], bree: { escalateBase: 1 }, defs: { c: { traits: { talkative: 1 } } } });
+  w.bree.kind({ id: 'argue', tags: ['hostile'], base: -3, turns: 3, weight: 0 });
+  const seen = record(w, 'bree:witnessed');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  for (const id of ['c', 'd']) {
+    assert.equal(w.reverie.belief(id, 'did:b:argue'), 'a', `${id} saw b start the argument with a`);
+    assert.ok(w.reverie.memories(id).some((m) => m.k === 'saw:argue' && m.about === 'b'));
+    assert.ok(w.reverie.feelings(id).some((f) => f.id === 'saw_row'));
+    assert.ok(w.fellowship.regard(id, 'b') < 0);
+  }
+  assert.deepEqual(seen.map((e) => e.id).sort(), ['c', 'd']);
+  assert.equal(w.reverie.belief('a', 'did:b:argue'), undefined, 'not the two in it');
+  // what they saw goes round: someone who wasn't there hears of it
+  w.tune('wormtongue', { gossipChance: 1 });
+  w.person('e', { home: 'cafe', traits: { talkative: 1 } });
+  w.advance(3 * HOUR);
+  assert.equal(w.reverie.beliefRecord('e', 'did:b:argue')?.src, 'told');
+  // the game can say who saw it, after the fact
+  w.person('z', { home: 'yard', routine: [[0, 'yard', 'wait_about']] });
+  w.bree.witnessed(w.bree.history().at(-1).id, ['z']);
+  assert.equal(w.reverie.belief('z', 'did:b:argue'), 'a');
+});
+
+test('a fight the game calls a crime is Wormtongue\'s: witnesses, and reports; the game can say who sees', () => {
+  const w = hot({ people: ['a', 'b', 'c', 'd'] });
+  w.fellowship.group({ id: 'watch', kind: 'authority' });
+  w.wormtongue.crime({ kind: 'fight', severity: 0.5, report: 1, reportTo: 'watch' });
+  w.bree.witnesses = (ex) => ['c'];
+  const reports = record(w, 'report');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(3 * HOUR);
+  assert.equal(w.reverie.belief('c', 'did:a:fight'), 'b', 'c saw a throw the first punch');
+  assert.notEqual(w.reverie.beliefRecord('d', 'did:a:fight')?.src, 'saw', 'd, by the game\'s say, didn\'t (though c may have told them since)');
+  assert.ok(reports.some((r) => r.actor === 'a' && r.kind === 'fight'));
+  assert.ok(w.wormtongue.heat('a') > 0);
+  assert.ok(w.wormtongue.witnesses('a').includes('b'), 'the one hit saw it too');
+});

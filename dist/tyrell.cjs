@@ -8121,6 +8121,13 @@ var Bree = class {
     this.kinds = /* @__PURE__ */ new Map();
     this.topics = /* @__PURE__ */ new Map();
     this.manners = /* @__PURE__ */ new Map();
+    /**
+     * Who sees an exchange go wrong (a definition: set it on every start, like
+     * Cradle's namer). Default null: everyone at the place, awake, not in it.
+     * The game owns sight: give it its own (a room indoors, shouting distance
+     * on a street), deterministic from the world's state.
+     */
+    this.witnesses = null;
     this.config = { ...DEFAULT_BREE, ...cfg };
   }
   get st() {
@@ -8199,6 +8206,7 @@ var Bree = class {
     });
     w.defineInput("bree.start", (kind, a, others, opts) => this.applyStart(kind, a, others, opts ?? {}));
     w.defineInput("bree.end", (which) => this.applyEnd(which));
+    w.defineInput("bree.witness", (exchange, seenBy) => this.applyWitnessed(exchange, seenBy));
     w.defineInput("bree.grudge", (a, b, by, why) => this.applyGrudge(a, b, by, why ?? "the game"));
     w.defineInput("bree.feud", (a, b, s, why) => this.applyFeud(a, b, s, why ?? "the game"));
   }
@@ -8451,6 +8459,7 @@ var Bree = class {
     for (const id of who) st.of[id] = ex.id;
     w.log("exchange", who[0], { id: ex.id, kind, with: who.slice(1), why });
     w.emit("bree:start", this.view(ex));
+    if (def.crime) this.breaksOut(ex, def);
     this.turn(ex);
     return ex;
   }
@@ -8596,12 +8605,13 @@ var Bree = class {
     }
     return null;
   }
-  /** Who speaks to whom next, and the step. */
+  /** Who speaks to whom next, and the step: turn about, the one who leads first. */
   nextStep(ex) {
     const steps = ["open", "reply", "more", "back"];
-    const [a, b] = ex.who;
-    const who = ex.n % 2 === 0 ? a : b;
-    return { who, to: who === a ? b : a, step: steps[ex.n % steps.length] };
+    const lead = ex.lead ?? ex.who[0];
+    const other = (id) => id === ex.who[0] ? ex.who[1] : ex.who[0];
+    const who = ex.lastWho === void 0 ? lead : other(ex.lastWho);
+    return { who, to: other(who), step: steps[(ex.i ?? 0) % steps.length] };
   }
   /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
   turn(ex) {
@@ -8629,15 +8639,152 @@ var Bree = class {
     ex.heard[to] = ex.heard[to] === void 0 ? score : round(ex.heard[to] + (score - ex.heard[to]) * c.sway, 4);
     ex.score = ex.score === null ? score : round(ex.score + (score - ex.score) * c.sway, 4);
     ex.last = landed;
-    if (this.bad(landed)) ex.sour++;
+    ex.lastWho = who;
+    ex.i = (ex.i ?? 0) + 1;
     ex.n++;
-    const last = ex.n >= ex.turns;
-    this.tell(ex, { who, to, step, landed, end: last });
-    if (last) {
-      this.finish(ex, "done");
+    let act = { act: "none" };
+    if (this.bad(landed)) {
+      ex.sour++;
+      ex.sourBy = who;
+      act = this.react(ex, def, s, l, r);
+    }
+    const ends = act.act === "leave" || act.act === "step_in";
+    const over = ends || act.act !== "escalate" && ex.n >= ex.turns;
+    this.tell(ex, { who, to, step, landed, end: over && !ends });
+    if (act.act === "calm") {
+      ex.n++;
+      ex.lastWho = who;
+      this.tell(ex, { who, to, step: "calm", landed: null, end: over });
+    } else if (act.act === "step_in" && act.by) {
+      ex.n++;
+      ex.mediator = act.by;
+      this.tell(ex, { who: act.by, to, step: "step_in", landed: null, end: true });
+    } else if (act.act === "leave") {
+      ex.n++;
+      this.tell(ex, { who: to, to: who, step: "leave", landed: null, end: true });
+    } else if (act.act === "escalate") this.escalate(ex, def, l, s, r);
+    if (over) {
+      this.finish(ex, act.act === "leave" ? "left" : act.act === "step_in" ? "stepped in" : "done", act.act === "leave" ? to : void 0);
       return;
     }
     this.schedule(ex, r);
+  }
+  /**
+   * Words landed badly with the one who heard them (l): do they answer back
+   * harder (and does the other keep their patience, or someone step in), or
+   * walk off, or let it go?
+   */
+  react(ex, def, s, l, r) {
+    const w = this.w, c = this.c, fs = w.fellowship, rv = w.reverie;
+    const regard = (x, y) => fs ? fs.regard(x, y) : 0;
+    if (def.escalates && this.kinds.has(def.escalates)) {
+      const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, "temper") - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0) + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob("escalation", l.id);
+      if (r.chance(p)) {
+        if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, "patience") + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: "calm" };
+        let best = null;
+        for (const id of this.seers(ex)) {
+          const m = w.s.people[id];
+          const like = Math.max(regard(id, s.id), regard(id, l.id));
+          if (!m || like < c.stepInFrom) continue;
+          const v = like + (this.nature(m, "courage") - 0.5) * 2 * c.stepInCourage;
+          if (!best || v > best.v) best = { id, v };
+        }
+        if (best) {
+          const m = w.s.people[best.id];
+          const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
+          if (r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, "courage") - 0.5) * 2))) return { act: "step_in", by: best.id };
+        }
+        return { act: "escalate" };
+      }
+    }
+    if (ex.who.length === 2) {
+      const p = clamp(c.leaveBase + c.leaveTemper * this.nature(l, "temper") - c.leaveRegard * regard(l.id, s.id) + c.leaveSour * Math.max(0, ex.sour - 1));
+      if (r.chance(p)) return { act: "leave" };
+    }
+    return { act: "none" };
+  }
+  /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
+  escalate(ex, def, angry, other, r) {
+    const w = this.w, st = this.mut();
+    const next = this.kinds.get(def.escalates);
+    const from = ex.kind;
+    ex.kind = next.id;
+    ex.by = angry.id;
+    ex.esc = (ex.esc ?? 0) + 1;
+    for (const id of ex.who) if (id !== angry.id && id !== other.id && st.of[id] === ex.id) delete st.of[id];
+    ex.who = [angry.id, other.id];
+    ex.lead = angry.id;
+    ex.i = 0;
+    delete ex.lastWho;
+    delete ex.topic;
+    const left = ex.until !== void 0 ? ex.until - w.s.now : void 0;
+    ex.turns = ex.n + this.plan(next, ex.who, r, left);
+    w.log("escalated", angry.id, { id: ex.id, from, to: next.id, against: other.id });
+    w.emit("bree:escalated", { id: ex.id, from, to: next.id, by: angry.id, against: other.id });
+    this.breaksOut(ex, next);
+  }
+  /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */
+  breaksOut(ex, def) {
+    if (def.seen === false) return;
+    const seers = this.seers(ex);
+    const wt = this.w.wormtongue;
+    const crime = !!(def.crime && wt?.crimes.has(def.crime));
+    const by = ex.by ?? ex.who[0];
+    const other = ex.who.find((id) => id !== by) ?? ex.who[1];
+    if (crime) wt?.sensed({ kind: def.crime, actor: by, what: other, place: ex.place, seenBy: [other, ...seers] });
+    this.witness(ex, seers, crime);
+  }
+  /** Who's about to see what happens in an exchange: the game's own say (bree.witnesses), or everyone at the place, awake, not in it. */
+  seers(ex) {
+    const w = this.w;
+    if (this.witnesses) return w.peek(() => this.witnesses(this.view(ex), w)).filter((id) => !ex.who.includes(id) && w.s.people[id]?.status === "active");
+    if (!ex.place) return [];
+    return w.ring.present(w.ring.root(ex.place)).filter((id) => !ex.who.includes(id) && this.free(w.s.people[id]));
+  }
+  /**
+   * People see an exchange go wrong: they believe what they saw (did:<who
+   * started it>:<kind>, the other as its value: gossip, through Wormtongue),
+   * remember it, feel it, and think less of whoever started it. Once a kind,
+   * each. With `crime`, Wormtongue has seen to the belief, memory and feeling.
+   */
+  witness(ex, seers, crime = false) {
+    const w = this.w, c = this.c, rv = w.reverie, fs = w.fellowship;
+    const by = ex.by ?? ex.sourBy ?? ex.who[0];
+    const against = ex.who.find((id) => id !== by) ?? ex.who[1];
+    const def = this.kinds.get(ex.kind);
+    const outcome = ex.outcome ?? this.outcome(ex.score ?? 0);
+    const seen = ex.seen || (ex.seen = {});
+    for (const id of seers) {
+      if (seen[id] === ex.kind || id === by || id === against || !w.s.people[id]) continue;
+      seen[id] = ex.kind;
+      if (rv && !crime) {
+        rv.applyBelieve(id, `did:${by}:${ex.kind}`, against ?? true, "saw", null, c.witnessStrength);
+        rv.applyRemember(id, { k: "saw:" + ex.kind, about: by, place: ex.place ?? void 0, imp: c.witnessMemory, text: `saw ${w.s.people[by]?.name ?? by} and ${w.s.people[against]?.name ?? against}: ${def?.label ?? ex.kind}` });
+        if (c.witnessFeeling) rv.applyFeel(id, c.witnessFeeling, by);
+      }
+      if (fs) {
+        const d = c.witnessRegard * (c.regard[outcome] ?? 0) * (def?.regard ?? 1);
+        if (d) fs.applyRegard(id, by, round(d * (d > 0 ? this.knob("warmth", id) : this.knob("quarrels", id)), 4));
+      }
+      w.log("saw", id, { exchange: ex.id, actor: by, kind: ex.kind, against });
+      w.emit("bree:witnessed", { id, exchange: ex.id, actor: by, kind: ex.kind, against });
+    }
+  }
+  /** The game says who saw an exchange (in progress, or lately finished): they see what it came to (recorded). */
+  witnessed(exchange, seenBy) {
+    this.w.input("bree.witness", [exchange, seenBy]);
+  }
+  /** Witnesses reported by the game, inside the simulation. */
+  applyWitnessed(exchange, seenBy) {
+    const st = this.st;
+    if (!st) return;
+    const ex = st.ex[exchange];
+    if (ex) {
+      this.witness(ex, seenBy);
+      return;
+    }
+    const done = st.recent.find((f) => f.id === exchange);
+    if (done) this.witness({ id: done.id, kind: done.kind, who: done.who, place: done.place, by: done.by, outcome: done.outcome, seen: {} }, seenBy);
   }
   /** Puts the next turn on the clock. */
   schedule(ex, r) {
@@ -8702,7 +8849,7 @@ var Bree = class {
   // -------------------------------------------------------------------------
   /** Ends an exchange: what each outcome does, for each of them. */
   finish(ex, why, left) {
-    var _a;
+    var _a, _b;
     const w = this.w, c = this.c, st = this.mut();
     delete st.ex[ex.id];
     for (const id of ex.who) if (st.of[id] === ex.id) delete st.of[id];
@@ -8710,17 +8857,21 @@ var Bree = class {
     const outcome = this.outcome(ex.score ?? 0);
     const outcomes = {};
     for (const id of ex.who) outcomes[id] = ex.heard[id] === void 0 ? outcome : this.outcome(ex.heard[id]);
-    if (def && ex.n > 0) this.leave(ex, def, outcomes, why === "left" ? left : void 0);
+    if (def && ex.n > 0) {
+      this.leave(ex, def, outcomes, why === "left" ? left : void 0);
+      if (def.seen !== false && OUTCOMES.indexOf(outcome) >= OUTCOMES.indexOf(c.seenAt)) this.witness({ ...ex, outcome }, this.seers(ex), !!(def.crime && w.wormtongue?.crimes.has(def.crime)));
+    }
     const [a, b] = ex.who;
-    const pk = pairKey(a, b);
-    const pair = (_a = st.pairs)[pk] || (_a[pk] = { n: 0, last: w.s.now });
-    pair.n++;
-    pair.last = w.s.now;
-    pair.outcome = outcome;
-    if (!this.atLeast(outcome, "awkward")) {
-      pair.row = w.s.now;
-      if (ex.by) pair.by = ex.by;
-      else delete pair.by;
+    if (ex.n > 0) {
+      const pair = (_a = st.pairs)[_b = pairKey(a, b)] || (_a[_b] = { n: 0, last: w.s.now });
+      pair.n++;
+      pair.last = w.s.now;
+      pair.outcome = outcome;
+      if (!this.atLeast(outcome, "awkward")) {
+        pair.row = w.s.now;
+        if (ex.by) pair.by = ex.by;
+        else delete pair.by;
+      }
     }
     const done = { id: ex.id, kind: ex.kind, first: ex.first, who: ex.who.slice(), place: ex.place, t: ex.t, end: w.s.now, outcome, outcomes, n: ex.n, why };
     if (ex.by) done.by = ex.by;
@@ -8769,6 +8920,7 @@ var Bree = class {
         if (fs && c.leftRegard) fs.applyRegard(x, y, round(c.leftRegard * (c.leftRegard > 0 ? this.knob("warmth", x) : this.knob("quarrels", x)), 4));
       }
       if (def.on?.end) does.push(def.on.end);
+      if (ex.mediator && fs && c.mediateRegard) fs.applyRegard(x, ex.mediator, round(c.mediateRegard * this.knob("warmth", x), 4));
       const ctx = w.ctx(p, { target: y, place: ex.place });
       for (const d of does) {
         const f = Array.isArray(d.feel) ? d.feel[x === starter ? 0 : 1] : d.feel;

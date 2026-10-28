@@ -360,6 +360,12 @@ export interface Exchange {
     esc?: number;
     /** The turn's own outcome, last turn. */
     last?: Outcome;
+    /** Who spoke last; who leads this stretch (the starter, or whoever escalated it); steps into it. */
+    lastWho?: Id;
+    lead?: Id;
+    i?: number;
+    /** Who said the last thing that landed badly. */
+    sourBy?: Id;
 }
 /** A feud: between two people, or two groups (households, families, factions), both ways. */
 export interface Feud {
@@ -468,6 +474,13 @@ export declare class Bree implements Module {
     readonly kinds: Map<string, KindDef>;
     readonly topics: Map<string, TopicDef>;
     readonly manners: Map<string, MannerDef>;
+    /**
+     * Who sees an exchange go wrong (a definition: set it on every start, like
+     * Cradle's namer). Default null: everyone at the place, awake, not in it.
+     * The game owns sight: give it its own (a room indoors, shouting distance
+     * on a street), deterministic from the world's state.
+     */
+    witnesses: ((ex: ExchangeView, world: World) => Id[]) | null;
     private w;
     constructor(cfg?: Partial<BreeConfig>);
     private get st();
@@ -582,10 +595,33 @@ export declare class Bree implements Module {
     private luck;
     /** Are they all still together and awake, where it began? */
     private together;
-    /** Who speaks to whom next, and the step. */
+    /** Who speaks to whom next, and the step: turn about, the one who leads first. */
     private nextStep;
     /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
     private turn;
+    /**
+     * Words landed badly with the one who heard them (l): do they answer back
+     * harder (and does the other keep their patience, or someone step in), or
+     * walk off, or let it go?
+     */
+    private react;
+    /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
+    private escalate;
+    /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */
+    private breaksOut;
+    /** Who's about to see what happens in an exchange: the game's own say (bree.witnesses), or everyone at the place, awake, not in it. */
+    private seers;
+    /**
+     * People see an exchange go wrong: they believe what they saw (did:<who
+     * started it>:<kind>, the other as its value: gossip, through Wormtongue),
+     * remember it, feel it, and think less of whoever started it. Once a kind,
+     * each. With `crime`, Wormtongue has seen to the belief, memory and feeling.
+     */
+    private witness;
+    /** The game says who saw an exchange (in progress, or lately finished): they see what it came to (recorded). */
+    witnessed(exchange: number, seenBy: Id[]): void;
+    /** Witnesses reported by the game, inside the simulation. */
+    applyWitnessed(exchange: number, seenBy: Id[]): void;
     /** Puts the next turn on the clock. */
     private schedule;
     /** Tells the game about a turn. */

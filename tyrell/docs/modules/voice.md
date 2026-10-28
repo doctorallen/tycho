@@ -62,7 +62,7 @@ A thread's first beat is `start` (or `start: '<name>'`). A beat's words are a `l
 
 ## Answers and approaches
 
-An answer is `say` (the words, or a line topic for a speaker who's a person with lines), an optional `label` for the choice, an `approach`, effects (`then`), and where it leads (`to`): a beat, `'end'` (the subject's done; the default), `'bye'` (the talk's over), or a list whose first fitting entry wins: `{ if?, landed?, warmth?, to }`.
+An answer is `say` (the words, or a line topic for a speaker who's a person with lines), an optional `label` for the choice, an `approach`, effects (`then`), and where it leads (`to`): a beat, `'end'` (the subject's done; the default), `'thread:<id>'` (a door into another subject: this one is talked through, and that one starts at once, without an opener, since the answer was the way in), `'bye'` (the talk's over), or a list whose first fitting entry wins: `{ if?, landed?, warmth?, to }`.
 
 At most `config.choices` (3) answers are offered, in order, besides "let it lie" and goodbye. An answer whose `if` fails, or that needs more `warmth` than the talk has, is hidden, or, with `soft`, shown but not yet choosable (`ok: false`). A beat come round again doesn't offer an answer already said in the talk.
 
@@ -213,7 +213,7 @@ In `world.s.mod.voice`, made with the first talk:
 | `soft` | false | Shown but not choosable when `if` or `warmth` fails |
 | `warmth` | none | Needs at least this much warmth |
 | `then` | none | Effects when chosen |
-| `to` | `'end'` | A beat, `'end'`, `'bye'`, or `[{ if?, landed?, warmth?, to }]` (the first that fits) |
+| `to` | `'end'` | A beat, `'end'`, `'thread:<id>'`, `'bye'`, or `[{ if?, landed?, warmth?, to }]` (the first that fits) |
 
 ### ApproachDef
 

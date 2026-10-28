@@ -28,7 +28,11 @@ export interface AnswerDef {
     warmth?: number;
     /** Effects when it's chosen. */
     then?: Effect[];
-    /** Where it leads: a beat, 'end' (the subject's done), 'bye' (the talk's over), or the first that fits of a list. Default 'end'. */
+    /**
+     * Where it leads: a beat, 'end' (the subject's done), 'thread:<id>' (a
+     * door into another subject: this one's done, that one starts), 'bye'
+     * (the talk's over), or the first that fits of a list. Default 'end'.
+     */
     to?: string | Array<{
         if?: Cond[];
         landed?: 'well' | 'badly' | 'even';
@@ -219,7 +223,7 @@ export declare class Voice implements Module {
     applyAnswer(by: Id, i: number, id: string | null): TalkView | null;
     /** An answer is chosen: said, its approach lands, its effects, and where it leads. Returns where. */
     private chosen;
-    /** Starts on a subject: the speaker opens it (unless it's theirs), then its first beat. */
+    /** Starts on a subject: the speaker opens it (unless it's theirs, or the answer before was the way in), then its first beat. */
     private enter;
     private runBeat;
     /** A subject is done: talked through (its effects run) or let lie. */

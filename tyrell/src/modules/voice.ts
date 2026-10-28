@@ -50,7 +50,11 @@ export interface AnswerDef {
   warmth?: number;
   /** Effects when it's chosen. */
   then?: Effect[];
-  /** Where it leads: a beat, 'end' (the subject's done), 'bye' (the talk's over), or the first that fits of a list. Default 'end'. */
+  /**
+   * Where it leads: a beat, 'end' (the subject's done), 'thread:<id>' (a
+   * door into another subject: this one's done, that one starts), 'bye'
+   * (the talk's over), or the first that fits of a list. Default 'end'.
+   */
   to?: string | Array<{ if?: Cond[]; landed?: 'well' | 'badly' | 'even'; warmth?: number; to: string }>;
 }
 
@@ -407,19 +411,26 @@ export class Voice implements Module {
       to = pick?.to ?? a.to[a.to.length - 1]?.to ?? 'end';
     }
     if (to === 'bye') return 'bye';
+    if (to.startsWith('thread:')) {
+      // a door into another subject: this one's talked through, that one starts at once
+      this.finishThread(talk, true);
+      const next = this.threads.get(to.slice(7));
+      if (next && !talk.over) this.enter(talk, next, false, true);
+      return to;
+    }
     if (to === 'end' || !def.beats[to]) this.finishThread(talk, true);
     else this.runBeat(talk, to);
     return to;
   }
 
-  /** Starts on a subject: the speaker opens it (unless it's theirs), then its first beat. */
-  private enter(talk: Talk, def: ThreadDef, theirs: boolean): void {
+  /** Starts on a subject: the speaker opens it (unless it's theirs, or the answer before was the way in), then its first beat. */
+  private enter(talk: Talk, def: ThreadDef, theirs: boolean, door = false): void {
     const ctx = this.ctx(talk);
     const label = typeof def.label === 'function' ? def.label(ctx) : def.label ?? def.id;
     talk.thread = { id: def.id, beat: def.start ?? 'start', label };
     if (theirs) talk.thread.theirs = true;
-    talk.done.push(def.id);
-    if (!theirs) {
+    if (!talk.done.includes(def.id)) talk.done.push(def.id);
+    if (!theirs && !door) {
       const open = typeof def.open === 'string' ? def.open : def.open ? (def.approach && def.open[def.approach]) || def.open[Object.keys(def.open)[0]] : label;
       if (open) this.say(talk, 'you', open, true);
       if (def.approach) this.land(talk, def.approach);

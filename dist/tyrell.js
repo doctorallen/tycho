@@ -6973,18 +6973,24 @@ var Tyrell = (() => {
         to = pick?.to ?? a.to[a.to.length - 1]?.to ?? "end";
       }
       if (to === "bye") return "bye";
+      if (to.startsWith("thread:")) {
+        this.finishThread(talk, true);
+        const next = this.threads.get(to.slice(7));
+        if (next && !talk.over) this.enter(talk, next, false, true);
+        return to;
+      }
       if (to === "end" || !def.beats[to]) this.finishThread(talk, true);
       else this.runBeat(talk, to);
       return to;
     }
-    /** Starts on a subject: the speaker opens it (unless it's theirs), then its first beat. */
-    enter(talk, def, theirs) {
+    /** Starts on a subject: the speaker opens it (unless it's theirs, or the answer before was the way in), then its first beat. */
+    enter(talk, def, theirs, door = false) {
       const ctx = this.ctx(talk);
       const label = typeof def.label === "function" ? def.label(ctx) : def.label ?? def.id;
       talk.thread = { id: def.id, beat: def.start ?? "start", label };
       if (theirs) talk.thread.theirs = true;
-      talk.done.push(def.id);
-      if (!theirs) {
+      if (!talk.done.includes(def.id)) talk.done.push(def.id);
+      if (!theirs && !door) {
         const open = typeof def.open === "string" ? def.open : def.open ? def.approach && def.open[def.approach] || def.open[Object.keys(def.open)[0]] : label;
         if (open) this.say(talk, "you", open, true);
         if (def.approach) this.land(talk, def.approach);

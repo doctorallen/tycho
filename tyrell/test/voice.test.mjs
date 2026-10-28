@@ -165,6 +165,20 @@ test('let it lie drops a subject; goodbye ends the talk with their words, and it
   assert.equal(w.lang.value('talks', w.ctx(w.get('ana'), { target: 'player' })), 1);
 });
 
+test('an answer can open a door into another subject', () => {
+  const w = talky({ voice: { theirs: 0 } });
+  w.voice.thread({ id: 'family', label: 'Family', beats: { start: { text: 'My sister\'s visiting.', end: true } } });
+  w.voice.thread({ id: 'news', label: 'Any news?', beats: { start: { text: 'Well, there is something.', answers: [{ say: 'Go on, tell me about your family.', to: 'thread:family' }] } } });
+  w.person('ana', { home: 'home_a' });
+  w.voice.start('ana');
+  choose(w, (a) => a.id === 'news');
+  const v = choose(w, (a) => a.say === 'Go on, tell me about your family.');
+  assert.deepEqual(v.lines.map((l) => l.text), ['Go on, tell me about your family.', 'My sister\'s visiting.']);
+  assert.equal(v.thread, null, 'talked through, both of them');
+  assert.ok(!v.answers.some((a) => a.id === 'family' || a.id === 'news'));
+  assert.ok(w.voice.history('ana').seen.family !== undefined);
+});
+
 test('patience runs out: they close, and only goodbye is left', () => {
   const w = talky({ voice: { theirs: 0, patience: 2 } });
   w.person('ana', { home: 'home_a' });

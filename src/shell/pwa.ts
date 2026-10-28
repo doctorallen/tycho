@@ -33,11 +33,20 @@ export interface PwaOptions {
   updatedKey?: string;
 }
 
+// The browser can offer to install the game before the game gets round to
+// starting its installable app (a game that builds its whole world first):
+// the offer is kept from the moment Tycho loads, and start() takes it up.
+type Prompt = Event & { prompt(): Promise<void>; userChoice: Promise<unknown> };
+let early: Prompt | null = null;
+if (typeof addEventListener === 'function') {
+  try { addEventListener('beforeinstallprompt', (e) => { early = e as Prompt; }); } catch (e) { /* not a page */ }
+}
+
 export class Pwa {
   o: PwaOptions;
   reg: ServiceWorkerRegistration | null = null;
   /** The browser's install prompt, while it can be shown. */
-  prompt: (Event & { prompt(): Promise<void>; userChoice: Promise<unknown> }) | null = null;
+  prompt: Prompt | null = null;
   /** The live build, from version.json at start (null until known). */
   live: string | null = null;
   /** A newer build that has taken over, waiting for the game to load it. */
@@ -49,7 +58,9 @@ export class Pwa {
    * over http(s): opened from a file there's no worker. */
   start(): this {
     const o = this.o;
-    addEventListener('beforeinstallprompt', (e) => { this.prompt = e as Pwa['prompt']; if (o.onInstallable) o.onInstallable(); });
+    addEventListener('beforeinstallprompt', (e) => { this.prompt = e as Prompt; early = null; if (o.onInstallable) o.onInstallable(); });
+    // (an offer that came before start: taken up, and the game told once it's done starting)
+    if (early) { this.prompt = early; early = null; if (o.onInstallable) setTimeout(() => o.onInstallable!(), 0); }
     if (o.canAsk) {
       const ask = () => {
         if (!this.prompt || this.installed() || !o.canAsk!()) return;
@@ -105,6 +116,18 @@ export class Pwa {
   }
   installed(): boolean { return matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true; }
   ios(): boolean { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  /**
+   * Whether the game is installed on this device while it's open in a browser
+   * tab (so the browser won't offer to install it): true where the browser
+   * can tell (Chrome and Edge, getInstalledRelatedApps), when the game's
+   * manifest lists itself in `related_applications` (`platform: "webapp"`,
+   * `url`: the manifest's full address). False where it can't tell.
+   */
+  installedElsewhere(): Promise<boolean> {
+    const n = navigator as Navigator & { getInstalledRelatedApps?: () => Promise<unknown[]> };
+    if (this.installed() || typeof n.getInstalledRelatedApps !== 'function') return Promise.resolve(false);
+    return n.getInstalledRelatedApps().then((apps) => Array.isArray(apps) && apps.length > 0, () => false);
+  }
   /** Shows the browser's install prompt, if it can. */
   install(): void {
     if (!this.prompt) return;

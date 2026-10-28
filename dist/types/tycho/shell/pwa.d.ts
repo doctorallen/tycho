@@ -21,14 +21,15 @@ export interface PwaOptions {
     /** The session-storage key that remembers a reload was an update. */
     updatedKey?: string;
 }
+type Prompt = Event & {
+    prompt(): Promise<void>;
+    userChoice: Promise<unknown>;
+};
 export declare class Pwa {
     o: PwaOptions;
     reg: ServiceWorkerRegistration | null;
     /** The browser's install prompt, while it can be shown. */
-    prompt: (Event & {
-        prompt(): Promise<void>;
-        userChoice: Promise<unknown>;
-    }) | null;
+    prompt: Prompt | null;
     /** The live build, from version.json at start (null until known). */
     live: string | null;
     /** A newer build that has taken over, waiting for the game to load it. */
@@ -48,8 +49,17 @@ export declare class Pwa {
     updated(): string | null;
     installed(): boolean;
     ios(): boolean;
+    /**
+     * Whether the game is installed on this device while it's open in a browser
+     * tab (so the browser won't offer to install it): true where the browser
+     * can tell (Chrome and Edge, getInstalledRelatedApps), when the game's
+     * manifest lists itself in `related_applications` (`platform: "webapp"`,
+     * `url`: the manifest's full address). False where it can't tell.
+     */
+    installedElsewhere(): Promise<boolean>;
     /** Shows the browser's install prompt, if it can. */
     install(): void;
 }
 /** Makes and starts the page's half of an installable game. */
 export declare function start(o: PwaOptions): Pwa;
+export {};

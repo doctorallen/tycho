@@ -4378,6 +4378,15 @@ __export(pwa_exports, {
   Pwa: () => Pwa,
   start: () => start
 });
+var early = null;
+if (typeof addEventListener === "function") {
+  try {
+    addEventListener("beforeinstallprompt", (e) => {
+      early = e;
+    });
+  } catch (e) {
+  }
+}
 var Pwa = class {
   constructor(o) {
     this.reg = null;
@@ -4396,8 +4405,14 @@ var Pwa = class {
     const o = this.o;
     addEventListener("beforeinstallprompt", (e) => {
       this.prompt = e;
+      early = null;
       if (o.onInstallable) o.onInstallable();
     });
+    if (early) {
+      this.prompt = early;
+      early = null;
+      if (o.onInstallable) setTimeout(() => o.onInstallable(), 0);
+    }
     if (o.canAsk) {
       const ask = () => {
         if (!this.prompt || this.installed() || !o.canAsk()) return;
@@ -4483,6 +4498,18 @@ var Pwa = class {
   }
   ios() {
     return /iphone|ipad|ipod/i.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+  /**
+   * Whether the game is installed on this device while it's open in a browser
+   * tab (so the browser won't offer to install it): true where the browser
+   * can tell (Chrome and Edge, getInstalledRelatedApps), when the game's
+   * manifest lists itself in `related_applications` (`platform: "webapp"`,
+   * `url`: the manifest's full address). False where it can't tell.
+   */
+  installedElsewhere() {
+    const n = navigator;
+    if (this.installed() || typeof n.getInstalledRelatedApps !== "function") return Promise.resolve(false);
+    return n.getInstalledRelatedApps().then((apps) => Array.isArray(apps) && apps.length > 0, () => false);
   }
   /** Shows the browser's install prompt, if it can. */
   install() {

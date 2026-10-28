@@ -94,3 +94,28 @@ test('the loader runs tasks in slices, skips one that throws, and counts by weig
   while (!step()) { /* slices */ }
   assert.deepEqual(got, list);
 });
+
+test('an install offer that comes before the app starts is kept for it, and installedElsewhere asks the browser', async () => {
+  // a stand-in page: listeners, a file address (so no worker), no app window
+  const on = {}, g = globalThis, keep = { addEventListener: g.addEventListener, location: g.location, matchMedia: g.matchMedia, navigator: Object.getOwnPropertyDescriptor(g, 'navigator') };
+  g.addEventListener = (type, fn) => { (on[type] = on[type] || []).push(fn); };
+  g.location = { protocol: 'file:' };
+  g.matchMedia = () => ({ matches: false });
+  Object.defineProperty(g, 'navigator', { value: { userAgent: 'test', platform: 'Linux', maxTouchPoints: 0, getInstalledRelatedApps: async () => [{ platform: 'webapp' }] }, configurable: true });
+  try {
+    const T = await import('../dist/tycho.mjs?early');
+    const offer = { type: 'beforeinstallprompt', prompt: async () => {}, userChoice: Promise.resolve({}) };
+    for (const fn of on.beforeinstallprompt) fn(offer); // (before the game starts its app)
+    let told = 0;
+    const app = T.pwa.start({ build: 'x', onInstallable: () => told++ });
+    assert.equal(app.prompt, offer, 'the early offer is taken up');
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(told, 1, 'and the game is told, once it is done starting');
+    assert.equal(await app.installedElsewhere(), true);
+    g.navigator.getInstalledRelatedApps = undefined;
+    assert.equal(await app.installedElsewhere(), false, "where the browser can't tell, false");
+  } finally {
+    g.addEventListener = keep.addEventListener; g.location = keep.location; g.matchMedia = keep.matchMedia;
+    if (keep.navigator) Object.defineProperty(g, 'navigator', keep.navigator); else delete g.navigator;
+  }
+});

@@ -40,9 +40,14 @@ const pwa = Tycho.pwa.start({
 });
 pwa.updated();   // after a reload onto a new build: its name (once), to say so
 pwa.installed(); pwa.ios(); pwa.install(); pwa.live; pwa.newer; pwa.check();
+pwa.installedElsewhere().then((yes) => ...); // installed on this device, but open in a browser tab
 ```
 
 Over http(s) only; opened from a file the game plays as a page. It looks for a new deploy when the page comes back to the foreground and every 15 minutes (`every`).
+
+The browser's offer to install (`beforeinstallprompt`) is kept from the moment `tycho.js` loads, so a game that starts its installable app late, after building its world, still gets an offer that came first: `start` takes it up and calls `onInstallable` once it's done starting.
+
+Once the game is installed, a browser tab never offers to install it again. `installedElsewhere()` says whether that's why, where the browser can tell (Chrome and Edge): the game's manifest lists itself in `related_applications`, as `{ "platform": "webapp", "url": "<the manifest's full address>" }`, and the menu can say to open it from the home screen instead.
 
 ## Tycho.dev
 

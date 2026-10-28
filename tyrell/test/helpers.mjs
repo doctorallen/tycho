@@ -1,7 +1,7 @@
 // Shared helpers for the tests: the built engine, the sample town, and a
 // tiny world to poke at.
 import { createRequire } from 'node:module';
-import * as Tyrell from '../dist/tyrell.mjs';
+import * as Tyrell from '../../dist/tyrell.mjs';
 
 const require = createRequire(import.meta.url);
 export const buildRocinante = require('../examples/rocinante.js');

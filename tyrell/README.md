@@ -49,19 +49,19 @@ world.tick(1 / 60);                        // every frame
 
 ## Using it in a game
 
-Tyrell is meant to be pulled into a game as a git submodule. The built files in `dist/` are committed, so the game needs no build step and nothing installed:
+Tyrell lives in the Tycho repository, which a game pulls in as a git submodule. The built files in Tycho's `dist/` are committed, so the game needs no build step and nothing installed:
 
 ```sh
-git submodule add https://github.com/doctorallen/tyrell vendor/tyrell
+git submodule add https://github.com/doctorallen/tycho vendor/tycho
 ```
 
 ```html
-<script src="vendor/tyrell/dist/tyrell.js"></script>
+<script src="vendor/tycho/dist/tyrell.js"></script>
 ```
 
-If the game deploys from CI, its checkout needs `submodules: true`. A service worker that caches the game's files should list `vendor/tyrell/dist/tyrell.js` too. To update, `git -C vendor/tyrell pull` and commit the new pointer: each game pins the engine version it was tested with.
+If the game deploys from CI, its checkout needs `submodules: true`. A service worker that caches the game's files should list `vendor/tycho/dist/tyrell.js` too. To update, `git -C vendor/tycho pull` and commit the new pointer: each game pins the engine version it was tested with.
 
-Node and bundlers can use `dist/tyrell.mjs` or `dist/tyrell.cjs`; types are in `dist/tyrell.d.ts` (and `dist/tyrell.global.d.ts` for the global).
+Node and bundlers can use `dist/tyrell.mjs` or `dist/tyrell.cjs`; types are in `dist/tyrell.d.ts` (and `dist/tyrell.global.d.ts` for the global). A game with people on screen can load Tycho's bridge too (`dist/tycho-minds.js`, see the Tycho README); a game without people loads neither.
 
 ## Documentation
 
@@ -69,10 +69,12 @@ Start with [docs/README.md](docs/README.md). The guides walk through integrating
 
 ## Building and testing
 
+From the root of the Tycho repository, which builds Tyrell with the engine and the bridge:
+
 ```sh
 npm install            # TypeScript and esbuild, for building only
 npm run build          # src/ -> dist/ (commit dist/ with the change)
-npm test               # builds, then runs the test suite
+npm run test:tyrell    # builds, then runs Tyrell's test suite
 npm run typecheck
 npm run vk             # Voight-Kampff: a week of Rocinante
 ```

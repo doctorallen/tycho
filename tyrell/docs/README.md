@@ -2,7 +2,7 @@
 
 Tyrell is a minds engine for games full of people. It decides what each person does, remembers what happened to them, keeps track of what they believe and how they feel about each other and about the player, and keeps them living when nobody is watching. Time walk (running faster, rewinding, playing backward) is built into the core. The game supplies the space (places and how long it takes to walk between them) and draws whatever Tyrell decides.
 
-These docs describe Tyrell 1.1.0 (save schema 2).
+These docs describe Tyrell 2.0.0 (save schema 2).
 
 **Upgrading from 1.0.** Saves from 1.0 load as they are (they're migrated). What a game may need to change:
 

@@ -159,9 +159,9 @@ Tyrell.VoightKampff.run({ build: (seed) => buildMyTown(Tyrell, { seed }), checks
 ### The command line
 
 ```sh
-node vendor/tyrell/bin/voight-kampff.mjs my-town.js --days 7
-node vendor/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --save baseline.json
-node vendor/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline baseline.json --tolerance 0.03
+node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7
+node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --save baseline.json
+node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline baseline.json --tolerance 0.03
 ```
 
 | Flag | Meaning |
@@ -193,8 +193,8 @@ Run it:
 
 ```js
 // Node
-const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
-const buildRocinante = require('./vendor/tyrell/examples/rocinante.js');
+const Tyrell = require('./vendor/tycho/dist/tyrell.cjs');
+const buildRocinante = require('./vendor/tycho/tyrell/examples/rocinante.js');
 const world = buildRocinante(Tyrell, { seed: 'my-seed', start: 6 * 60 });
 world.advance(24 * 60);
 console.log(world.describe('ruth'));
@@ -202,8 +202,8 @@ console.log(world.describe('ruth'));
 
 ```html
 <!-- the browser: it defines buildRocinante -->
-<script src="vendor/tyrell/dist/tyrell.js"></script>
-<script src="vendor/tyrell/examples/rocinante.js"></script>
+<script src="vendor/tycho/dist/tyrell.js"></script>
+<script src="vendor/tycho/tyrell/examples/rocinante.js"></script>
 <script>const world = buildRocinante(Tyrell, {});</script>
 ```
 

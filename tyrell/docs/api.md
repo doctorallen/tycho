@@ -20,7 +20,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | Export | |
 |---|---|
 | `create(opts?)` | Makes a new world: `World` |
-| `VERSION` | `'1.1.0'` |
+| `VERSION` | `'2.0.0'` |
 | `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi']` |
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |

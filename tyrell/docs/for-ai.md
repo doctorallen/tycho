@@ -2,7 +2,7 @@
 
 You've been asked to integrate Tyrell into a game. This page is the compact, exact version: invariants, a procedure, the contracts of every callback, a skeleton that runs, and the pitfalls with their fixes. For details, follow the links into [api.md](api.md), [integration.md](integration.md), [conditions.md](conditions.md) and the module pages for the modules the game uses.
 
-This describes Tyrell 1.1.0 (save schema 2).
+This describes Tyrell 2.0.0 (save schema 2).
 
 - [Facts](#facts)
 - [Invariants](#invariants)
@@ -14,7 +14,7 @@ This describes Tyrell 1.1.0 (save schema 2).
 
 ## Facts
 
-- Browser: `<script src="vendor/tyrell/dist/tyrell.js">` before the game's scripts defines the global `Tyrell`. Node: `require('./vendor/tyrell/dist/tyrell.cjs')` or import `dist/tyrell.mjs`. Add `vendor/tyrell/dist/tyrell.js` to a service worker's cached files.
+- Browser: `<script src="vendor/tycho/dist/tyrell.js">` before the game's scripts defines the global `Tyrell`. Node: `require('./vendor/tycho/dist/tyrell.cjs')` or import `dist/tyrell.mjs`. Add `vendor/tycho/dist/tyrell.js` to a service worker's cached files.
 - `const world = Tyrell.create(opts)`. Everything else is a method or property of `world`.
 - Time is game minutes. `world.now` is minutes since midnight of day 0. Hours in definitions are fractional 0 to 24; spans `[a, b)` wrap past midnight.
 - Needs are 0 (calm) to 1 (desperate); `rise` is per game hour.
@@ -55,7 +55,7 @@ Public input methods (safe from game code): `world.person`, `fact(key, value)`, 
 A complete, runnable sketch of steps 1 to 13, with stand-ins for the game's side. It runs as is in Node.
 
 ```js
-const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');   // the browser: the global Tyrell
+const Tyrell = require('./vendor/tycho/dist/tyrell.cjs');   // the browser: the global Tyrell
 
 // ---- the game's side: stand-ins -----------------------------------------------
 const game = { minutes: 6 * 60, level: 'cafe', save: null };

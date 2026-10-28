@@ -14,7 +14,7 @@ This page gets Tyrell into a game, builds a first small world, and wires the fra
 Tyrell is pulled into a game as a git submodule. The built files in `dist/` are committed, so the game needs no build step and nothing installed.
 
 ```sh
-git submodule add https://github.com/doctorallen/tyrell vendor/tyrell
+git submodule add https://github.com/doctorallen/tycho vendor/tycho
 git commit -m "Add Tyrell"
 ```
 
@@ -40,7 +40,7 @@ git submodule update --init
 const FILES = [
   './',
   'index.html',
-  'vendor/tyrell/dist/tyrell.js',
+  'vendor/tycho/dist/tyrell.js',
   'js/main.js',
   // ...
 ];
@@ -51,8 +51,8 @@ If the game has a check that every `<script>` tag is in the worker's list, Tyrel
 **Updating.** Each game pins the engine version it was tested with. To move to a newer Tyrell, pull it and commit the new pointer:
 
 ```sh
-git -C vendor/tyrell pull
-git add vendor/tyrell
+git -C vendor/tycho pull
+git add vendor/tycho
 git commit -m "Update Tyrell"
 ```
 
@@ -61,21 +61,21 @@ git commit -m "Update Tyrell"
 In the browser, one script tag defines one global, `Tyrell`. Load it before the game's own scripts:
 
 ```html
-<script src="vendor/tyrell/dist/tyrell.js"></script>
+<script src="vendor/tycho/dist/tyrell.js"></script>
 <script src="js/main.js"></script>
 ```
 
 For editor hints in plain JavaScript, reference the global's types at the top of a file:
 
 ```js
-/// <reference path="../vendor/tyrell/dist/tyrell.global.d.ts" />
+/// <reference path="../vendor/tycho/dist/tyrell.global.d.ts" />
 ```
 
 In Node or with a bundler, use the module builds (types are in `dist/tyrell.d.ts`):
 
 ```js
-const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
-// or: import * as Tyrell from './vendor/tyrell/dist/tyrell.mjs';
+const Tyrell = require('./vendor/tycho/dist/tyrell.cjs');
+// or: import * as Tyrell from './vendor/tycho/dist/tyrell.mjs';
 ```
 
 ## A first world
@@ -83,7 +83,7 @@ const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
 A town with one person, an apartment, a cafe and a park. Save this as `first.js` and run it with `node first.js` (in the browser, drop the `require` line).
 
 ```js
-const Tyrell = require('./vendor/tyrell/dist/tyrell.cjs');
+const Tyrell = require('./vendor/tycho/dist/tyrell.cjs');
 const HOUR = 60;
 
 const world = Tyrell.create({ seed: 'first-town', start: 7 * HOUR });

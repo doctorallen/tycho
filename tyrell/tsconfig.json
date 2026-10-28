@@ -11,7 +11,7 @@
     "verbatimModuleSyntax": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "dist/types",
+    "outDir": "../dist/types/tyrell",
     "rootDir": "src",
     "types": [],
     "skipLibCheck": true

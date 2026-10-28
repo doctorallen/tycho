@@ -2,14 +2,16 @@
 
 Guidance for AI agents (and people) working in this repository.
 
-Tyrell is a minds engine for games: people with needs, routines, plans, feelings, memories, beliefs and relationships, simulated on screen and off, with time walk (fast-forward, rewind, reverse playback) built into the core. It's TypeScript in `src/`, built by esbuild into plain JavaScript in `dist/`, which is committed so games can pull the repo in as a git submodule and load `dist/tyrell.js` with a script tag. Read `README.md` for the parts and their names, and `docs/` for how a game uses it.
+Tyrell is a minds engine for games: people with needs, routines, plans, feelings, memories, beliefs and relationships, simulated on screen and off, with time walk (fast-forward, rewind, reverse playback) built into the core. It's TypeScript in `src/`, built by esbuild into plain JavaScript in the Tycho repository's `dist/` (Tyrell lives in `tyrell/` there, its own package with its own rules), which is committed so games can pull Tycho in as a git submodule and load `dist/tyrell.js` with a script tag. Nothing in `tyrell/src` may import from the engine (`src/`) or the bridge (`minds/`): `scripts/layers.mjs` fails the build if it does. Read `README.md` for the parts and their names, and `docs/` for how a game uses it.
 
 ## Commands
 
+Run from the root of the Tycho repository:
+
 ```sh
 npm install          # TypeScript 6.0.3 and esbuild 0.28.2 (pinned: dist/ must build byte-identical in CI)
-npm run build        # src/ -> dist/ (tyrell.js global, tyrell.mjs, tyrell.cjs, declarations)
-npm test             # build, then node --test test/*.test.mjs
+npm run build        # every output: dist/tyrell.js (global), tyrell.mjs, tyrell.cjs, declarations, and the engine's
+npm run test:tyrell  # build, then node --test tyrell/test/*.test.mjs
 npm run typecheck
 npm run vk           # Voight-Kampff: a week of the Rocinante sample town
 ```
@@ -30,8 +32,8 @@ Always run `npm test` and commit `dist/` with any change to `src/`. CI fails if 
 - `src/tools/`: Palantír (`palantir.ts`) and Voight-Kampff (`voightkampff.ts`).
 - `src/index.ts`: `create()` and the exports.
 - `examples/rocinante.js`: the sample town (plain JS; works as a script, with require and import). Tests and the runner use it.
-- `test/`: node:test suites against the built `dist/`.
-- `bin/voight-kampff.mjs`: the command-line runner. `scripts/build.mjs`: the build.
+- `test/`: node:test suites against the built `dist/` (at the repository's root).
+- `bin/voight-kampff.mjs`: the command-line runner. The build is the repository's `scripts/build.mjs`.
 
 ## Rules that keep the engine correct
 

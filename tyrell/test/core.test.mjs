@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { Tyrell, tiny, until, HOUR, DAY } from './helpers.mjs';
 
 test('the plain-script build defines one global, Tyrell', () => {
-  const code = readFileSync(new URL('../dist/tyrell.js', import.meta.url), 'utf8');
+  const code = readFileSync(new URL('../../dist/tyrell.js', import.meta.url), 'utf8');
   const ctx = { console, performance, setTimeout };
   vm.createContext(ctx);
   vm.runInContext(code, ctx);

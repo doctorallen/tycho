@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, tycho]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # the games' branch whose tests run against this build (each game's
+  # submodule pins its own Tycho; this checks a new one before it's taken)
+  GAMES_REF: tycho
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Type-check
+        run: npm run typecheck
+      - name: Build and test (the engine's and Tyrell's suites)
+        run: npm test
+      - name: dist/ is up to date with the sources
+        run: |
+          git diff --exit-code -- dist || { echo "dist/ is stale: run npm run build and commit it"; exit 1; }
+      - name: Voight-Kampff on Rocinante, a week
+        run: node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 7
+
+  # Every game's own tests, with this build in its vendor/tycho.
+  games:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [under-the-white-dragon, lodestar, merryfolk]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tycho
+      - uses: actions/checkout@v4
+        with:
+          repository: doctorallen/${{ matrix.game }}
+          ref: ${{ env.GAMES_REF }}
+          path: game
+      - name: This build as the game's Tycho
+        run: rm -rf game/vendor/tycho && mkdir -p game/vendor && cp -r tycho game/vendor/tycho
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: The game's test tools
+        working-directory: game
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+      - name: The game's tests
+        working-directory: game
+        run: npm test
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-out-${{ matrix.game }}
+          path: game/test/out
+          if-no-files-found: ignore

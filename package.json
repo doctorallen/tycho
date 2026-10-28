@@ -1,0 +1,63 @@
+{
+  "name": "tycho",
+  "version": "2.0.0",
+  "description": "An engine and a shelf of game features for small, phone-first pixel games in the browser, with Tyrell, a minds engine for games full of people, inside it. Plain JavaScript output, no dependencies.",
+  "license": "MIT",
+  "repository": "github:doctorallen/tycho",
+  "main": "dist/tycho.cjs",
+  "module": "dist/tycho.mjs",
+  "browser": "dist/tycho.js",
+  "types": "dist/tycho.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/tycho.d.ts",
+      "import": "./dist/tycho.mjs",
+      "require": "./dist/tycho.cjs"
+    },
+    "./global": "./dist/tycho.js",
+    "./tyrell": {
+      "types": "./dist/tyrell.d.ts",
+      "import": "./dist/tyrell.mjs",
+      "require": "./dist/tyrell.cjs"
+    },
+    "./tyrell/global": "./dist/tyrell.js",
+    "./minds": {
+      "types": "./dist/tycho-minds.d.ts",
+      "import": "./dist/tycho-minds.mjs",
+      "require": "./dist/tycho-minds.cjs"
+    },
+    "./minds/global": "./dist/tycho-minds.js",
+    "./sw": "./dist/tycho-sw.js",
+    "./testkit": {
+      "types": "./dist/testkit.d.ts",
+      "require": "./dist/testkit.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "tyrell/docs",
+    "tyrell/examples",
+    "tyrell/bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tyrell/tsconfig.json --noEmit && tsc -p minds/tsconfig.json --noEmit && tsc -p sw/tsconfig.json --noEmit && tsc -p testkit/tsconfig.json --noEmit",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs tyrell/test/*.test.mjs",
+    "test:engine": "node scripts/build.mjs && node --test test/*.test.mjs",
+    "test:tyrell": "node scripts/build.mjs && node --test tyrell/test/*.test.mjs",
+    "test:browser": "node test/browser.js",
+    "vk": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 7",
+    "check-dist": "node scripts/build.mjs && git diff --exit-code -- dist"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  },
+  "bin": {
+    "voight-kampff": "tyrell/bin/voight-kampff.mjs"
+  }
+}

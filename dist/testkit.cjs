@@ -35,6 +35,7 @@ __export(index_exports, {
   PAGE: () => PAGE,
   PHONE: () => PHONE,
   PHONE_WIDE: () => PHONE_WIDE,
+  annotate: () => annotate,
   chromePath: () => chromePath,
   diff: () => diff,
   errorsOf: () => errorsOf,
@@ -42,6 +43,7 @@ __export(index_exports, {
   golden: () => golden,
   launch: () => launch,
   open: () => open,
+  run: () => run,
   serve: () => serve,
   shot: () => shot,
   sleep: () => sleep,
@@ -224,9 +226,23 @@ function finish(name, failures) {
     console.error(`${name}: FAIL
   ` + failures.slice(0, 60).join("\n  ") + (failures.length > 60 ? `
   …and ${failures.length - 60} more` : ""));
+    annotate(name, failures);
     process.exit(1);
   }
   console.log(`${name}: ok`);
+}
+function annotate(name, failures) {
+  if (!process.env.GITHUB_ACTIONS) return;
+  for (const f of failures.slice(0, 10)) console.log(`::error title=${name}::` + String(f).replace(/\r?\n/g, " ").slice(0, 900));
+}
+async function run(name, body) {
+  let failures = [];
+  try {
+    failures = await body() || [];
+  } catch (e) {
+    failures = ["crashed: " + String(e.stack || e)];
+  }
+  finish(name, failures);
 }
 function golden(file, now, o = {}) {
   const update = o.update ?? process.argv.includes("--update");
@@ -291,6 +307,7 @@ async function diff(kit, a, b, o = {}) {
   PAGE,
   PHONE,
   PHONE_WIDE,
+  annotate,
   chromePath,
   diff,
   errorsOf,
@@ -298,6 +315,7 @@ async function diff(kit, a, b, o = {}) {
   golden,
   launch,
   open,
+  run,
   serve,
   shot,
   sleep,

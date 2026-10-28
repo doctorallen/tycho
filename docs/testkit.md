@@ -29,4 +29,5 @@ await kit.close();
 | `golden(file, values, { update })` | Compares name/value pairs with a JSON file; `--update` writes it |
 | `PAGE` | Helpers to put in a page (`page.evaluate(tk.PAGE)`): `TK.hash(bytes)`, `TK.canvas(c)`, `TK.image(img)` |
 | `diff(kit, pngA, pngB, { tone })` | Compares two pictures tone by tone: `{ same, maxTone, share, mean }` |
-| `finish(name, failures)` | The verdict |
+| `finish(name, failures)` | The verdict (failures are annotations under GitHub Actions) |
+| `run(name, body)` | Runs an async body returning failures; a crash is a failure too |

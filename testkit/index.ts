@@ -212,13 +212,29 @@ export async function shot(page: Page, dir: string, name: string): Promise<strin
   return p;
 }
 
-/** A test's verdict: prints the line and exits non-zero on failure. */
+/** A test's verdict: prints the line and exits non-zero on failure. Under
+ * GitHub Actions the first failures are also annotations, which show on the
+ * run's page without its log. */
 export function finish(name: string, failures: string[]): void {
   if (failures.length) {
     console.error(`${name}: FAIL\n  ` + failures.slice(0, 60).join('\n  ') + (failures.length > 60 ? `\n  …and ${failures.length - 60} more` : ''));
+    annotate(name, failures);
     process.exit(1);
   }
   console.log(`${name}: ok`);
+}
+
+/** Under GitHub Actions, failures as error annotations (the first ten). */
+export function annotate(name: string, failures: string[]): void {
+  if (!process.env.GITHUB_ACTIONS) return;
+  for (const f of failures.slice(0, 10)) console.log(`::error title=${name}::` + String(f).replace(/\r?\n/g, ' ').slice(0, 900));
+}
+
+/** Runs a test's body, turning a crash into a failed verdict (annotated). */
+export async function run(name: string, body: () => Promise<string[] | void>): Promise<void> {
+  let failures: string[] = [];
+  try { failures = (await body()) || []; } catch (e) { failures = ['crashed: ' + String((e as Error).stack || e)]; }
+  finish(name, failures);
 }
 
 /** Golden values: compares `now` (name -> value) with those kept in `file`,

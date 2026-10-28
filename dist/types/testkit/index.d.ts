@@ -80,8 +80,14 @@ export interface Opened {
 export declare function open(kit: Kit, o: OpenOptions): Promise<Opened>;
 /** A screenshot into `dir` (made if missing) as name.png. */
 export declare function shot(page: Page, dir: string, name: string): Promise<string>;
-/** A test's verdict: prints the line and exits non-zero on failure. */
+/** A test's verdict: prints the line and exits non-zero on failure. Under
+ * GitHub Actions the first failures are also annotations, which show on the
+ * run's page without its log. */
 export declare function finish(name: string, failures: string[]): void;
+/** Under GitHub Actions, failures as error annotations (the first ten). */
+export declare function annotate(name: string, failures: string[]): void;
+/** Runs a test's body, turning a crash into a failed verdict (annotated). */
+export declare function run(name: string, body: () => Promise<string[] | void>): Promise<void>;
 /** Golden values: compares `now` (name -> value) with those kept in `file`,
  * returning a failure for each that changed, appeared or went. With `update`
  * (or --update on the command line) it writes `now` to the file instead. */

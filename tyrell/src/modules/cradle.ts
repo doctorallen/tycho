@@ -5,7 +5,8 @@
 //   couples          from regard and attraction, or the game's say-so
 //   births           to couples of the right age, now and then; children
 //                    inherit their parents' traits, blended, with a little
-//                    of their own (Merryfolk's genetics)
+//                    of their own (Merryfolk's genetics); with Delos in use,
+//                    they inherit a whole genome instead
 //   departures       dying of old age, leaving town: the money goes to the
 //                    household or the family, and those who cared grieve
 import type { Module } from '../core/module';
@@ -113,10 +114,13 @@ export class Cradle implements Module {
     const parents = parentIds.map((id) => w.s.people[id]).filter(Boolean) as PersonState[];
     const id = given ?? `born${++this.st.next}`;
     const r = new Stream(w.s.seed, 'birth', id);
-    // traits: the parents' average, plus a little of their own
-    const traits: Record<string, number> = {};
+    // with Delos in use, a genome: the traits it carries, talents and instincts
+    const delos = w.delos;
+    const genome = delos?.active() ? delos.applyInherit(parents.map((p) => p.id), id) : null;
+    // traits (the rest of them, with Delos): the parents' average, plus a little of their own
+    const traits: Record<string, number> = genome ? { ...genome.traits } : {};
     const keys = new Set<string>();
-    for (const p of parents) for (const k in p.def.traits || {}) keys.add(k);
+    for (const p of parents) for (const k in p.def.traits || {}) if (!genome || genome.traits[k] === undefined) keys.add(k);
     for (const k of [...keys].sort()) {
       const vals = parents.map((p) => p.def.traits?.[k]).filter((v): v is number => v !== undefined);
       const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
@@ -132,6 +136,10 @@ export class Cradle implements Module {
       home, groups, born: w.s.now, place: home,
       tags: [...(tpl.tags || []), ...(def.tags || []), 'born'],
     };
+    if (genome) {
+      child.talents = { ...genome.talents, ...(tpl.talents || {}), ...(def.talents || {}) };
+      child.instincts = { ...genome.instincts, ...(tpl.instincts || {}), ...(def.instincts || {}) };
+    }
     w.input('person', [id, child]);
     this.st.parents[id] = parents.map((p) => p.id);
     this.st.stage[id] = this.stage(id);

@@ -22,6 +22,7 @@ import { Ceres } from './modules/ceres';
 import { Cradle } from './modules/cradle';
 import { Joi } from './modules/joi';
 import { Athelas } from './modules/athelas';
+import { Delos } from './modules/delos';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -30,7 +31,7 @@ import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from '
 export const VERSION = '2.0.0';
 
 /** Every module that ships with Tyrell, by name. */
-export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas'] as const;
+export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
@@ -55,6 +56,7 @@ export function create(opts: CreateOptions = {}): World {
     cradle: () => new Cradle(cfg.cradle as any),
     joi: () => new Joi(),
     athelas: () => new Athelas(),
+    delos: () => new Delos(cfg.delos as any),
   };
   const modules: Module[] = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -68,7 +70,7 @@ export const VoightKampff = { run, compare };
 
 export {
   World, DEFAULT_CONFIG, MIGRATIONS, SCHEMA,
-  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas,
+  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
 export type { SaveData, Module };
@@ -83,6 +85,7 @@ export type { GoodDef, ChainDef, GoodReport, ProductionReport } from './modules/
 export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken } from './modules/joi';
 export type { CourseDef, CoursePhase } from './modules/athelas';
+export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';

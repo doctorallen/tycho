@@ -82,6 +82,18 @@
   w.skill({ id: 'repair', label: 'Repair', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']], decay: 0.004, floor: 0.2 });
   w.skill({ id: 'lore', label: 'Lore', rate: 0.03, diminish: 2 });
 
+  // ---- Delos: genomes, so the town's children take after their parents -------
+  // (declared before anyone is added: founders get a genome when they join,
+  // keeping the traits, talents and instincts their definitions give)
+  const delos = w.delos;
+  if (delos) {
+    delos.gene({ id: 'eyes', alleles: ['brown', 'hazel', 'green', 'blue'], weights: [5, 2, 1.5, 2.5], mutate: 0.04 });
+    delos.gene({ id: 'hair', alleles: ['black', 'brown', 'red', 'fair'], copies: 1, mutate: 0.05 });
+    for (const t of ['thrift', 'honesty', 'talkative', 'courage']) delos.trait({ id: t });
+    for (const k of ['baking', 'repair', 'lore']) delos.talent({ id: k });
+    for (const a of ['walk', 'read', 'drink']) delos.instinct({ id: a });
+  }
+
   // ---- pastimes that pall, and wishes and dreams ------------------------------
   w.pastime({ id: 'drink', label: 'the Belt' });
   w.pastime({ id: 'park', label: 'the park' });
@@ -281,13 +293,8 @@
         { id: 'sniffles', label: 'the sniffles', minutes: [900, 1800], rates: { energy: 1.4 }, weigh: { nap: 2, sleep: 1.3, 'tag:outdoors': 0.5, '*': 0.85 } },
       ],
     });
-    if (gaff) {
-      // now and then someone comes down with a cold, and it goes round
-      gaff.storylet({
-        id: 'a_cold', label: 'A cold going round', mtb: 4 * DAY, cooldown: 2 * DAY,
-        fire: (world) => { const who = world.worldStream('a_cold').pick(world.people().map((p) => p.id).sort()); if (who) world.athelas.afflict(who, 'cold'); },
-      });
-    }
+    // Kofi has brought a cold back from his lectures, and it may go round
+    if (!w.kept('a_cold')) { athelas.afflict('kofi', 'cold'); w.keep('a_cold', true); }
   }
 
   // ---- Strangers -------------------------------------------------------------

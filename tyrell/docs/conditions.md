@@ -217,6 +217,13 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `under` | How many courses are running |
 | `immune:<course>` | Immune to it now |
 
+### Delos
+
+| Term | Value |
+|---|---|
+| `gene:<id>` | What the gene shows for the person (`null` without a genome) |
+| `carries:<gene>.<allele>` | They carry the allele, showing or not |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.

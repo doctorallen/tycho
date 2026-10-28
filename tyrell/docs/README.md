@@ -79,6 +79,7 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 | Cradle | [cradle.md](modules/cradle.md) | Ages and stages, couples, births, departures and inheritance |
 | Joi | [joi.md](modules/joi.md) | An optional language-model voice that never changes the world |
 | Athelas | [athelas.md](modules/athelas.md) | Conditions that run a course: phases, needs' rates, weights, contagion, immunity |
+| Delos | [delos.md](modules/delos.md) | Genomes: genes with dominance, blended traits, talents and instincts, mutations |
 
 ## Glossary
 

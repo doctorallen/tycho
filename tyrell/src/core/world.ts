@@ -26,6 +26,7 @@ import type { Ceres } from '../modules/ceres';
 import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
 import type { Athelas } from '../modules/athelas';
+import type { Delos } from '../modules/delos';
 import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState,
   PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState,
@@ -299,6 +300,8 @@ export class World {
   get joi(): Joi | undefined { return this.modules.get('joi') as Joi | undefined; }
   /** Conditions that run a course: ale, colds, toxins. */
   get athelas(): Athelas | undefined { return this.modules.get('athelas') as Athelas | undefined; }
+  /** Genomes: looks, traits, talents and instincts, inherited. */
+  get delos(): Delos | undefined { return this.modules.get('delos') as Delos | undefined; }
 
   // -------------------------------------------------------------------------
   // Talking to the world while it runs

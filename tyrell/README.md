@@ -43,6 +43,7 @@ world.tick(1 / 60);                        // every frame
 | **Cradle** | Westworld's Cradle | Ages and stages, couples, births with inherited traits, departures, grief and inheritance |
 | **Joi** | Blade Runner 2049's companion | An optional language-model voice that never changes the world |
 | **Athelas** | The kingsfoil of the Houses of Healing | Conditions that run a course: phases that change needs and choices, contagion, immunity |
+| **Delos** | Westworld's Delos, which kept a copy of everyone | Genomes: genes with dominance, blended traits, talents and instincts, mutations, inherited through Cradle |
 | **Palantír** (tool) | The seeing-stones | The inspector: every choice with its scores, "why not that?", a readable account |
 | **Westmarch** (tool) | The Red Book of Westmarch | The log of what happened, and chronicles of anyone's day |
 | **Voight-Kampff** (tool) | Blade Runner's test | Headless seeded runs that check people still behave like people |

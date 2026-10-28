@@ -27,6 +27,7 @@ __export(index_exports, {
   Cradle: () => Cradle,
   DAY: () => DAY,
   DEFAULT_CONFIG: () => DEFAULT_CONFIG,
+  Delos: () => Delos,
   Fellowship: () => Fellowship,
   Gaff: () => Gaff,
   HOUR: () => HOUR,
@@ -2997,6 +2998,10 @@ var World = class {
   get athelas() {
     return this.modules.get("athelas");
   }
+  /** Genomes: looks, traits, talents and instincts, inherited. */
+  get delos() {
+    return this.modules.get("delos");
+  }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
   // -------------------------------------------------------------------------
@@ -5952,9 +5957,11 @@ var Cradle = class {
     const parents = parentIds.map((id2) => w.s.people[id2]).filter(Boolean);
     const id = given ?? `born${++this.st.next}`;
     const r = new Stream(w.s.seed, "birth", id);
-    const traits = {};
+    const delos = w.delos;
+    const genome = delos?.active() ? delos.applyInherit(parents.map((p) => p.id), id) : null;
+    const traits = genome ? { ...genome.traits } : {};
     const keys = /* @__PURE__ */ new Set();
-    for (const p of parents) for (const k in p.def.traits || {}) keys.add(k);
+    for (const p of parents) for (const k in p.def.traits || {}) if (!genome || genome.traits[k] === void 0) keys.add(k);
     for (const k of [...keys].sort()) {
       const vals = parents.map((p) => p.def.traits?.[k]).filter((v) => v !== void 0);
       const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
@@ -5974,6 +5981,10 @@ var Cradle = class {
       place: home,
       tags: [...tpl.tags || [], ...def.tags || [], "born"]
     };
+    if (genome) {
+      child.talents = { ...genome.talents, ...tpl.talents || {}, ...def.talents || {} };
+      child.instincts = { ...genome.instincts, ...tpl.instincts || {}, ...def.instincts || {} };
+    }
     w.input("person", [id, child]);
     this.st.parents[id] = parents.map((p) => p.id);
     this.st.stage[id] = this.stage(id);
@@ -6437,6 +6448,270 @@ var Athelas = class {
   }
 };
 
+// tyrell/src/modules/delos.ts
+var DEFAULTS = {
+  traits: { founders: [0.1, 0.9], bounds: [0, 1], cross: 0.65, noise: 0.1 },
+  talents: { founders: [0.6, 1.4], bounds: [0.2, 2], cross: 0.7, noise: 0.08 },
+  instincts: { founders: [0.8, 1.25], bounds: [0.5, 1.5], cross: 0, noise: 0.1 },
+  looks: { founders: [0, 1], bounds: [0, 1], cross: 0.65, noise: 0.1 }
+};
+var DEFAULT_DELOS = { jump: { chance: 0.12, by: 0.35 }, gift: { chance: 0.1, by: 0.4 } };
+var Delos = class {
+  constructor(cfg = {}) {
+    this.name = "delos";
+    this.genes = /* @__PURE__ */ new Map();
+    this.blends = { traits: /* @__PURE__ */ new Map(), talents: /* @__PURE__ */ new Map(), instincts: /* @__PURE__ */ new Map(), looks: /* @__PURE__ */ new Map() };
+    this.config = { ...DEFAULT_DELOS, ...cfg };
+  }
+  get st() {
+    return this.w.s.mod.delos;
+  }
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).delos || (_a.delos = { g: {} });
+  }
+  attach(w) {
+    this.w = w;
+    w.lang.term("gene", (c, a) => c.person ? this.express(c.person.id, a) ?? null : null);
+    w.lang.term("carries", (c, a) => {
+      if (!c.person) return false;
+      const i = a.indexOf(".");
+      return i > 0 ? this.carries(c.person.id, a.slice(0, i), a.slice(i + 1)) : false;
+    });
+    w.defineInput("genome", (id, part) => this.applySet(id, part));
+  }
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+  gene(def) {
+    this.genes.set(def.id, def);
+    return this;
+  }
+  /** A personality trait carried in the genome (written to PersonDef.traits). */
+  trait(def) {
+    this.blends.traits.set(def.id, def);
+    return this;
+  }
+  /** A talent for a skill: how fast it's learned (written to PersonDef.talents). */
+  talent(def) {
+    this.blends.talents.set(def.id, def);
+    return this;
+  }
+  /** An inborn taste for an action or task (written to PersonDef.instincts). */
+  instinct(def) {
+    this.blends.instincts.set(def.id, def);
+    return this;
+  }
+  /** A continuous look, like a skin tone (read with looks()). */
+  look(def) {
+    this.blends.looks.set(def.id, def);
+    return this;
+  }
+  /** Is anything declared? Without, Delos does nothing (and Cradle blends traits its own way). */
+  active() {
+    return this.genes.size > 0 || this.blends.traits.size > 0 || this.blends.talents.size > 0 || this.blends.instincts.size > 0 || this.blends.looks.size > 0;
+  }
+  // -------------------------------------------------------------------------
+  // Asking
+  // -------------------------------------------------------------------------
+  /** Someone's genome (a copy), or undefined if they have none. */
+  genome(id) {
+    const g = this.st?.g[id];
+    return g ? JSON.parse(JSON.stringify(g)) : void 0;
+  }
+  /** What a gene shows for someone (undefined without a genome or the gene). */
+  express(id, gene) {
+    const copies = this.st?.g[id]?.genes[gene];
+    const def = this.genes.get(gene);
+    if (!copies || !def) return void 0;
+    if (def.express) return def.express(copies.slice());
+    for (const a of def.alleles) if (copies.includes(a)) return a;
+    return copies[0];
+  }
+  /** Does someone carry an allele (showing or not)? */
+  carries(id, gene, allele) {
+    return !!this.st?.g[id]?.genes[gene]?.includes(allele);
+  }
+  /** Everything someone looks like: each gene as it shows, and the continuous looks. */
+  looks(id) {
+    const g = this.st?.g[id];
+    const out = {};
+    if (!g) return out;
+    for (const gene of [...this.genes.keys()].sort()) {
+      const v = this.express(id, gene);
+      if (v !== void 0) out[gene] = v;
+    }
+    for (const k of [...this.blends.looks.keys()].sort()) if (g.looks[k] !== void 0) out[k] = this.expressed("looks", k, g.looks[k]);
+    return out;
+  }
+  // -------------------------------------------------------------------------
+  // Making genomes
+  // -------------------------------------------------------------------------
+  settings(kind, def) {
+    const d = DEFAULTS[kind];
+    return { founders: def.founders ?? d.founders, bounds: def.bounds ?? d.bounds, cross: def.cross ?? d.cross, noise: def.noise ?? d.noise };
+  }
+  fit(kind, def, v) {
+    const { bounds } = this.settings(kind, def);
+    const x = clamp(v, bounds[0], bounds[1]);
+    return def.round ? Math.round(x) : round(x, 4);
+  }
+  expressed(kind, id, v) {
+    const def = this.blends[kind].get(id);
+    return def?.express ? round(def.express(v), 4) : v;
+  }
+  allele(def, r) {
+    const w = def.weights;
+    return w && w.length === def.alleles.length ? r.weighted(def.alleles, (a) => w[def.alleles.indexOf(a)]) : r.pick(def.alleles);
+  }
+  /** A founder's genome: drawn from the founders' ranges, keeping any value their definition already gives. */
+  founder(p, id) {
+    const r = new Stream(this.w.s.seed, "delos", id);
+    const g = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
+    for (const gid of [...this.genes.keys()].sort()) {
+      const def = this.genes.get(gid);
+      const n = def.copies === 1 ? 1 : 2;
+      g.genes[gid] = Array.from({ length: n }, () => this.allele(def, r));
+    }
+    const given = { traits: p?.def.traits, talents: p?.def.talents, instincts: p?.def.instincts, looks: void 0 };
+    for (const kind of ["traits", "talents", "instincts", "looks"]) {
+      for (const k of [...this.blends[kind].keys()].sort()) {
+        const def = this.blends[kind].get(k);
+        const { founders } = this.settings(kind, def);
+        const drawn = r.range(founders[0], founders[1]);
+        const have = given[kind]?.[k];
+        g[kind][k] = have !== void 0 ? have : this.fit(kind, def, drawn);
+      }
+    }
+    return g;
+  }
+  /** Writes what a genome means (traits, talents, instincts) into the person's definition, keeping what it already says. */
+  writeDef(p, g, overwrite) {
+    const set = (field) => {
+      var _a;
+      const keys = Object.keys(g[field]).sort();
+      if (!keys.length) return;
+      const out = (_a = p.def)[field] || (_a[field] = {});
+      for (const k of keys) if (overwrite || out[k] === void 0) out[k] = this.expressed(field, k, g[field][k]);
+    };
+    set("traits");
+    set("talents");
+    set("instincts");
+  }
+  /** Gives someone a founder's genome if they have none (inside the simulation). Returns it. */
+  applyFounder(id) {
+    const st = this.mut();
+    const have = st.g[id];
+    if (have) return have;
+    const p = this.w.s.people[id];
+    const g = this.founder(p, id);
+    st.g[id] = g;
+    if (p) this.writeDef(p, g, false);
+    return g;
+  }
+  /**
+   * A child's genome from its parents' (inside the simulation; Cradle calls
+   * it for a birth before the child joins). Parents without a genome get a
+   * founder's first. Returns what it means for the child's definition.
+   */
+  applyInherit(parentIds, child) {
+    const w = this.w;
+    const ps = parentIds.filter((id) => w.s.people[id] || this.st?.g[id]).map((id) => this.applyFounder(id));
+    if (!ps.length) {
+      const g2 = this.applyFounder(child);
+      return this.meaning(g2);
+    }
+    const [a, b] = [ps[0], ps[1] ?? ps[0]];
+    const r = new Stream(w.s.seed, "delos", "birth", child);
+    const g = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
+    const mut = [];
+    for (const gid of [...this.genes.keys()].sort()) {
+      const def = this.genes.get(gid);
+      const from = (x) => {
+        const c = x.genes[gid];
+        return c && c.length ? r.pick(c) : this.allele(def, r);
+      };
+      const copies = def.copies === 1 ? [from(r.chance(0.5) ? a : b)] : [from(a), from(b)];
+      if (def.mutate && r.chance(def.mutate)) {
+        const i = r.int(copies.length);
+        const to = this.allele(def, r);
+        if (to !== copies[i]) {
+          copies[i] = to;
+          mut.push({ kind: "gene", id: gid, to });
+        }
+      }
+      g.genes[gid] = copies;
+    }
+    for (const kind of ["traits", "talents", "instincts", "looks"]) {
+      for (const k of [...this.blends[kind].keys()].sort()) {
+        const def = this.blends[kind].get(k);
+        const { founders, cross, noise } = this.settings(kind, def);
+        const va = a[kind][k] ?? r.range(founders[0], founders[1]);
+        const vb = b[kind][k] ?? r.range(founders[0], founders[1]);
+        const one = r.chance(0.5) ? va : vb;
+        g[kind][k] = this.fit(kind, def, one * cross + (va + vb) / 2 * (1 - cross) + r.range(-noise, noise));
+      }
+    }
+    const traits = [...this.blends.traits.keys()].sort();
+    if (traits.length && r.chance(this.config.jump.chance)) {
+      const k = traits[r.int(traits.length)];
+      const by = r.chance(0.5) ? this.config.jump.by : -this.config.jump.by;
+      const before = g.traits[k];
+      g.traits[k] = this.fit("traits", this.blends.traits.get(k), before + by);
+      mut.push({ kind: "trait", id: k, by: round(g.traits[k] - before, 4) });
+    }
+    const talents = [...this.blends.talents.keys()].sort();
+    if (talents.length && r.chance(this.config.gift.chance)) {
+      const k = talents[r.int(talents.length)];
+      const before = g.talents[k];
+      g.talents[k] = this.fit("talents", this.blends.talents.get(k), before + this.config.gift.by);
+      mut.push({ kind: "talent", id: k, by: round(g.talents[k] - before, 4) });
+    }
+    if (mut.length) g.mut = mut;
+    this.mut().g[child] = g;
+    for (const m of mut) {
+      const d = { kind: m.kind, what: m.id, ...m.by !== void 0 ? { by: m.by } : {}, ...m.to !== void 0 ? { to: m.to } : {} };
+      w.log("mutated", child, d);
+      w.emit("mutated", { id: child, ...d });
+    }
+    return this.meaning(g);
+  }
+  /** What a genome means for a definition: its traits, talents and instincts, expressed. */
+  meaning(g) {
+    const out = { traits: {}, talents: {}, instincts: {} };
+    for (const kind of ["traits", "talents", "instincts"]) for (const k of Object.keys(g[kind]).sort()) out[kind][k] = this.expressed(kind, k, g[kind][k]);
+    return out;
+  }
+  /** Sets parts of someone's genome (an imported traveler, a game's own founders): from the game, recorded. */
+  set(id, part) {
+    this.w.input("genome", [id, JSON.parse(JSON.stringify(part))]);
+  }
+  /** Sets parts of a genome inside the simulation, and writes what they mean into the definition. */
+  applySet(id, part) {
+    var _a;
+    const g = this.applyFounder(id);
+    for (const gid in part.genes || {}) g.genes[gid] = part.genes[gid].slice();
+    for (const kind of ["traits", "talents", "instincts", "looks"]) for (const k in part[kind] || {}) g[kind][k] = part[kind][k];
+    const p = this.w.s.people[id];
+    if (!p) return;
+    const m = this.meaning(g);
+    for (const kind of ["traits", "talents", "instincts"]) {
+      const given = part[kind];
+      if (!given) continue;
+      const out = (_a = p.def)[kind] || (_a[kind] = {});
+      for (const k in given) out[k] = m[kind][k] ?? given[k];
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Hooks
+  // -------------------------------------------------------------------------
+  /** A founder gets a genome when they join (a child born through Cradle already has one). */
+  added(p) {
+    if (!this.active() || this.st?.g[p.id]) return;
+    this.applyFounder(p.id);
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
   "nobody-starves": {
@@ -6623,7 +6898,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -6637,7 +6912,8 @@ function create(opts = {}) {
     ceres: () => new Ceres(),
     cradle: () => new Cradle(cfg.cradle),
     joi: () => new Joi(),
-    athelas: () => new Athelas()
+    athelas: () => new Athelas(),
+    delos: () => new Delos(cfg.delos)
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());

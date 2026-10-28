@@ -20,7 +20,7 @@ await kit.close();
 
 | Name | What it does |
 |---|---|
-| `launch({ gl, args, driver })` | A browser: `{ driver, browser, page(viewport), close() }` |
+| `launch({ gl, args, driver })` | A browser: `{ driver, browser, page(viewport), close() }`. Each page is in a context of its own on both drivers, so nothing one page stored (a save written as it closed) reaches the next |
 | `serve(root, routes)` | Serves a folder on a free port (`version.json` answers a local build) |
 | `open(kit, options)` | A fresh page on the game, errors gathered, storage set, ready waited for |
 | `waitFor(page, test, { timeout, every, arg })` | Polls until true, the same under either driver |

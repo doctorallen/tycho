@@ -17,9 +17,10 @@
 // State is made with the first exchange or grudge (world.s.mod.bree), so a
 // world that declares nothing for it is exactly the world it was.
 import type { Module } from '../core/module';
-import type { Consideration, Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
+import type { Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
-import { DAY, HOUR, clamp, round } from '../core/util';
+import { DAY, HOUR, Stream, clamp, round } from '../core/util';
+import { landing } from './landing';
 import type { LandRules } from './landing';
 
 /** The steps an exchange can come out at, best first. */
@@ -412,7 +413,7 @@ export interface Exchange {
   first: Id;
   /** Who's in it: the one who started it first. */
   who: Id[];
-  place: Id;
+  place: Id | null;
   /** When it began; how it began. */
   t: number;
   why: 'meet' | 'action' | 'game';
@@ -467,8 +468,38 @@ export interface Feud { a: Id; b: Id; s: number; t: number; why: string }
 
 /** A finished exchange, kept a while. */
 export interface Finished {
-  id: number; kind: Id; first: Id; who: Id[]; place: Id; t: number; end: number;
-  outcome: Outcome; n: number; why: string; by?: Id; left?: Id; mediator?: Id;
+  id: number; kind: Id; first: Id; who: Id[]; place: Id | null; t: number; end: number;
+  outcome: Outcome; outcomes: Record<Id, Outcome>; n: number; why: string; by?: Id; left?: Id; mediator?: Id;
+}
+
+/** An exchange as the game sees it. */
+export interface ExchangeView {
+  id: number; kind: Id; first: Id; who: Id[]; place: Id | null; t: number; why: string;
+  /** Turns taken so far, and planned. */
+  turn: number; turns: number;
+  /** How it's going: the running outcome and score (null before the first turn). */
+  outcome: Outcome | null; score: number | null;
+  topic: { id: Id; subject?: Value } | null;
+  manners: Record<Id, Id>;
+  by?: Id;
+}
+
+/** One turn, as it's told to the game (event 'bree:turn'). */
+export interface Turn {
+  id: number; kind: Id;
+  /** Which turn this is (1 for the first). */
+  n: number;
+  who: Id; to: Id;
+  /** 'open', 'reply', 'more', 'back' (a topic's steps), 'bye', 'leave', 'calm', 'step_in'. */
+  step: string;
+  topic: Id | null; subject?: Value;
+  manner?: Id;
+  /** How this turn landed, and how the exchange is going now. */
+  landed: Outcome | null; outcome: Outcome | null;
+  /** The line topic for the words: the game's own lines, or Cityspeak's (with its key and text). */
+  line: string; key?: string; text?: string;
+  /** The exchange ends with this turn. */
+  end: boolean;
 }
 
 interface State {
@@ -595,6 +626,12 @@ export class Bree implements Module {
   knob(name: 'warmth' | 'quarrels' | 'escalation' | 'grudges' | 'forgiveness' | 'talk', id: Id | undefined): number {
     return this.c[name] * this.w.own(id === undefined ? undefined : this.w.s.people[id], this.name, name);
   }
+  /** How chatty people are together: the world's talk, times each one's own. */
+  private talkOf(ids: readonly Id[]): number {
+    let k = this.c.talk;
+    for (const id of ids) k *= this.w.own(this.w.s.people[id], this.name, 'talk');
+    return k;
+  }
 
   attach(w: World): void {
     this.w = w;
@@ -620,6 +657,17 @@ export class Bree implements Module {
     // a game's own lines read nothing new until exchanges run; the feelings Bree gives, if Reverie is on
     const rv = w.reverie;
     if (rv) for (const f of BREE_FEELINGS) if (!rv.feelingDefs.has(f.id)) rv.feelingDefs.set(f.id, f);
+    L.term('exchange', (c, a) => { const ex = c.person ? this.exOf(c.person.id) : undefined; return a ? ex?.kind === a : ex?.kind ?? null; });
+    L.term('outcome', (c, a) => {
+      if (!c.person) return a ? false : null;
+      const ex = this.exOf(c.person.id);
+      const o = ex ? (ex.score === null ? null : this.outcome(ex.score)) : c.target ? this.st?.pairs[pairKey(c.person.id, c.target)]?.outcome ?? null : null;
+      return a ? o === a : o;
+    });
+    L.term('turn', (c, a) => { const o = (c.person ? this.exOf(c.person.id)?.last : undefined) ?? null; return a ? o === a : o; });
+    L.effect('exchange', (c, a) => { if (c.person && c.target && this.kinds.has(a) && !this.exOf(c.person.id) && !this.exOf(c.target)) this.begin(a, [c.person.id, c.target], 'game'); });
+    w.defineInput('bree.start', (kind: Id, a: Id, others: Id[], opts: { minutes?: number; turns?: number } | null) => this.applyStart(kind, a, others, opts ?? {}));
+    w.defineInput('bree.end', (which: number | Id) => this.applyEnd(which));
     w.defineInput('bree.grudge', (a: Id, b: Id, by: number, why: string | null) => this.applyGrudge(a, b, by, why ?? 'the game'));
     w.defineInput('bree.feud', (a: Id, b: Id, s: number | null, why: string | null) => this.applyFeud(a, b, s, why ?? 'the game'));
   }
@@ -673,6 +721,9 @@ export class Bree implements Module {
     for (let i = 0; i < s.length && i < OUTCOMES.length - 1; i++) if (score >= s[i]) return OUTCOMES[i];
     return 'row';
   }
+
+  /** Is an outcome bad enough to escalate, send someone off, or be seen (config.escalateAt or worse)? */
+  private bad(o: Outcome): boolean { return OUTCOMES.indexOf(o) >= OUTCOMES.indexOf(this.c.escalateAt as Outcome); }
 
   /** Is outcome x at least as good as y? */
   atLeast(x: Outcome | string, y: Outcome | string): boolean { return OUTCOMES.indexOf(x as Outcome) <= OUTCOMES.indexOf(y as Outcome); }
@@ -777,8 +828,444 @@ export class Bree implements Module {
   }
 
   // -------------------------------------------------------------------------
+  // Exchanges: starting one
+  // -------------------------------------------------------------------------
+
+  /** A stream of Bree's own: its draws leave people's own streams as they were. */
+  private stream(): Stream { const st = this.mut(); return new Stream(this.w.s.seed, 'bree', st.n++); }
+
+  /** Is someone free to talk: about, not walking, not doing something quiet (asleep)? */
+  private free(p: PersonState | undefined): p is PersonState {
+    if (!p || p.status !== 'active' || !p.place || p.doing?.kind === 'travel') return false;
+    const d = p.doing;
+    if (d && d.kind === 'act') {
+      const tags = this.w.actions.get(d.action)?.tags;
+      if (tags && this.c.quiet.some((t) => tags.includes(t))) return false;
+    }
+    return true;
+  }
+
+  /** The exchange someone is in, or undefined. */
+  private exOf(id: Id): Exchange | undefined {
+    const st = this.st;
+    const n = st?.of[id];
+    return n === undefined ? undefined : st?.ex[n];
+  }
+
+  /**
+   * Starts an exchange of a kind (from the game: recorded, and it applies at
+   * once): `a` starts it with `b` (or several, a group). Anyone already in
+   * one leaves it. Returns it as it stands after the first turn, or null.
+   * `minutes`: the time they have (no turn after it); `turns`: how many.
+   */
+  start(kind: Id, a: Id, b: Id | Id[], opts: { minutes?: number; turns?: number } = {}): ExchangeView | null {
+    return (this.w.input('bree.start', [kind, a, Array.isArray(b) ? b : [b], opts]) as ExchangeView | null | undefined) ?? null;
+  }
+
+  /** Ends an exchange now (by its id, or someone in it): someone walked away on screen (recorded). */
+  end(which: number | Id): void { this.w.input('bree.end', [which]); }
+
+  /** Starts an exchange inside the simulation (see start). */
+  applyStart(kind: Id, a: Id, others: Id[], opts: { minutes?: number; turns?: number } = {}): ExchangeView | null {
+    const w = this.w;
+    const who = [a, ...others.filter((o, i) => o !== a && others.indexOf(o) === i)];
+    if (who.length < 2 || !this.kinds.has(kind) || who.some((id) => w.s.people[id]?.status !== 'active')) return null;
+    for (const id of who) { const ex = this.exOf(id); if (ex) this.finish(ex, 'interrupted'); }
+    const ex = this.begin(kind, who, 'game', opts.minutes, opts.turns);
+    return ex ? this.view(ex) : null;
+  }
+
+  /** Ends an exchange inside the simulation. */
+  applyEnd(which: number | Id): void {
+    const ex = typeof which === 'number' ? this.st?.ex[which] : this.exOf(which);
+    if (ex) this.finish(ex, 'ended', typeof which === 'string' ? which : undefined);
+  }
+
+  /** Begins an exchange: the turns it'll run to, the first turn now, the next on the clock. */
+  private begin(kind: Id, who: Id[], why: Exchange['why'], minutes?: number, turns?: number): Exchange | null {
+    const w = this.w;
+    const def = this.kinds.get(kind);
+    const p = w.s.people[who[0]];
+    if (!def || !p) return null;
+    const st = this.mut();
+    const r = this.stream();
+    const ex: Exchange = {
+      id: ++st.ids, kind, first: kind, who: who.slice(), place: p.place ?? p.doing?.to ?? null, t: w.s.now, why,
+      n: 0, turns: 1, score: null, heard: {}, sour: 0, manners: {}, topics: [], said: [], next: w.s.now,
+    };
+    if (minutes !== undefined && isFinite(minutes)) ex.until = round(w.s.now + Math.max(0, minutes), 4);
+    if (def.tags?.includes('hostile')) ex.by = who[0];
+    ex.turns = turns !== undefined ? Math.max(1, Math.round(turns)) : this.plan(def, who, r, minutes);
+    st.ex[ex.id] = ex;
+    for (const id of who) st.of[id] = ex.id;
+    w.log('exchange', who[0], { id: ex.id, kind, with: who.slice(1), why });
+    w.emit('bree:start', this.view(ex));
+    this.turn(ex);
+    return ex;
+  }
+
+  /** The turns an exchange runs to: its own, or by how they stand, how talkative and how low they are; times talk; within the time they have. */
+  private plan(def: KindDef, who: Id[], r: Stream, minutes?: number): number {
+    const w = this.w, c = this.c;
+    const [a, b] = who;
+    const pa = w.s.people[a], pb = w.s.people[b];
+    let n: number;
+    if (typeof def.turns === 'number') n = def.turns;
+    else if (Array.isArray(def.turns)) n = def.turns[0] + r.int(Math.max(0, def.turns[1] - def.turns[0]) + 1);
+    else if (def.topics?.length) {
+      n = c.turns[this.bond(a, b)] ?? c.turns.stranger ?? c.minTurns;
+      const talk = (pa ? this.nature(pa, 'talkative') : 0.5) + (pb ? this.nature(pb, 'talkative') : 0.5) - 1;
+      n += Math.round(talk * c.talkativeTurns);
+      const rv = w.reverie;
+      if (rv && (rv.mood(a) < c.lowMood || rv.mood(b) < c.lowMood)) n -= c.lowMoodTurns;
+      const j = Math.max(0, Math.round(c.turnsJitter));
+      if (j) n += r.int(2 * j + 1) - j;
+      n = clamp(n, c.minTurns, c.maxTurns);
+      if (def.group) n += Math.max(0, who.length - 2) * c.groupTurns;
+    } else n = c.quickTurns;
+    // the headline knob: chattier people talk for longer (the world's, times each one's own)
+    const k = this.talkOf(who);
+    if (k !== 1) n = Math.round(n * k);
+    n = Math.max(1, Math.round(n));
+    if (minutes !== undefined && isFinite(minutes)) {
+      const gap = (c.turnGap[0] + (c.turnGap[1] ?? c.turnGap[0])) / 2;
+      n = Math.min(n, Math.max(1, Math.floor(minutes / Math.max(0.5, gap)) + 1));
+    }
+    return n;
+  }
+
+  /** The kinds the starter might strike up with someone, each with its weight. */
+  private choices(s: PersonState, o: PersonState): Array<{ def: KindDef; weight: number }> {
+    const w = this.w, c = this.c;
+    const ctx = w.ctx(s, { target: o.id, place: s.place });
+    const out: Array<{ def: KindDef; weight: number }> = [];
+    w.peek(() => {
+      for (const def of this.kinds.values()) {
+        if (def.weight === 0) continue;
+        if (!w.lang.all(def.who, ctx) || !w.lang.all(def.to, ctx) || !w.lang.all(def.if, ctx)) continue;
+        if (def.gives && !(w.have(s, def.gives) > 0)) continue;
+        if (def.teaches && !this.lesson(s, o)) continue;
+        let weight = 1;
+        if (typeof def.weight === 'number') weight = def.weight;
+        else if (typeof def.weight === 'function') weight = Number(def.weight(ctx)) || 0;
+        else if (def.weight) for (const k of def.weight) weight *= w.mind.consider(k, ctx);
+        // a pressing need it meets makes it more appealing (the lonely strike up a chat)
+        if (def.relieves) {
+          let pull = 0;
+          for (const need in def.relieves) if (w.needs.has(need)) pull += def.relieves[need] * w.mind.urgency(s, need);
+          weight *= 1 + pull * c.needPull;
+        }
+        // the headline knob: how readily people pick a quarrel
+        if (def.tags?.includes('hostile')) weight *= this.knob('quarrels', s.id);
+        if (weight > 0) out.push({ def, weight: round(weight, 6) });
+      }
+    });
+    return out;
+  }
+
+  /** The skill a teacher could teach someone: their best, well enough over the other's. */
+  private lesson(t: PersonState, o: PersonState): Id | null {
+    const w = this.w;
+    let best: Id | null = null, gap = this.c.teachOver;
+    for (const skill of Object.keys(w.skills.of(t))) {
+      const g = w.skills.level(t, skill) - w.skills.level(o, skill);
+      if (g >= gap) { gap = g; best = skill; }
+    }
+    return best;
+  }
+
+  // -------------------------------------------------------------------------
+  // Exchanges: how a turn lands
+  // -------------------------------------------------------------------------
+
+  /**
+   * How words of a kind from the speaker land with the listener now: the
+   * score from the listener's side with its parts, and where it falls,
+   * before the luck of the turn. A look: it changes nothing.
+   */
+  weigh(kind: Id, speaker: Id, listener: Id, opts: { topic?: Id; subject?: Value; manner?: Id; place?: Id } = {}): { score: number; outcome: Outcome; parts: Array<[string, number]> } | null {
+    const def = this.kinds.get(kind);
+    const s = this.w.s.people[speaker], l = this.w.s.people[listener];
+    if (!def || !s || !l) return null;
+    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner));
+    const score = round(parts.reduce((a, [, v]) => a + v, 0), 4);
+    return { score, outcome: this.outcome(score), parts };
+  }
+
+  /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
+  private parts(def: KindDef, s: PersonState, l: PersonState, place: Id | null | undefined, _topic?: Id, _subject?: Value, _manner?: Id): Array<[string, number]> {
+    const w = this.w, c = this.c, L = w.lang;
+    const out: Array<[string, number]> = [];
+    const add = (name: string, v: number) => { if (v && isFinite(v)) out.push([name, round(v, 4)]); };
+    const lctx = w.ctx(l, { target: s.id, place: place ?? null });
+    const sctx = w.ctx(s, { target: l.id, place: place ?? null });
+    add('base', def.base ?? 0);
+    if (def.lands) add('lands', landing(L, 0, def.lands, lctx));
+    const ap = def.approach ? w.voice?.approaches.get(def.approach) : undefined;
+    if (ap) add('approach', landing(L, ap.base ?? 0, ap.lands, lctx));
+    if (def.knack) add('knack', landing(L, 0, def.knack, sctx));
+    let nat = 0, skill = 0;
+    for (const role in def.traits || {}) nat += (def.traits as Record<string, number>)[role] * (this.nature(l, role) - 0.5) * 2;
+    for (const role in def.skill || {}) skill += (def.skill as Record<string, number>)[role] * (this.nature(s, role) - 0.5) * 2;
+    add('nature', nat);
+    add('skill', skill);
+    const fs = w.fellowship, rv = w.reverie;
+    if (fs) {
+      add('regard', c.regardWeight * fs.regard(l.id, s.id));
+      add('compat', c.compatWeight * fs.compat(l.id, s.id));
+      if (def.tags?.includes('romantic')) add('attraction', c.attractWeight * fs.attraction(l.id, s.id));
+    }
+    if (rv) {
+      add('mood', c.moodWeight * (rv.mood(l.id) - 0.5) * 2);
+      add('stress', -c.stressWeight * rv.stress(l.id));
+    }
+    if (def.relieves) {
+      let need = 0;
+      for (const n in def.relieves) if (w.needs.has(n)) need += def.relieves[n] * w.mind.urgency(l, n);
+      add('need', c.needWeight * need);
+    }
+    add('grudge', -c.grudgeWeight * this.animosity(l.id, s.id));
+    const row = this.st?.pairs[pairKey(l.id, s.id)]?.row;
+    if (row !== undefined) add('row', -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
+    const cs = w.cityspeak;
+    if (cs && place) add('room', c.roomWeight * (cs.room(place) - 0.5) * 2);
+    return out;
+  }
+
+  /** The luck of a turn: two draws, so mostly near nothing. */
+  private luck(r: Stream): number { return (r.next() + r.next() - 1) * this.c.spread; }
+
+  // -------------------------------------------------------------------------
+  // Exchanges: turns
+  // -------------------------------------------------------------------------
+
+  /** Are they all still together and awake, where it began? */
+  private together(ex: Exchange): Id | null {
+    const w = this.w;
+    const root = ex.place ? w.ring.root(ex.place) : null;
+    for (const id of ex.who) {
+      const p = w.s.people[id];
+      if (!this.free(p)) return id;
+      if (root && w.ring.root(p.place as Id) !== root) return id;
+    }
+    return null;
+  }
+
+  /** Who speaks to whom next, and the step. */
+  private nextStep(ex: Exchange): { who: Id; to: Id; step: string } {
+    const steps = ['open', 'reply', 'more', 'back'];
+    const [a, b] = ex.who;
+    const who = ex.n % 2 === 0 ? a : b;
+    return { who, to: who === a ? b : a, step: steps[ex.n % steps.length] };
+  }
+
+  /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
+  private turn(ex: Exchange): void {
+    const w = this.w, c = this.c;
+    const def = this.kinds.get(ex.kind);
+    if (!def) { this.finish(ex, 'ended'); return; }
+    const gone = this.together(ex);
+    if (gone !== null) { this.finish(ex, 'parted', gone); return; }
+    if (ex.until !== undefined && w.s.now > ex.until + 1e-6) { this.finish(ex, 'parted'); return; }
+    const r = this.stream();
+    const { who, to, step } = this.nextStep(ex);
+    const s = w.s.people[who], l = w.s.people[to];
+    const parts = this.parts(def, s, l, ex.place);
+    const score = round(parts.reduce((acc, [, v]) => acc + v, 0) + this.luck(r), 4);
+    const landed = this.outcome(score);
+    ex.heard[to] = ex.heard[to] === undefined ? score : round(ex.heard[to] + (score - ex.heard[to]) * c.sway, 4);
+    ex.score = ex.score === null ? score : round(ex.score + (score - ex.score) * c.sway, 4);
+    ex.last = landed;
+    if (this.bad(landed)) ex.sour++;
+    ex.n++;
+    const last = ex.n >= ex.turns;
+    this.tell(ex, { who, to, step, landed, end: last });
+    if (last) { this.finish(ex, 'done'); return; }
+    this.schedule(ex, r);
+  }
+
+  /** Puts the next turn on the clock. */
+  private schedule(ex: Exchange, r: Stream): void {
+    const [lo, hi] = this.c.turnGap;
+    ex.next = round(this.w.s.now + Math.max(0.5, r.range(lo, hi ?? lo)), 4);
+    this.w.clock.schedule({ t: ex.next, k: 'module', ref: this.name, data: { ex: ex.id, n: ex.n } });
+  }
+
+  /** Tells the game about a turn. */
+  private tell(ex: Exchange, t: { who: Id; to: Id; step: string; landed: Outcome | null; end: boolean }): void {
+    const line = `${this.kinds.get(ex.kind)?.line ?? ex.kind}.${t.step}`;
+    const turn: Turn = {
+      id: ex.id, kind: ex.kind, n: ex.n, who: t.who, to: t.to, step: t.step, topic: null,
+      landed: t.landed, outcome: ex.score === null ? null : this.outcome(ex.score), line, end: t.end,
+    };
+    this.w.emit('bree:turn', turn);
+  }
+
+  /** The exchange as the game sees it. */
+  private view(ex: Exchange): ExchangeView {
+    const v: ExchangeView = {
+      id: ex.id, kind: ex.kind, first: ex.first, who: ex.who.slice(), place: ex.place, t: ex.t, why: ex.why,
+      turn: ex.n, turns: ex.turns, outcome: ex.score === null ? null : this.outcome(ex.score), score: ex.score,
+      topic: ex.topic ? { id: ex.topic.id, ...(ex.topic.subject !== undefined ? { subject: ex.topic.subject } : {}) } : null,
+      manners: { ...ex.manners },
+    };
+    if (ex.by) v.by = ex.by;
+    return v;
+  }
+
+  /** The exchange someone's in (by its id, or someone in it), as the game sees it, or null. */
+  exchange(which: number | Id): ExchangeView | null {
+    const ex = typeof which === 'number' ? this.st?.ex[which] : this.exOf(which);
+    return ex ? this.view(ex) : null;
+  }
+
+  /** Every exchange in progress. */
+  exchanges(): ExchangeView[] { const st = this.st; return st ? Object.keys(st.ex).map((k) => this.view(st.ex[k])) : []; }
+
+  /** Finished exchanges (the last config.recent), newest last; those of a pair, with both given. */
+  history(a?: Id, b?: Id): Finished[] {
+    return (this.st?.recent || []).filter((f) => (!a || f.who.includes(a)) && (!b || f.who.includes(b))).map((f) => ({ ...f, who: f.who.slice(), outcomes: { ...f.outcomes } }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Exchanges: the end, and what it leaves
+  // -------------------------------------------------------------------------
+
+  /** Ends an exchange: what each outcome does, for each of them. */
+  private finish(ex: Exchange, why: string, left?: Id): void {
+    const w = this.w, c = this.c, st = this.mut();
+    delete st.ex[ex.id];
+    for (const id of ex.who) if (st.of[id] === ex.id) delete st.of[id];
+    const def = this.kinds.get(ex.kind);
+    const outcome = this.outcome(ex.score ?? 0);
+    const outcomes: Record<Id, Outcome> = {};
+    for (const id of ex.who) outcomes[id] = ex.heard[id] === undefined ? outcome : this.outcome(ex.heard[id]);
+    if (def && ex.n > 0) this.leave(ex, def, outcomes, why === 'left' ? left : undefined);
+    // how the two who began it have got on
+    const [a, b] = ex.who;
+    const pk = pairKey(a, b);
+    const pair = (st.pairs[pk] ||= { n: 0, last: w.s.now });
+    pair.n++;
+    pair.last = w.s.now;
+    pair.outcome = outcome;
+    if (!this.atLeast(outcome, 'awkward')) { pair.row = w.s.now; if (ex.by) pair.by = ex.by; else delete pair.by; }
+    const done: Finished = { id: ex.id, kind: ex.kind, first: ex.first, who: ex.who.slice(), place: ex.place, t: ex.t, end: w.s.now, outcome, outcomes, n: ex.n, why };
+    if (ex.by) done.by = ex.by;
+    if (left) done.left = left;
+    if (ex.mediator) done.mediator = ex.mediator;
+    st.recent.push(done);
+    while (st.recent.length > Math.max(0, c.recent)) st.recent.shift();
+    w.log('exchanged', a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
+    w.emit('bree:end', { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
+  }
+
+  /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */
+  private leave(ex: Exchange, def: KindDef, outcomes: Record<Id, Outcome>, left?: Id): void {
+    const w = this.w, c = this.c, fs = w.fellowship, rv = w.reverie;
+    const who = ex.who, starter = who[0];
+    const group = who.length > 2;
+    const share = group ? c.groupShare : 1;
+    const romantic = !!def.tags?.includes('romantic');
+    const frac = clamp(ex.n / Math.max(1, ex.turns));
+    const long = ex.n >= c.longTurns;
+    for (const x of who) {
+      const p = w.s.people[x];
+      if (!p) continue;
+      const o = outcomes[x];
+      // the one they talked with (the starter's: the first other; the others': the starter)
+      const y = x === starter ? who[1] : starter;
+      if (fs) for (const z of who) {
+        if (z === x || (!group && z !== y)) continue;
+        let d = (c.regard[o] ?? 0) * (def.regard ?? 1) * share;
+        // the headline knobs, for whoever's regard it is: good ones warm, bad ones sour
+        d *= d > 0 ? this.knob('warmth', x) : this.knob('quarrels', x);
+        if (d) fs.applyRegard(x, z, round(d, 4));
+        if (romantic && z === y) {
+          let a = (c.attraction[o] ?? 0) * (def.attraction ?? 1);
+          a *= a > 0 ? this.knob('warmth', x) : this.knob('quarrels', x);
+          if (a) fs.applyAttraction(x, z, round(a, 4));
+        }
+      }
+      const does: OutcomeDo[] = [];
+      const own = def.on?.[o];
+      does.push({ feel: own && 'feel' in own ? own.feel : c.feel[o] ?? null, memory: own?.memory ?? c.memory[o] ?? 0, sentiment: own?.sentiment, then: own?.then });
+      if (long && this.atLeast(o, 'fine')) {
+        const lg = def.on?.long;
+        does.push({ feel: lg && 'feel' in lg ? lg.feel : c.feel.long ?? null, memory: lg?.memory ?? c.memory.long ?? 0, sentiment: lg?.sentiment, then: lg?.then });
+      }
+      if (left === x) {
+        const lf = def.on?.left;
+        does.push({ feel: lf && 'feel' in lf ? lf.feel : c.feel.left ?? null, memory: lf?.memory ?? c.memory.left ?? 0, sentiment: lf?.sentiment, then: lf?.then });
+        if (fs && c.leftRegard) fs.applyRegard(x, y, round(c.leftRegard * (c.leftRegard > 0 ? this.knob('warmth', x) : this.knob('quarrels', x)), 4));
+      }
+      if (def.on?.end) does.push(def.on.end);
+      const ctx = w.ctx(p, { target: y, place: ex.place });
+      for (const d of does) {
+        const f = Array.isArray(d.feel) ? d.feel[x === starter ? 0 : 1] : d.feel;
+        if (f && rv) rv.applyFeel(x, f, y);
+        if (rv && (d.memory ?? 0) >= 1) rv.applyRemember(x, { k: `${ex.kind}:${o}`, about: group ? undefined : y, place: ex.place ?? undefined, imp: d.memory, text: `${def.label ?? ex.kind} with ${w.s.people[y]?.name ?? y}` });
+        if (d.sentiment && fs && (x !== starter || d.sentiment.both)) fs.applySentiment(x, y, d.sentiment.label, d.sentiment.by ?? c.regard[o] ?? 0, d.sentiment.minutes);
+        if (d.then) w.lang.applyAll(d.then, ctx);
+      }
+      // the needs it meets, by how much of it they had
+      if (def.relieves) for (const need in def.relieves) {
+        if (!w.needs.has(need)) continue;
+        w.mind.setLevel(p, need, w.mind.level(p, need) - def.relieves[need] * frac);
+      }
+    }
+    // what the kind does when it goes well for the other: a deed, a gift, a favor owed, a lesson
+    const other = w.s.people[who[1]];
+    const s = w.s.people[starter];
+    if (s && other && this.atLeast(outcomes[who[1]], 'fine')) {
+      if (def.deed) {
+        const data: Record<string, Value> = { for: other.id };
+        if (ex.place) data.place = ex.place;
+        w.log('did', starter, { verb: def.deed, for: other.id });
+        for (const m of w.hooks) m.did?.(starter, def.deed, data);
+      }
+      if (def.gives && w.have(s, def.gives) > 0) { w.takeItem(s, def.gives, 1); other.inv[def.gives] = (other.inv[def.gives] || 0) + 1; }
+      if (def.owes && w.wormtongue) w.wormtongue.applyOwe(starter, other.id, def.owes);
+      if (def.teaches) { const skill = this.lesson(s, other); if (skill) w.skills.applyTrain(other, skill, def.teaches * frac); }
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Hooks
   // -------------------------------------------------------------------------
+
+  /** Two people spend time together: now and then one strikes up an exchange. */
+  met(a: PersonState, b: PersonState, _place: Id, minutes: number): void {
+    if (!this.kinds.size) return;
+    const c = this.c;
+    // the headline knob: how readily people strike one up (the world's, times both people's own)
+    const k = c.strike * this.talkOf([a.id, b.id]);
+    if (!(k > 0) || this.exOf(a.id) || this.exOf(b.id) || !this.free(a) || !this.free(b)) return;
+    const r = this.stream();
+    if (!r.chance(k)) return;
+    // the chattier is likelier to start
+    const ta = this.nature(a, 'talkative'), tb = this.nature(b, 'talkative');
+    const [s, o] = r.chance((0.5 + ta) / Math.max(1e-6, 1 + ta + tb)) ? [a, b] : [b, a];
+    const pick = r.weighted(this.choices(s, o), (x) => x.weight);
+    if (pick) this.begin(pick.def.id, [s.id, o.id], 'meet', minutes);
+  }
+
+  /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+  started(p: PersonState, d: Doing): void {
+    if (d.kind !== 'act' || !d.target) return;
+    const kind = this.w.actions.get(d.action)?.interact;
+    if (!kind || !this.kinds.has(kind) || this.exOf(p.id) || this.exOf(d.target)) return;
+    const o = this.w.s.people[d.target];
+    if (!this.free(o) || !p.place || this.w.ring.root(o.place as Id) !== this.w.ring.root(p.place)) return;
+    this.begin(kind, [p.id, o.id], 'action', d.end - this.w.s.now);
+  }
+
+  /** The next turn of an exchange comes due. */
+  timer(item: QueueItem): void {
+    const id = Number(item.data?.ex);
+    const ex = this.st?.ex[id];
+    if (!ex || ex.n !== Number(item.data?.n)) return;
+    this.turn(ex);
+  }
 
   day(): void {
     const st = this.st;
@@ -794,6 +1281,8 @@ export class Bree implements Module {
   removed(p: PersonState): void {
     const st = this.st;
     if (!st) return;
+    const ex = this.exOf(p.id);
+    if (ex) this.finish(ex, 'gone', p.id);
     delete st.g[p.id];
     for (const a of Object.keys(st.g)) { delete st.g[a][p.id]; if (!Object.keys(st.g[a]).length) delete st.g[a]; }
     for (const k of Object.keys(st.feuds)) if (st.feuds[k].a === p.id || st.feuds[k].b === p.id) delete st.feuds[k];

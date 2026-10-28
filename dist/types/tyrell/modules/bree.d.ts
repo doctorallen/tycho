@@ -1,5 +1,5 @@
 import type { Module } from '../core/module';
-import type { Consideration, Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
+import type { Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY } from '../core/util';
 import type { LandRules } from './landing';
@@ -320,7 +320,7 @@ export interface Exchange {
     first: Id;
     /** Who's in it: the one who started it first. */
     who: Id[];
-    place: Id;
+    place: Id | null;
     /** When it began; how it began. */
     t: number;
     why: 'meet' | 'action' | 'game';
@@ -375,15 +375,61 @@ export interface Finished {
     kind: Id;
     first: Id;
     who: Id[];
-    place: Id;
+    place: Id | null;
     t: number;
     end: number;
     outcome: Outcome;
+    outcomes: Record<Id, Outcome>;
     n: number;
     why: string;
     by?: Id;
     left?: Id;
     mediator?: Id;
+}
+/** An exchange as the game sees it. */
+export interface ExchangeView {
+    id: number;
+    kind: Id;
+    first: Id;
+    who: Id[];
+    place: Id | null;
+    t: number;
+    why: string;
+    /** Turns taken so far, and planned. */
+    turn: number;
+    turns: number;
+    /** How it's going: the running outcome and score (null before the first turn). */
+    outcome: Outcome | null;
+    score: number | null;
+    topic: {
+        id: Id;
+        subject?: Value;
+    } | null;
+    manners: Record<Id, Id>;
+    by?: Id;
+}
+/** One turn, as it's told to the game (event 'bree:turn'). */
+export interface Turn {
+    id: number;
+    kind: Id;
+    /** Which turn this is (1 for the first). */
+    n: number;
+    who: Id;
+    to: Id;
+    /** 'open', 'reply', 'more', 'back' (a topic's steps), 'bye', 'leave', 'calm', 'step_in'. */
+    step: string;
+    topic: Id | null;
+    subject?: Value;
+    manner?: Id;
+    /** How this turn landed, and how the exchange is going now. */
+    landed: Outcome | null;
+    outcome: Outcome | null;
+    /** The line topic for the words: the game's own lines, or Cityspeak's (with its key and text). */
+    line: string;
+    key?: string;
+    text?: string;
+    /** The exchange ends with this turn. */
+    end: boolean;
 }
 export interface StarterOptions {
     /** Only these kinds (ids); default all. */
@@ -430,6 +476,8 @@ export declare class Bree implements Module {
     private get c();
     /** A headline knob for someone: the world's, times their own. */
     knob(name: 'warmth' | 'quarrels' | 'escalation' | 'grudges' | 'forgiveness' | 'talk', id: Id | undefined): number;
+    /** How chatty people are together: the world's talk, times each one's own. */
+    private talkOf;
     attach(w: World): void;
     kind(def: KindDef): this;
     topic(def: TopicDef): this;
@@ -442,6 +490,8 @@ export declare class Bree implements Module {
     bond(a: Id, b: Id): string;
     /** Where a score falls on the scale. */
     outcome(score: number): Outcome;
+    /** Is an outcome bad enough to escalate, send someone off, or be seen (config.escalateAt or worse)? */
+    private bad;
     /** Is outcome x at least as good as y? */
     atLeast(x: Outcome | string, y: Outcome | string): boolean;
     /** How readily someone forgives: their knob times their nature. */
@@ -478,6 +528,86 @@ export declare class Bree implements Module {
     feud(a: Id, b: Id, strength: number | null, why?: string): void;
     /** Sets a feud inside the simulation. */
     applyFeud(a: Id, b: Id, s: number | null, why: string): void;
+    /** A stream of Bree's own: its draws leave people's own streams as they were. */
+    private stream;
+    /** Is someone free to talk: about, not walking, not doing something quiet (asleep)? */
+    private free;
+    /** The exchange someone is in, or undefined. */
+    private exOf;
+    /**
+     * Starts an exchange of a kind (from the game: recorded, and it applies at
+     * once): `a` starts it with `b` (or several, a group). Anyone already in
+     * one leaves it. Returns it as it stands after the first turn, or null.
+     * `minutes`: the time they have (no turn after it); `turns`: how many.
+     */
+    start(kind: Id, a: Id, b: Id | Id[], opts?: {
+        minutes?: number;
+        turns?: number;
+    }): ExchangeView | null;
+    /** Ends an exchange now (by its id, or someone in it): someone walked away on screen (recorded). */
+    end(which: number | Id): void;
+    /** Starts an exchange inside the simulation (see start). */
+    applyStart(kind: Id, a: Id, others: Id[], opts?: {
+        minutes?: number;
+        turns?: number;
+    }): ExchangeView | null;
+    /** Ends an exchange inside the simulation. */
+    applyEnd(which: number | Id): void;
+    /** Begins an exchange: the turns it'll run to, the first turn now, the next on the clock. */
+    private begin;
+    /** The turns an exchange runs to: its own, or by how they stand, how talkative and how low they are; times talk; within the time they have. */
+    private plan;
+    /** The kinds the starter might strike up with someone, each with its weight. */
+    private choices;
+    /** The skill a teacher could teach someone: their best, well enough over the other's. */
+    private lesson;
+    /**
+     * How words of a kind from the speaker land with the listener now: the
+     * score from the listener's side with its parts, and where it falls,
+     * before the luck of the turn. A look: it changes nothing.
+     */
+    weigh(kind: Id, speaker: Id, listener: Id, opts?: {
+        topic?: Id;
+        subject?: Value;
+        manner?: Id;
+        place?: Id;
+    }): {
+        score: number;
+        outcome: Outcome;
+        parts: Array<[string, number]>;
+    } | null;
+    /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
+    private parts;
+    /** The luck of a turn: two draws, so mostly near nothing. */
+    private luck;
+    /** Are they all still together and awake, where it began? */
+    private together;
+    /** Who speaks to whom next, and the step. */
+    private nextStep;
+    /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
+    private turn;
+    /** Puts the next turn on the clock. */
+    private schedule;
+    /** Tells the game about a turn. */
+    private tell;
+    /** The exchange as the game sees it. */
+    private view;
+    /** The exchange someone's in (by its id, or someone in it), as the game sees it, or null. */
+    exchange(which: number | Id): ExchangeView | null;
+    /** Every exchange in progress. */
+    exchanges(): ExchangeView[];
+    /** Finished exchanges (the last config.recent), newest last; those of a pair, with both given. */
+    history(a?: Id, b?: Id): Finished[];
+    /** Ends an exchange: what each outcome does, for each of them. */
+    private finish;
+    /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */
+    private leave;
+    /** Two people spend time together: now and then one strikes up an exchange. */
+    met(a: PersonState, b: PersonState, _place: Id, minutes: number): void;
+    /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+    started(p: PersonState, d: Doing): void;
+    /** The next turn of an exchange comes due. */
+    timer(item: QueueItem): void;
     day(): void;
     removed(p: PersonState): void;
 }

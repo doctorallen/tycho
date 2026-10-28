@@ -14,6 +14,9 @@ import * as loop from './core/loop';
 import * as gpu from './pixels/gpu';
 import * as light from './pixels/light';
 import * as post from './pixels/post';
+import * as sprite from './pixels/sprite';
+import * as paint from './pixels/paint';
+import * as fx from './pixels/fx';
 import * as grid from './world/grid';
 import * as collide from './world/collide';
 import * as move from './world/move';
@@ -31,4 +34,4 @@ declare const __VERSION__: string;
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export const VERSION: string = __VERSION__;
 
-export { seed, math, color, loop, gpu, light, post, grid, collide, move, path, input, items, guide, save, pwa, dev, loader };
+export { seed, math, color, loop, gpu, light, post, sprite, paint, fx, grid, collide, move, path, input, items, guide, save, pwa, dev, loader };

@@ -414,7 +414,7 @@ var PLAIN_FS = `#version 300 es
 precision highp float; uniform sampler2D uScene; out vec4 o;
 void main() { o = vec4(texelFetch(uScene, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); }`;
 var Gpu = class _Gpu {
-  constructor(canvas, o = {}) {
+  constructor(canvas2, o = {}) {
     this.on = false;
     this.w = 0;
     this.h = 0;
@@ -471,12 +471,12 @@ var Gpu = class _Gpu {
     this.passes = [];
     this.bloomSpec = [];
     this.plainP = null;
-    this.canvas = canvas;
+    this.canvas = canvas2;
     this.o = Object.assign({ atlas: 2048, pages: 2, maxPages: 6, keep: 600, ring: 24, occlude: false }, o);
   }
-  static create(canvas, o = {}) {
+  static create(canvas2, o = {}) {
     if (typeof location !== "undefined" && /[?&]nogpu\b/.test(location.search)) return null;
-    const g = new _Gpu(canvas, o);
+    const g = new _Gpu(canvas2, o);
     return g.init() ? g : null;
   }
   err(e) {
@@ -1772,6 +1772,882 @@ var Blur = class {
     G.overlay();
   }
 };
+
+// src/pixels/sprite.ts
+var sprite_exports = {};
+__export(sprite_exports, {
+  Shapes: () => Shapes,
+  canvas: () => canvas,
+  disc: () => disc,
+  ellipse: () => ellipse,
+  enlarged: () => enlarged,
+  flipSprite: () => flipSprite,
+  flipped: () => flipped,
+  outline: () => outline,
+  scale15Rows: () => scale15Rows,
+  scale2xRows: () => scale2xRows,
+  scale3xRows: () => scale3xRows,
+  scaleRows: () => scaleRows,
+  spriteFrom: () => spriteFrom,
+  tinted: () => tinted
+});
+
+// src/pixels/shapes.ts
+var toRgb = (c) => typeof c === "string" ? rgb(c) : c;
+var N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+var _Shapes = class _Shapes {
+  constructor(w, h, seed = 1, look) {
+    this.w = w;
+    this.h = h;
+    this.c = new Array(w * h).fill(null);
+    this.g = new Uint8Array(w * h);
+    this.p = new Uint8Array(w * h);
+    this.seed = seed;
+    this.n = 0;
+    this.ax = w / 2;
+    this.ay = h;
+    this.flat = true;
+    this.line = true;
+    this.pid = 0;
+    this.soft = /* @__PURE__ */ new Set();
+    this.look = look ? Object.assign({}, _Shapes.LOOK, look) : _Shapes.LOOK;
+  }
+  /** A flat figure, outlined (the default). */
+  static figure(w, h, seed, look) {
+    const S = new this(w, h, seed, look);
+    S.flat = S.line = true;
+    return S;
+  }
+  /** Soft runs of close tones, no outline. */
+  static soft(w, h, seed, look) {
+    const S = new this(w, h, seed, look);
+    S.flat = S.line = false;
+    return S;
+  }
+  /** The next shapes are a new part, drawn over what came before; a part
+   * that doesn't cast (hair on a face) leaves no shadow line on what's under it. */
+  part(cast = true) {
+    this.pid = Math.min(255, this.pid + 1);
+    if (!cast) this.soft.add(this.pid);
+  }
+  /** The sprite's own seeded stream (soft runs). */
+  rnd() {
+    return hash(this.n++, 17, this.seed);
+  }
+  /** A tone from a shading value, flat: shadow, base or light. */
+  band(s, lo, hi) {
+    return lo + Math.round((hi - lo) * (s < 0.32 ? 0.18 : s < 0.7 ? 0.5 : 0.82));
+  }
+  /** One pixel (rounded; off the sprite, or no color, it's nothing). */
+  px(x, y, col, glow) {
+    x = Math.round(x);
+    y = Math.round(y);
+    if (!col || x < 0 || y < 0 || x >= this.w || y >= this.h) return;
+    const i = y * this.w + x;
+    this.c[i] = toRgb(col);
+    this.g[i] = glow ? 1 : 0;
+    this.p[i] = this.pid;
+  }
+  get(x, y) {
+    return x < 0 || y < 0 || x >= this.w || y >= this.h ? null : this.c[y * this.w + x];
+  }
+  /** A rounded volume: its tone from how it faces the upper left. */
+  ell(cx, cy, rx, ry, ramp, o = {}) {
+    const R = ramp.map(toRgb), lo = o.lo || 0, hi = o.hi === void 0 ? R.length - 1 : o.hi;
+    for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
+      let run = 0, rt = 0;
+      for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+        const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - cy) / ry, d = u * u + v * v;
+        if (d > 1 || o.mask && !o.mask(x, y)) continue;
+        const nz = Math.sqrt(Math.max(0, 1 - d)), s = (u * -0.55 + v * -0.8) * 0.8 + nz * 0.5 - 0.15 + (o.bias || 0);
+        if (this.flat) {
+          this.px(x, y, R[this.band(s, lo, hi)], o.glow);
+          continue;
+        }
+        if (run <= 0) {
+          rt = (this.rnd() + this.rnd() - 1) * 0.42;
+          run = 2 + (this.rnd() * 3 | 0);
+        }
+        run--;
+        this.px(x, y, R[clamp(Math.round(lo + (hi - lo) * clamp(s, 0, 1) + rt), lo, hi)], o.glow);
+      }
+    }
+  }
+  /** A box: flat, a panel lit along its top and left; soft, a rounded volume filled out to its corners. */
+  box(x0, y0, x1, y1, ramp, o = {}) {
+    if (this.flat) {
+      const R2 = ramp.map(toRgb), lo = o.lo || 0, hi = o.hi === void 0 ? R2.length - 1 : o.hi;
+      for (let y = Math.round(y0); y <= Math.round(y1); y++) for (let x = Math.round(x0); x <= Math.round(x1); x++) {
+        const s = y === Math.round(y0) || x === Math.round(x0) && y1 - y0 > 1 ? 0.9 : y === Math.round(y1) || x === Math.round(x1) && y1 - y0 > 1 ? 0.1 : 0.5 + (o.bias || 0);
+        this.px(x, y, R2[this.band(s, lo, hi)], o.glow);
+      }
+      return;
+    }
+    this.ell((x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2 + 0.7, (y1 - y0) / 2 + 0.7, ramp, Object.assign({}, o, { mask: (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1 }));
+    const R = ramp.map(toRgb);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (!this.get(x, y) || this.flat && this.p[y * this.w + x] !== this.pid) this.px(x, y, R[(o.lo || 0) + 1] || R[0], o.glow);
+  }
+  /** A limb from a to b, w wide: lit along its upper-left side. */
+  limb(ax, ay, bx, by, w, ramp, o = {}) {
+    const R = ramp.map(toRgb), L = Math.hypot(bx - ax, by - ay) || 1, n = Math.ceil(L * 3), nx = -(by - ay) / L, ny = (bx - ax) / L;
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+      for (let s = -w / 2; s <= w / 2; s += 0.5) {
+        const lit = nx * s * -0.55 + ny * s * -0.8;
+        if (this.flat) {
+          this.px(x + nx * s, y + ny * s, R[this.band(0.5 + lit * 0.7 / Math.max(0.5, w / 2), 0, R.length - 1)], o.glow);
+          continue;
+        }
+        this.px(x + nx * s, y + ny * s, R[clamp(Math.round((R.length - 1) * (0.5 + lit * 0.5 / Math.max(0.5, w / 2))), 0, R.length - 1)], o.glow);
+      }
+    }
+  }
+  /** A capsule from a (radius ra) to b (radius rb): a limb with volume, its
+   * tone from how its surface faces the upper left. */
+  cap(ax, ay, bx, by, ra, rb, ramp, o = {}) {
+    const R = ramp.map(toRgb), lo = o.lo || 0, hi = o.hi === void 0 ? R.length - 1 : o.hi;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1, m = Math.max(ra, rb) + 1;
+    for (let y = Math.floor(Math.min(ay, by) - m); y <= Math.ceil(Math.max(ay, by) + m); y++) {
+      let run = 0, rt = 0;
+      for (let x = Math.floor(Math.min(ax, bx) - m); x <= Math.ceil(Math.max(ax, bx) + m); x++) {
+        const px = x + 0.5, py = y + 0.5, t = clamp(((px - ax) * dx + (py - ay) * dy) / L2, 0, 1), qx = ax + dx * t, qy = ay + dy * t, r = ra + (rb - ra) * t;
+        const ux = (px - qx) / r, uy = (py - qy) / r, d = ux * ux + uy * uy;
+        if (d > 1 || o.mask && !o.mask(x, y)) continue;
+        const nz = Math.sqrt(Math.max(0, 1 - d)), sh = (ux * -0.6 + uy * -0.75) * 0.75 + nz * 0.45 - 0.1 + (o.bias || 0);
+        if (this.flat) {
+          this.px(x, y, R[this.band(sh, lo, hi)], o.glow);
+          continue;
+        }
+        if (run <= 0) {
+          rt = (this.rnd() + this.rnd() - 1) * 0.35;
+          run = 2 + (this.rnd() * 2 | 0);
+        }
+        run--;
+        this.px(x, y, R[clamp(Math.round(lo + (hi - lo) * clamp(sh, 0, 1) + rt), lo, hi)], o.glow);
+      }
+    }
+  }
+  /** A shape from a polygon, shaded across each row (lit on its left, shaded
+   * on its right) and down it, like cloth over a body. */
+  shape(pts, ramp, o = {}) {
+    const R = ramp.map(toRgb), n1 = R.length - 1;
+    let y0 = Infinity, y1 = -Infinity;
+    for (const p of pts) {
+      y0 = Math.min(y0, p[1]);
+      y1 = Math.max(y1, p[1]);
+    }
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
+      const yc = y + 0.5, xs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        if (a[1] <= yc && yc < b[1] || b[1] <= yc && yc < a[1]) xs.push(a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+      }
+      xs.sort((p, q) => p - q);
+      let run = 0, rt = 0;
+      for (let i = 0; i + 1 < xs.length; i += 2) for (let x = Math.ceil(xs[i] - 0.5); x <= Math.floor(xs[i + 1] - 0.5); x++) {
+        const u = (x + 0.5 - xs[i]) / Math.max(1, xs[i + 1] - xs[i]), v = (yc - y0) / Math.max(1, y1 - y0);
+        let sh = 0.78 - u * 0.62 - v * (o.down === void 0 ? 0.18 : o.down) + (u < 0.18 ? 0.12 : 0) + (yc - y0 < 1.2 ? 0.15 : 0) + (o.bias || 0);
+        if (this.flat) {
+          const L = xs[i + 1] - xs[i], fx = x + 0.5 - xs[i];
+          this.px(x, y, R[this.band(fx < Math.min(1.6, L * 0.25) || yc - y0 < 1 ? 0.9 : xs[i + 1] - x - 0.5 < Math.min(1.6, L * 0.3) ? 0.1 : 0.5 - (o.down || 0) * 0.3 * v, 0, n1)], o.glow);
+          continue;
+        }
+        if (o.folds) sh += Math.sin(x * 1.7 + y * 0.2) * 0.06;
+        if (run <= 0) {
+          rt = (this.rnd() + this.rnd() - 1) * 0.35;
+          run = 2 + (this.rnd() * 2 | 0);
+        }
+        run--;
+        this.px(x, y, R[clamp(Math.round(n1 * clamp(sh, 0, 1) + rt), 0, n1)], o.glow);
+      }
+    }
+  }
+  /** A polygon in one color (or a color a pixel, from col(x, y)). */
+  poly(pts, col) {
+    let y0 = Infinity, y1 = -Infinity;
+    for (const p of pts) {
+      y0 = Math.min(y0, p[1]);
+      y1 = Math.max(y1, p[1]);
+    }
+    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
+      const yc = y + 0.5, xs = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        if (a[1] <= yc && yc < b[1] || b[1] <= yc && yc < a[1]) xs.push(a[0] + (yc - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+      }
+      xs.sort((p, q) => p - q);
+      for (let i = 0; i + 1 < xs.length; i += 2) for (let x = Math.ceil(xs[i] - 0.5); x <= Math.floor(xs[i + 1] - 0.5); x++) this.px(x, y, typeof col === "function" ? col(x, y) : col);
+    }
+  }
+  /** A figure's finish: a shadow line on a part where a later part lies on
+   * it, then a dark outline round the whole (not round glow alone). */
+  finish() {
+    const w = this.w, h = this.h, C = this.c, dk = this.look.ink;
+    const shade2 = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!C[i] || this.g[i]) continue;
+      for (const [dx, dy] of N4) {
+        const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const j = Y * w + X;
+        if (C[j] && this.p[j] > this.p[i] && !this.g[j] && !this.soft.has(this.p[j])) {
+          shade2.push(i);
+          break;
+        }
+      }
+    }
+    for (const i of shade2) this.c[i] = mixRgb(this.c[i], dk, this.look.shadow);
+    const out = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (C[i]) continue;
+      let best = null;
+      for (const [dx, dy] of N4) {
+        const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const j = Y * w + X;
+        const cj = C[j];
+        if (!cj) continue;
+        if (this.g[j]) continue;
+        const L = cj[0] + cj[1] + cj[2];
+        if (!best || L < best[1]) best = [cj, L];
+      }
+      if (best) out.push([i, mixRgb(best[0], dk, this.look.edge)]);
+    }
+    for (const [i, col] of out) {
+      this.c[i] = col;
+      this.g[i] = 0;
+    }
+  }
+  /** The sprite: outlined (if `line`), as a picture and, if anything glows,
+   * a glow picture. */
+  done() {
+    if (this.line) this.finish();
+    const w = this.w, h = this.h, c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const img = g.createImageData(w, h);
+    let glow = false;
+    const eimg = this.g.some((q) => q) ? new ImageData(w, h) : null;
+    for (let i = 0; i < this.c.length; i++) {
+      const col = this.c[i];
+      if (!col) continue;
+      img.data[i * 4] = col[0];
+      img.data[i * 4 + 1] = col[1];
+      img.data[i * 4 + 2] = col[2];
+      img.data[i * 4 + 3] = 255;
+      if (this.g[i] && eimg) {
+        glow = true;
+        eimg.data[i * 4] = col[0];
+        eimg.data[i * 4 + 1] = col[1];
+        eimg.data[i * 4 + 2] = col[2];
+        eimg.data[i * 4 + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    let ec = null;
+    if (glow && eimg) {
+      ec = document.createElement("canvas");
+      ec.width = w;
+      ec.height = h;
+      const eg = ec.getContext("2d");
+      eg.imageSmoothingEnabled = false;
+      eg.putImageData(eimg, 0, 0);
+    }
+    return { c, e: ec, w, h, ax: this.ax, ay: this.ay };
+  }
+};
+/** The White Dragon's finish. */
+_Shapes.LOOK = { ink: [8, 6, 12], shadow: 0.45, edge: 0.72 };
+var Shapes = _Shapes;
+
+// src/pixels/sprite.ts
+function canvas(w, h, o = {}) {
+  const c = document.createElement("canvas");
+  if (o.min === void 0) {
+    c.width = w;
+    c.height = h;
+  } else {
+    c.width = Math.max(o.min, w);
+    c.height = Math.max(o.min, h);
+  }
+  const g = c.getContext("2d", o.read ? { willReadFrequently: true } : void 0);
+  g.imageSmoothingEnabled = false;
+  return [c, g];
+}
+function spriteFrom(rows, pal, o = {}) {
+  const h = rows.length, w = o.w === void 0 ? Math.max(...rows.map((r) => r.length)) : o.w;
+  const [c, x] = canvas(w, h, o);
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < rows[j].length; i++) {
+      const ch = rows[j][i];
+      if (ch === "." || ch === " " || !pal[ch]) continue;
+      x.fillStyle = pal[ch];
+      x.fillRect(i, j, 1, 1);
+    }
+  return c;
+}
+function outline(src, o = {}) {
+  let c = src;
+  const grow = o.grow === void 0 ? true : o.grow;
+  let big = grow === true;
+  if (grow === "edge") {
+    const w2 = c.width, h2 = c.height, d2 = c.getContext("2d").getImageData(0, 0, w2, h2).data;
+    for (let x2 = 0; x2 < w2 && !big; x2++) big = d2[x2 * 4 + 3] > 100 || d2[((h2 - 1) * w2 + x2) * 4 + 3] > 100;
+    for (let y = 0; y < h2 && !big; y++) big = d2[y * w2 * 4 + 3] > 100 || d2[(y * w2 + w2 - 1) * 4 + 3] > 100;
+  }
+  if (big) {
+    const [p, px] = canvas(src.width + 2, src.height + 2, { read: true });
+    px.drawImage(src, 1, 1);
+    c = p;
+  }
+  const x = c.getContext("2d"), w = c.width, h = c.height;
+  const img = x.getImageData(0, 0, w, h), d = img.data, alpha = o.alpha === void 0 ? 255 : o.alpha;
+  const solid = (i, j) => i >= 0 && j >= 0 && i < w && j < h && d[(j * w + i) * 4 + 3] > 100;
+  if (o.own === void 0) {
+    const mark = [];
+    for (let j = 0; j < h; j++)
+      for (let i = 0; i < w; i++)
+        if (!solid(i, j) && (solid(i - 1, j) || solid(i + 1, j) || solid(i, j - 1) || solid(i, j + 1))) mark.push(j * w + i);
+    const [r, g, b] = hexToRgb(o.ink || "#000000");
+    for (const k of mark) {
+      d[k * 4] = r;
+      d[k * 4 + 1] = g;
+      d[k * 4 + 2] = b;
+      d[k * 4 + 3] = alpha;
+    }
+  } else {
+    const dark = o.own, mark = [];
+    for (let y = 0; y < h; y++)
+      for (let xx = 0; xx < w; xx++) {
+        if (d[(y * w + xx) * 4 + 3] > 100) continue;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (const [i, j] of [[xx - 1, y], [xx + 1, y], [xx, y - 1], [xx, y + 1]]) if (solid(i, j)) {
+          const k = (j * w + i) * 4;
+          r += d[k];
+          g += d[k + 1];
+          b += d[k + 2];
+          n++;
+        }
+        if (n) mark.push(y * w + xx, r / n, g / n, b / n);
+      }
+    for (let m = 0; m < mark.length; m += 4) {
+      const i = mark[m] * 4;
+      d[i] = mark[m + 1] * dark;
+      d[i + 1] = mark[m + 2] * dark;
+      d[i + 2] = mark[m + 3] * dark;
+      d[i + 3] = alpha;
+    }
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+}
+function tinted(src, col, o = {}) {
+  const [c, x] = canvas(src.width, src.height, o);
+  x.drawImage(src, 0, 0);
+  x.globalCompositeOperation = "source-in";
+  x.fillStyle = col;
+  x.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+function flipped(src, o = {}) {
+  const [c, x] = canvas(src.width, src.height, o);
+  x.translate(src.width, 0);
+  x.scale(-1, 1);
+  x.drawImage(src, 0, 0);
+  return c;
+}
+function flipSprite(s, layers = ["c", "e"], o = {}) {
+  const out = Object.assign({}, s), src = s;
+  for (const k of layers) {
+    const p = src[k];
+    out[k] = p ? flipped(p, o) : null;
+  }
+  out.ax = s.w - s.ax;
+  return out;
+}
+function enlarged(src, k, o = {}) {
+  const [c, x] = canvas(src.width * k, src.height * k, o);
+  x.imageSmoothingEnabled = false;
+  x.drawImage(src, 0, 0, src.width * k, src.height * k);
+  return c;
+}
+function disc(ctx, cx, cy, r, col) {
+  ctx.fillStyle = col;
+  for (let y = -r; y <= r; y++) {
+    const w = Math.floor(Math.sqrt(r * r + r * 0.6 - y * y));
+    if (w >= 0) ctx.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1);
+  }
+}
+function ellipse(ctx, cx, cy, rx, ry, col) {
+  ctx.fillStyle = col;
+  for (let y = -ry; y <= ry; y++) {
+    const t = 1 - y * y / (ry * ry + 0.5);
+    if (t < 0) continue;
+    const w = Math.round(rx * Math.sqrt(t));
+    ctx.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1);
+  }
+}
+function scale2xRows(rows) {
+  const h = rows.length, w = Math.max(...rows.map((r) => r.length));
+  const at = (x, y) => y < 0 || y >= h || x < 0 || x >= w ? "." : rows[y][x] || ".";
+  const out = Array.from({ length: h * 2 }, () => new Array(w * 2).fill("."));
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+      out[2 * y][2 * x] = C === A && C !== D && A !== B ? A : P;
+      out[2 * y][2 * x + 1] = A === B && A !== C && B !== D ? B : P;
+      out[2 * y + 1][2 * x] = D === C && D !== B && C !== A ? C : P;
+      out[2 * y + 1][2 * x + 1] = B === D && B !== A && D !== C ? D : P;
+    }
+  return out.map((r) => r.join(""));
+}
+function scale3xRows(rows, fixed) {
+  const h = rows.length, w = Math.max(...rows.map((r) => r.length));
+  const at = (x, y) => y < 0 || y >= h || x < 0 || x >= w ? "." : rows[y][x] || ".";
+  const out = Array.from({ length: h * 3 }, () => new Array(w * 3).fill("."));
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const A = at(x - 1, y - 1), B = at(x, y - 1), C = at(x + 1, y - 1), D = at(x - 1, y), E = at(x, y), F2 = at(x + 1, y), G = at(x - 1, y + 1), H = at(x, y + 1), I = at(x + 1, y + 1);
+      const o = fixed && fixed.has(E) ? (i, j) => {
+        out[3 * y + j][3 * x + i] = E;
+      } : fixed ? (i, j, v) => {
+        out[3 * y + j][3 * x + i] = fixed.has(v) ? E : v;
+      } : (i, j, v) => {
+        out[3 * y + j][3 * x + i] = v;
+      };
+      if (B !== H && D !== F2) {
+        o(0, 0, D === B ? D : E);
+        o(1, 0, D === B && E !== C || B === F2 && E !== A ? B : E);
+        o(2, 0, B === F2 ? F2 : E);
+        o(0, 1, D === B && E !== G || D === H && E !== A ? D : E);
+        o(1, 1, E);
+        o(2, 1, B === F2 && E !== I || H === F2 && E !== C ? F2 : E);
+        o(0, 2, D === H ? D : E);
+        o(1, 2, D === H && E !== I || H === F2 && E !== G ? H : E);
+        o(2, 2, H === F2 ? F2 : E);
+      } else for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) o(i, j, E);
+    }
+  return out.map((r) => r.join(""));
+}
+function scale15Rows(rows, fixed) {
+  return scale3xRows(rows, fixed).filter((_, y) => y % 2 === 0).map((r) => [...r].filter((_, x) => x % 2 === 0).join(""));
+}
+function scaleRows(rows, k, fixed) {
+  const whole = (v) => Math.abs(v - Math.round(v)) < 1e-6;
+  if (Math.abs(k - 1) < 1e-6) return rows;
+  if (whole(k / 3)) return scaleRows(scale3xRows(rows, fixed), k / 3, fixed);
+  if (whole(k / 2)) return scaleRows(scale2xRows(rows), k / 2, fixed);
+  if (Math.abs(k - 1.5) < 1e-6) return scale15Rows(rows, fixed);
+  if (whole(k / 1.5)) return scale15Rows(scaleRows(rows, k / 1.5, fixed), fixed);
+  const h = rows.length, w = Math.max(...rows.map((r) => r.length)), W = Math.round(w * k), H = Math.round(h * k);
+  return Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_2, x) => rows[Math.floor(y / k)][Math.floor(x / k)] || ".").join(""));
+}
+
+// src/pixels/paint.ts
+var paint_exports = {};
+__export(paint_exports, {
+  Chunks: () => Chunks,
+  Painter: () => Painter,
+  Pix: () => Pix,
+  blockV: () => blockV,
+  chunk: () => chunk,
+  paintOps: () => paintOps,
+  strokeRow: () => strokeRow
+});
+function strokeRow(mid, jit, x0, n, y, seed) {
+  const C = 8, ph = Math.floor(hash(y, 7, seed) * C);
+  let c = Math.floor((x0 + ph) / C), cs = c * C - ph, i = 0;
+  while (i < n) {
+    const h = hash(c, y, seed + 1), h2 = hash(c, y, seed + 2), h3 = hash(c, y, seed + 3);
+    let a = C, b = C;
+    if (h > 0.3) {
+      if (h < 0.7) a = 2 + (h2 * (C - 3) | 0);
+      else {
+        a = 2 + (h2 * 3 | 0);
+        b = Math.min(C - 2, a + 2 + (h3 * 3 | 0));
+      }
+    }
+    const ja = h2 + h3 - 1, jb = hash(c, y, seed + 4) + h3 - 1, jc = hash(c, y, seed + 5) + h - 1;
+    const ma = cs + (a - 1 >> 1), mb = cs + (a + b - 1 >> 1), mc = cs + (b + C - 1 >> 1);
+    for (let k = 0; k < C; k++) {
+      if (cs + k < x0) continue;
+      if (i >= n) break;
+      if (k < a) {
+        mid[i] = ma - x0;
+        jit[i] = ja;
+      } else if (k < b) {
+        mid[i] = mb - x0;
+        jit[i] = jb;
+      } else {
+        mid[i] = mc - x0;
+        jit[i] = jc;
+      }
+      i++;
+    }
+    c++;
+    cs += C;
+  }
+}
+var Pix = class {
+  constructor(w, h, ox = 0, oy = 0, o = {}) {
+    this.w = w;
+    this.h = h;
+    this.ox = ox;
+    this.oy = oy;
+    this.n = 1;
+    this.glowed = false;
+    this.flat = !!o.flat;
+    this.c = new Uint8ClampedArray(w * h * 4);
+    this.g = new Uint8ClampedArray(w * h * 4);
+    this.mid = new Int16Array(w + 16);
+    this.jit = new Float32Array(w + 16);
+  }
+  /** One pixel, in world px; glow 0..1 puts it on the glow picture that bright. */
+  put(x, y, col, glow = 0) {
+    x = Math.floor(x) - this.ox;
+    y = Math.floor(y) - this.oy;
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h || !col) return;
+    const o = (y * this.w + x) * 4;
+    this.c[o] = col[0];
+    this.c[o + 1] = col[1];
+    this.c[o + 2] = col[2];
+    this.c[o + 3] = 255;
+    if (glow) {
+      this.g[o] = col[0] * glow;
+      this.g[o + 1] = col[1] * glow;
+      this.g[o + 2] = col[2] * glow;
+      this.g[o + 3] = 255;
+      this.glowed = true;
+    } else this.g[o] = this.g[o + 1] = this.g[o + 2] = this.g[o + 3] = 0;
+  }
+  /** What's there mixed toward a color, k of the way (haze, steam). */
+  tint(x, y, col, k) {
+    x = Math.floor(x) - this.ox;
+    y = Math.floor(y) - this.oy;
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
+    const o = (y * this.w + x) * 4;
+    if (!this.c[o + 3]) return;
+    this.c[o] = lerp(this.c[o], col[0], k);
+    this.c[o + 1] = lerp(this.c[o + 1], col[1], k);
+    this.c[o + 2] = lerp(this.c[o + 2], col[2], k);
+  }
+  /** A painted area: v(x, y) its value (0..1), read from the ramp. Flat, each
+   * pixel its own tone; otherwise read at each stroke's middle with a little
+   * jitter, so the area reads as brushwork. */
+  area(ax0, ay0, ax1, ay1, ramp, v, o = {}) {
+    const seed = o.seed === void 0 ? this.n * 13 + 5 : o.seed;
+    this.n++;
+    ax0 = Math.floor(ax0);
+    ay0 = Math.floor(ay0);
+    ax1 = Math.ceil(ax1);
+    ay1 = Math.ceil(ay1);
+    const x0 = Math.max(this.ox, ax0), y0 = Math.max(this.oy, ay0), x1 = Math.min(this.ox + this.w - 1, ax1), y1 = Math.min(this.oy + this.h - 1, ay1);
+    if (x1 < x0 || y1 < y0) return;
+    const flat = this.flat, inside = o.inside || null, J = flat ? 0 : o.jit === void 0 ? 0.45 : o.jit, n = x1 - x0 + 1, glow = o.glow || 0, fog = o.fog || 0, fogc = o.fogc || [20, 16, 30];
+    const mid = this.mid, jit = this.jit;
+    for (let y = y0; y <= y1; y++) {
+      if (!flat) strokeRow(mid, jit, x0, n, y, seed);
+      for (let i = 0; i < n; i++) {
+        const x = x0 + i;
+        if (inside && !inside(x, y)) continue;
+        const m = x0 + mid[i], vx = v(x, y), vm = flat ? vx : m >= ax0 && m <= ax1 && (!inside || inside(m, y)) ? v(m, y) : vx;
+        let c = tone(ramp, clamp(vm * 0.6 + vx * 0.4, 0, 1), jit[i] * J);
+        if (fog) c = mixRgb(c, fogc, fog);
+        this.put(x, y, c, glow);
+      }
+    }
+  }
+  /** A block, lit side-on (blockV). */
+  block(x0, y0, x1, y1, ramp, o = {}) {
+    this.area(x0, y0, x1, y1, ramp, blockV(x0, y0, x1, y1, o, this.flat), o);
+  }
+  /** Does a world box touch this buffer? */
+  sees(x0, y0, x1, y1) {
+    return x1 >= this.ox && y1 >= this.oy && x0 < this.ox + this.w && y0 < this.oy + this.h;
+  }
+  /** The buffer as canvases: the picture, and the glow (null if nothing glows). */
+  canvases() {
+    const [c, g] = canvas(this.w, this.h);
+    g.putImageData(new ImageData(this.c, this.w, this.h), 0, 0);
+    let e = null;
+    if (this.glowed) {
+      const [ec, eg] = canvas(this.w, this.h);
+      eg.putImageData(new ImageData(this.g, this.w, this.h), 0, 0);
+      e = ec;
+    }
+    return { c, e };
+  }
+};
+function blockV(x0, y0, x1, y1, o = {}, flat = false) {
+  const base = o.base === void 0 ? 0.5 : o.base, s = o.seed || 3, grain = o.grain === void 0 ? 0.06 : o.grain, lip = o.lip === void 0 ? 1 : o.lip;
+  if (flat) return (x, y) => {
+    let v = base;
+    const top = y - y0, bot = y1 - y, l = x - x0, r = x1 - x;
+    if (lip && top < 1) v = 0.9;
+    if (bot < 1) v -= 0.3;
+    if (l < 1) v += 0.1;
+    if (r < 1) v -= 0.12;
+    if (o.drips) {
+      const d = hash(x, 0, s + 5);
+      if (d > 1 - o.drips && top < 3 + (d - 1 + o.drips) / o.drips * (o.dripLen || 40)) v -= 0.12;
+    }
+    if (o.bands) {
+      if ((y - y0) % o.bands === 0) v -= 0.16;
+    }
+    if (o.panels) {
+      const px = (x - x0) % o.panels[0], py = (y - y0) % o.panels[1];
+      if (px === 0 || py === 0) v -= 0.16;
+    }
+    return v;
+  };
+  return (x, y) => {
+    let v = base + (noise(x / 40, y / 16, s) - 0.5) * 0.14 + (noise(x / 4, y / 30, s + 1) - 0.5) * grain;
+    const top = y - y0, bot = y1 - y, l = x - x0, r = x1 - x;
+    if (lip) {
+      if (top < 1) v = 0.98;
+      else if (top < 2) v = Math.max(v, 0.8);
+      else if (top < 4) v += 0.1 * lip;
+    }
+    if (bot < 1) v -= 0.36;
+    else if (bot < 3) v -= 0.16;
+    if (l < 2) v += 0.12;
+    if (r < 2) v -= 0.14;
+    if (o.inward) v -= Math.min(o.inward, Math.min(top, bot, l, r) * 6e-3);
+    if (o.drips) {
+      const d = hash(x, 0, s + 5);
+      if (d > 1 - o.drips && top < 3 + (d - 1 + o.drips) / o.drips * (o.dripLen || 40)) v -= 0.14;
+    }
+    if (o.bands) {
+      if ((y - y0) % o.bands === 0) v -= 0.18;
+      else if ((y - y0) % o.bands === 1) v += 0.08;
+    }
+    if (o.panels) {
+      const px = (x - x0) % o.panels[0], py = (y - y0) % o.panels[1];
+      if (px === 0 || py === 0) v -= 0.2;
+      else if (px === 1 || py === 1) v += 0.07;
+    }
+    return v;
+  };
+}
+function paintOps(P, ops) {
+  for (const op of ops) if (P.sees(op.x0, op.y0, op.x1, op.y1)) {
+    P.n = op.seed;
+    op.fn(P);
+  }
+  return P;
+}
+function chunk(ops, cx, cy, size, o = {}) {
+  const P = paintOps(new Pix(size, size, cx * size, cy * size, o), ops);
+  const { c, e } = P.canvases();
+  return { c, e, x: cx * size, y: cy * size };
+}
+var Chunks = class {
+  constructor(o) {
+    this.size = o.size;
+    this.make = o.make;
+    this.w = o.w || 0;
+    this.h = o.h || 0;
+    this.max = o.max || Infinity;
+    this.map = /* @__PURE__ */ new Map();
+    this.stamp = 0;
+  }
+  /** Lets every chunk go, and takes the world's size anew (if given). */
+  reset(world) {
+    this.map.clear();
+    if (world) {
+      this.w = world.w;
+      this.h = world.h;
+    }
+  }
+  key(cx, cy) {
+    return cx + "," + cy;
+  }
+  has(cx, cy) {
+    return this.map.has(this.key(cx, cy));
+  }
+  /** Whether a chunk lies in the world. */
+  inside(cx, cy) {
+    return cx >= 0 && cy >= 0 && cx * this.size < this.w && cy * this.size < this.h;
+  }
+  /** The chunk, made if it's new. */
+  get(cx, cy) {
+    const k = this.key(cx, cy);
+    let e = this.map.get(k);
+    if (!e) {
+      e = { v: this.make(cx, cy), used: 0 };
+      this.map.set(k, e);
+    }
+    e.used = ++this.stamp;
+    if (this.map.size > this.max) this.trim(this.max);
+    return e.v;
+  }
+  /** The chunk if it's made, without making it. */
+  peek(cx, cy) {
+    const e = this.map.get(this.key(cx, cy));
+    return e && e.v;
+  }
+  /** The chunks (made if new) a box of the world touches, row by row. */
+  over(x0, y0, x1, y1) {
+    const S = this.size, out = [];
+    for (let cy = Math.floor(y0 / S); cy <= Math.floor(y1 / S); cy++) for (let cx = Math.floor(x0 / S); cx <= Math.floor(x1 / S); cx++) if (this.inside(cx, cy)) out.push(this.get(cx, cy));
+    return out;
+  }
+  /** The nearest chunk in the world not yet made, near the one at (x, y)
+   * (fewest steps across and down; the first found in rows on a tie). */
+  nearest(x, y, rx = 3, ry = 2) {
+    const S = this.size, cx0 = Math.floor(x / S), cy0 = Math.floor(y / S);
+    let best = null, bd = 1e9;
+    for (let cy = cy0 - ry; cy <= cy0 + ry; cy++) for (let cx = cx0 - rx; cx <= cx0 + rx; cx++) {
+      if (!this.inside(cx, cy) || this.has(cx, cy)) continue;
+      const d = Math.abs(cx - cx0) + Math.abs(cy - cy0);
+      if (d < bd) {
+        bd = d;
+        best = [cx, cy];
+      }
+    }
+    return best;
+  }
+  /** A frame's spare work: makes the nearest chunk not yet made near (x, y),
+   * and more while the budget lasts, so walking into new ground doesn't
+   * stall. Returns how many it made. */
+  ahead(x, y, o = {}) {
+    const t0 = o.budget ? performance.now() : 0;
+    let made = 0;
+    for (; ; ) {
+      const at = this.nearest(x, y, o.rx === void 0 ? 3 : o.rx, o.ry === void 0 ? 2 : o.ry);
+      if (!at) break;
+      this.get(at[0], at[1]);
+      made++;
+      if (!o.budget || performance.now() - t0 >= o.budget) break;
+    }
+    return made;
+  }
+  /** Lets go of the chunks used longest ago until there are at most `max`. */
+  trim(max = this.max) {
+    if (this.map.size <= max) return;
+    const all = [...this.map.entries()].sort((a, b) => a[1].used - b[1].used);
+    for (const [k] of all) {
+      if (this.map.size <= max) break;
+      this.map.delete(k);
+    }
+  }
+  get count() {
+    return this.map.size;
+  }
+};
+var Painter = class extends Chunks {
+  constructor(o) {
+    super({ size: o.size, max: o.max, make: () => {
+      throw new Error("a painter paints a level: reset(level) first");
+    } });
+    this.level = null;
+    this.pix = { flat: !!o.flat };
+    this.make = (cx, cy) => chunk(this.level.ops, cx, cy, this.size, this.pix);
+  }
+  /** A new level: every chunk goes. */
+  reset(level) {
+    if (level) this.level = level;
+    super.reset(level);
+  }
+};
+
+// src/pixels/fx.ts
+var fx_exports = {};
+__export(fx_exports, {
+  Particles: () => Particles,
+  age: () => age,
+  burst: () => burst,
+  move: () => move,
+  rise: () => rise,
+  sparks: () => sparks,
+  tick: () => tick
+});
+function tick(list, dt) {
+  let m = 0;
+  for (const o of list) if ((o.t -= dt) > 0) list[m++] = o;
+  list.length = m;
+  return list;
+}
+function age(list, dt, life) {
+  let m = 0;
+  for (const o of list) {
+    o.t += dt;
+    if (o.t < (life === void 0 ? o.life : life)) list[m++] = o;
+  }
+  list.length = m;
+  return list;
+}
+function move(q, dt, o = {}) {
+  if (q.drag) {
+    const k = Math.exp(-q.drag * dt);
+    q.vx *= k;
+    q.vy *= k;
+  }
+  q.vy += (q.g || 0) * dt;
+  q.x += q.vx * dt;
+  q.y += q.vy * dt;
+  if (q.floor !== void 0 && q.y > q.floor && q.vy > 0) {
+    q.y = q.floor;
+    q.vy *= -(o.bounce === void 0 ? 0.35 : o.bounce);
+    q.vx *= o.slide === void 0 ? 0.6 : o.slide;
+  }
+}
+var Particles = class {
+  constructor(o = {}) {
+    this.list = [];
+    this.max = o.max === void 0 ? 260 : o.max;
+    this.keep = o.keep === void 0 ? 200 : o.keep;
+    this.bounce = { bounce: o.bounce, slide: o.slide };
+  }
+  add(p) {
+    this.list.push(p);
+    return p;
+  }
+  /** The oldest let go if there are too many. */
+  cap() {
+    if (this.list.length > this.max) this.list.splice(0, this.list.length - this.keep);
+  }
+  /** Each moves by dt and loses dt of its time; those run out go. */
+  step(dt) {
+    const L = this.list;
+    let m = 0;
+    for (const q of L) {
+      if ((q.t -= dt) <= 0) continue;
+      move(q, dt, this.bounce);
+      L[m++] = q;
+    }
+    L.length = m;
+  }
+  get length() {
+    return this.list.length;
+  }
+};
+function sparks(x, y, n, draw, o = {}) {
+  const spread = o.spread === void 0 ? 160 : o.spread, up = o.up === void 0 ? 40 : o.up, upMore = o.upMore === void 0 ? 110 : o.upMore;
+  const life = o.life === void 0 ? 0.25 : o.life, lifeMore = o.lifeMore === void 0 ? 0.35 : o.lifeMore, g = o.g === void 0 ? 400 : o.g, out = [];
+  for (let k = 0; k < n; k++) {
+    const h1 = draw(k, 1), h2 = draw(k, 2), h3 = draw(k, 3);
+    out.push({ x, y, vx: (h1 - 0.5) * spread, vy: -up - h2 * upMore, t: life + h3 * lifeMore, c: [255, 160 + h3 * 90, 60 + h3 * 120], g });
+  }
+  return out;
+}
+function burst(x, y, c, n, draw, o = {}) {
+  const sp = o.speed === void 0 ? 40 : o.speed, spMore = o.speedMore === void 0 ? 70 : o.speedMore, life = o.life === void 0 ? 0.3 : o.life, lifeMore = o.lifeMore === void 0 ? 0.3 : o.lifeMore, out = [];
+  for (let k = 0; k < n; k++) {
+    const a = k / n * Math.PI * 2 + draw(k, 4), s = sp + draw(k, 5) * spMore;
+    out.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: life + draw(k, 6) * lifeMore, c, g: 0 });
+  }
+  return out;
+}
+function rise(age2, i = 0, of = 1, o = {}) {
+  const life = o.life === void 0 ? 2.4 : o.life, fade = o.fade === void 0 ? 1.8 : o.fade, out = o.out === void 0 ? 0.6 : o.out;
+  if (age2 < 0 || !(age2 < life)) return null;
+  return { stack: (of - 1 - i) * (o.line === void 0 ? 21 : o.line), up: age2 * (o.speed === void 0 ? 12 : o.speed), alpha: age2 > fade ? Math.max(0, 1 - (age2 - fade) / out) : 1 };
+}
 
 // src/world/grid.ts
 var grid_exports = {};
@@ -3730,6 +4606,7 @@ export {
   collide_exports as collide,
   color_exports as color,
   dev_exports as dev,
+  fx_exports as fx,
   gpu_exports as gpu,
   grid_exports as grid,
   guide_exports as guide,
@@ -3740,9 +4617,11 @@ export {
   loop_exports as loop,
   math_exports as math,
   move_exports as move,
+  paint_exports as paint,
   path_exports as path,
   post_exports as post,
   pwa_exports as pwa,
   save_exports as save,
-  seed_exports as seed
+  seed_exports as seed,
+  sprite_exports as sprite
 };

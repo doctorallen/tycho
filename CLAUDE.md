@@ -11,6 +11,7 @@ npm install          # TypeScript 6.0.3, esbuild 0.28.2, @types/node (pinned: di
 npm run build        # every output into dist/ (tycho, tyrell, tycho-minds: .js global, .mjs, .cjs, declarations; tycho-sw.js; testkit.cjs)
 npm test             # build, then node --test test/*.test.mjs tyrell/test/*.test.mjs
 npm run typecheck    # the engine, Tyrell, the bridge, the service worker and the test kit
+npm run test:browser # the pixels' canvas work against the games' originals, in Chromium (Playwright, or puppeteer-core with $CHROME); by hand
 npm run vk           # Voight-Kampff: a week of Tyrell's Rocinante
 ```
 
@@ -23,7 +24,7 @@ Always run `npm test` and commit `dist/` with any change to the sources. CI fail
 - `minds/`: the bridge (`TychoMinds`, also `Tycho.minds`).
 - `sw/`: the service worker games import (`dist/tycho-sw.js`).
 - `testkit/`: the Node test kit (`dist/testkit.cjs`): launch, serve, open, waitFor, golden, diff, finish. Uses the game's Playwright, or puppeteer-core with `$CHROME`.
-- `test/`: the engine's node:test suites against the built `dist/`.
+- `test/`: the engine's node:test suites against the built `dist/`, and `browser.js` (what needs a real canvas, in a page, through the test kit).
 - `scripts/build.mjs`: the build. `scripts/layers.mjs`: the layers' rule, checked by the build.
 - `docs/`: a page for each part, and `move.md`, the record of moving the games onto Tycho.
 

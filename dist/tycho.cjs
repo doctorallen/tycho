@@ -25,6 +25,9 @@ __export(index_exports, {
   color: () => color_exports,
   dev: () => dev_exports,
   gpu: () => gpu_exports,
+  guide: () => guide_exports,
+  input: () => input_exports,
+  items: () => items_exports,
   light: () => light_exports,
   loader: () => loader_exports,
   loop: () => loop_exports,
@@ -1729,6 +1732,644 @@ var Blur = class {
   }
 };
 
+// src/play/input.ts
+var input_exports = {};
+__export(input_exports, {
+  Controls: () => Controls,
+  Gestures: () => Gestures
+});
+var Controls = class {
+  constructor(o = {}) {
+    /** The axes, -1..1 each: the bot's, the stick's or the keys', worked out by
+     * update(). The game may write them (a scene walking the player) until the
+     * next update() writes over them. */
+    this.move = { x: 0, y: 0 };
+    /** The thumb on the stick, or null. */
+    this.stick = null;
+    /** A test's controls, read over the real ones by the names in `o.bot`. */
+    this.bot = null;
+    /** Presses waiting to be taken: true, or what pressed it (a flick's
+     * direction); false or missing for none. */
+    this.presses = {};
+    /** The codes of the action keys down now. */
+    this.keys = /* @__PURE__ */ new Set();
+    /** The pointer holding each on-screen button, or null. */
+    this.holders = {};
+    this.edgeOf = {};
+    this.els = {};
+    this.heldClass = "held";
+    this.guardAt = -Infinity;
+    this.guardFor = 0;
+    this.o = o;
+    for (const a of o.edges || []) this.edgeOf[a] = { down: false, pressed: false, released: false };
+  }
+  /** Is an action held: by the bot when one drives, else by a button or a key. */
+  held(action) {
+    if (this.bot) return !!this.bot[this.botField("held", action)];
+    if (this.holders[action] != null) return true;
+    const K = this.o.keys || {};
+    for (const c of this.keys) if (K[c] === action) return true;
+    return false;
+  }
+  /** Is something blocking new presses now? */
+  isBlocked() {
+    return !!(this.o.blocked && this.o.blocked());
+  }
+  /** Presses an action: it waits, with `value`, until taken. */
+  press(action, value = true) {
+    this.presses[action] = value;
+  }
+  /** The press waiting for an action (true, or its value), cleared; false if
+   * none. A bot that presses the action is read instead (and cleared). */
+  take(action) {
+    const f = this.bot ? this.botField("press", action) : null;
+    if (this.bot && f) {
+      const v2 = !!this.bot[f];
+      this.bot[f] = false;
+      return v2;
+    }
+    const v = this.presses[action];
+    this.presses[action] = false;
+    return v || false;
+  }
+  /** An action's state for the game to read: held now, and pressed or
+   * released since it last looked (reading clears those). For the actions
+   * in `o.edges`. */
+  edges(action) {
+    const h = this.edgeOf[action] || (this.edgeOf[action] = { down: false, pressed: false, released: false });
+    const out = { down: h.down, pressed: h.pressed, released: h.released };
+    h.pressed = false;
+    h.released = false;
+    return out;
+  }
+  /** Each step, before the game reads the controls: the edges, then the axes
+   * (the bot's, else the stick's while a thumb is on it, else the keys'). */
+  update() {
+    for (const a in this.edgeOf) {
+      const h = this.edgeOf[a], now = this.held(a);
+      if (now && !h.down) h.pressed = true;
+      if (!now && h.down) h.released = true;
+      h.down = now;
+    }
+    const m = this.move;
+    if (this.bot) {
+      const b = this.o.bot || {};
+      m.x = this.bot[b.x || "x"] || 0;
+      m.y = this.bot[b.y || "y"] || 0;
+      return;
+    }
+    const s = this.stick, S = this.o.stick;
+    if (s && S) {
+      const R = S.radius;
+      if (S.deadAxes) {
+        const dx = clamp(s.x - s.bx, -R, R), dy = clamp(s.y - s.by, -R, R);
+        m.x = Math.abs(dx) > R * S.deadAxes[0] ? dx / R : 0;
+        m.y = Math.abs(dy) > R * S.deadAxes[1] ? dy / R : 0;
+      } else {
+        let dx = (s.x - s.bx) / R, dy = (s.y - s.by) / R;
+        const len = Math.hypot(dx, dy);
+        if (len * R < (S.dead || 0)) dx = dy = 0;
+        else if (len > 1) {
+          dx /= len;
+          dy /= len;
+        }
+        m.x = dx;
+        m.y = dy;
+      }
+      return;
+    }
+    const A = this.o.axes;
+    if (!A) {
+      m.x = m.y = 0;
+      return;
+    }
+    let kx = (this.held(A.right) ? 1 : 0) - (this.held(A.left) ? 1 : 0), ky = (this.held(A.down) ? 1 : 0) - (this.held(A.up) ? 1 : 0);
+    if (A.slow && this.held(A.slow.action)) {
+      kx *= A.slow.x ?? 1;
+      ky *= A.slow.y ?? 1;
+    }
+    if (A.round) {
+      const len = Math.hypot(kx, ky) || 1;
+      kx /= len;
+      ky /= len;
+    }
+    m.x = kx;
+    m.y = ky;
+  }
+  /** A screen opened (or closed): every thumb and key held lets go, and the
+   * presses and edges waiting are dropped, so nothing carries over. The
+   * axes are left for the next update(). */
+  block() {
+    this.stick = null;
+    for (const a in this.presses) this.presses[a] = false;
+    for (const a in this.holders) {
+      this.holders[a] = null;
+      if (this.els[a]) this.els[a].classList.remove(this.heldClass);
+    }
+    for (const a in this.edgeOf) Object.assign(this.edgeOf[a], { down: false, pressed: false, released: false });
+    this.keys.clear();
+    if (this.o.stick && this.o.stick.onChange) this.o.stick.onChange(null);
+  }
+  /** Starts the guard: guarded() is true for `seconds` (o.guard by default). */
+  guard(seconds = this.o.guard || 0) {
+    this.guardAt = this.clock();
+    this.guardFor = seconds;
+  }
+  /** Is the guard up (a tap now shouldn't count)? */
+  guarded() {
+    return this.clock() - this.guardAt < this.guardFor;
+  }
+  // ---- fed by the page (listen), or by a test ----
+  /** A key went down: true if it holds an action. A repeat does nothing. */
+  keyDown(code, repeat = false) {
+    const a = (this.o.keys || {})[code];
+    if (!a || repeat) return !!a;
+    this.keys.add(code);
+    if ((this.o.presses || []).includes(a) && !this.isBlocked()) this.press(a);
+    return true;
+  }
+  keyUp(code) {
+    this.keys.delete(code);
+  }
+  /** Every key let go (the page lost focus). */
+  keysOff() {
+    this.keys.clear();
+  }
+  /** A thumb landed in the stick's zone (`zone`, its box, for `inside`):
+   * true if it took the stick. */
+  stickDown(id, x, y, zone) {
+    const S = this.o.stick;
+    if (!S || this.isBlocked() || this.stick && !S.retake) return false;
+    let bx = x, by = y;
+    if (S.inside && zone) {
+      const R = S.radius;
+      bx = clamp(x, zone.left + R, Math.max(zone.left + R, zone.right - R));
+      by = clamp(y, zone.top + R, Math.max(zone.top + R, zone.bottom - R));
+    }
+    this.stick = { id, bx, by, x, y, t0: this.nowMs(), x0: x, y0: y, flicked: false };
+    if (S.onChange) S.onChange(this.stick);
+    return true;
+  }
+  stickMove(id, x, y) {
+    const s = this.stick, S = this.o.stick;
+    if (!s || !S || s.id !== id) return;
+    s.x = x;
+    s.y = y;
+    const F2 = S.flick;
+    if (F2 && !s.flicked) {
+      const fx = s.x - s.x0, fy = s.y - s.y0;
+      if (this.nowMs() - s.t0 < F2.ms && Math.hypot(fx, fy) > F2.px) {
+        s.flicked = true;
+        const len = Math.hypot(fx, fy) || 1;
+        this.press(F2.action, { x: fx / len, y: fy / len });
+      }
+    }
+    if (S.onChange) S.onChange(s);
+  }
+  stickUp(id) {
+    if (!this.stick || this.stick.id !== id) return;
+    this.stick = null;
+    if (this.o.stick && this.o.stick.onChange) this.o.stick.onChange(null);
+  }
+  /** A pointer landed on a button holding `action`: true if it took it. */
+  buttonDown(action, id) {
+    if (this.isBlocked()) return false;
+    this.holders[action] = id;
+    if (this.els[action]) this.els[action].classList.add(this.heldClass);
+    if ((this.o.presses || []).includes(action)) this.press(action);
+    return true;
+  }
+  buttonUp(action, id) {
+    if (this.holders[action] !== id) return;
+    this.holders[action] = null;
+    if (this.els[action]) this.els[action].classList.remove(this.heldClass);
+  }
+  /** Wires the controls to the page. Returns a function that unwires them. */
+  listen(L = {}) {
+    const off = [];
+    const on = (el, type, fn, opt) => {
+      el.addEventListener(type, fn, opt);
+      off.push(() => el.removeEventListener(type, fn, opt));
+    };
+    const capture = (el, id) => {
+      try {
+        el.setPointerCapture(id);
+      } catch (err) {
+      }
+    };
+    const touch = () => {
+      if (L.onTouch) L.onTouch();
+    };
+    this.heldClass = L.heldClass || "held";
+    const kb = L.keyboard === void 0 ? typeof window !== "undefined" ? window : null : L.keyboard;
+    if (kb) {
+      const prevent = new Set(L.prevent || Object.keys(this.o.keys || {}));
+      on(kb, "keydown", (e) => {
+        if (prevent.has(e.code) && !this.isBlocked()) e.preventDefault();
+        this.keyDown(e.code, e.repeat);
+      });
+      on(kb, "keyup", (e) => {
+        if (L.preventUp && prevent.has(e.code)) e.preventDefault();
+        this.keyUp(e.code);
+      });
+      on(kb, "blur", () => this.keysOff());
+    }
+    const zone = L.stick;
+    if (zone) {
+      on(zone, "pointerdown", (e) => {
+        if (!this.stickDown(e.pointerId, e.clientX, e.clientY, this.o.stick && this.o.stick.inside ? zone.getBoundingClientRect() : null)) return;
+        e.preventDefault();
+        touch();
+        capture(zone, e.pointerId);
+      });
+      on(zone, "pointermove", (e) => this.stickMove(e.pointerId, e.clientX, e.clientY));
+      const up = (e) => this.stickUp(e.pointerId);
+      on(zone, "pointerup", up);
+      on(zone, "pointercancel", up);
+    }
+    for (const [a, el] of Object.entries(L.buttons || {})) {
+      this.els[a] = el;
+      if (!(a in this.holders)) this.holders[a] = null;
+      on(el, "pointerdown", (e) => {
+        if (!this.buttonDown(a, e.pointerId)) return;
+        e.preventDefault();
+        touch();
+        capture(el, e.pointerId);
+      });
+      const end = (e) => this.buttonUp(a, e.pointerId);
+      on(el, "pointerup", end);
+      on(el, "pointercancel", end);
+    }
+    for (const [a, el] of Object.entries(L.taps || {})) {
+      on(el, "pointerdown", (e) => {
+        if (this.isBlocked()) return;
+        e.preventDefault();
+        touch();
+        this.press(a);
+      });
+    }
+    return () => {
+      for (const f of off.splice(0)) f();
+    };
+  }
+  botField(kind, action) {
+    const map = this.o.bot && this.o.bot[kind];
+    if (kind === "held") return map && map[action] || action;
+    return map && map[action] || null;
+  }
+  clock() {
+    return this.o.clock ? this.o.clock() : this.nowMs() / 1e3;
+  }
+  nowMs() {
+    return this.o.now ? this.o.now() : typeof performance !== "undefined" ? performance.now() : 0;
+  }
+};
+var Gestures = class {
+  constructor(o = {}) {
+    /** The pointers down: id to where each is. */
+    this.pts = /* @__PURE__ */ new Map();
+    /** How far the pointers have moved since one last landed. */
+    this.moved = 0;
+    /** A lone pointer that may be a tap: where and when it landed. */
+    this.tap = null;
+    this.o = o;
+  }
+  down(id, x, y) {
+    this.pts.set(id, { x, y });
+    this.moved = 0;
+    this.tap = this.pts.size === 1 ? { x, y, t: this.now() } : null;
+  }
+  move(id, x, y) {
+    const P = this.pts, p = P.get(id), o = this.o;
+    if (!p) return;
+    if (P.size === 1) {
+      const dx = x - p.x, dy = y - p.y;
+      this.moved += Math.abs(dx) + Math.abs(dy);
+      if (this.tap && o.near !== void 0 && Math.hypot(x - this.tap.x, y - this.tap.y) > this.nearPx()) this.tap = null;
+      p.x = x;
+      p.y = y;
+      if (o.onPan) o.onPan(dx, dy);
+    } else if (P.size === 2) {
+      const [a, b] = [...P.values()], other = a === p ? b : a;
+      const d0 = Math.hypot(p.x - other.x, p.y - other.y), d1 = Math.hypot(x - other.x, y - other.y);
+      const mx0 = (p.x + other.x) / 2, my0 = (p.y + other.y) / 2;
+      p.x = x;
+      p.y = y;
+      const mx1 = (p.x + other.x) / 2, my1 = (p.y + other.y) / 2;
+      this.moved = Infinity;
+      if (o.onPinch) o.onPinch(d0 > (o.pinchMin || 0) ? d1 / d0 : null, mx1, my1, o.pinchPan ? mx1 - mx0 : 0, o.pinchPan ? my1 - my0 : 0);
+    }
+  }
+  /** A pointer lifted (or cancelled: never a tap). */
+  up(id, x, y, cancel = false) {
+    const o = this.o, was = this.pts.size, t = this.tap;
+    this.pts.delete(id);
+    this.tap = null;
+    let tap = !cancel;
+    if (o.travel !== void 0) tap = tap && this.moved < o.travel;
+    if (o.near !== void 0 || o.ms !== void 0) tap = tap && was === 1 && !!t && (o.ms === void 0 || this.now() - t.t < o.ms);
+    if (tap && o.onTap) o.onTap(x, y);
+  }
+  /** Wires a view's element to it: `at(e)` gives a pointer's position (by
+   * default its client x and y). Returns a function that unwires it. */
+  listen(el, at = (e) => [e.clientX, e.clientY], opt = {}) {
+    const fns = [
+      ["pointerdown", (e) => {
+        if (opt.prevent) e.preventDefault();
+        el.setPointerCapture(e.pointerId);
+        const [x, y] = at(e);
+        this.down(e.pointerId, x, y);
+      }],
+      ["pointermove", (e) => {
+        if (!this.pts.has(e.pointerId)) return;
+        const [x, y] = at(e);
+        this.move(e.pointerId, x, y);
+      }],
+      ["pointerup", (e) => {
+        const [x, y] = at(e);
+        this.up(e.pointerId, x, y);
+      }],
+      ["pointercancel", (e) => {
+        const [x, y] = at(e);
+        this.up(e.pointerId, x, y, true);
+      }]
+    ];
+    for (const [type, fn] of fns) el.addEventListener(type, fn);
+    return () => {
+      for (const [type, fn] of fns) el.removeEventListener(type, fn);
+    };
+  }
+  nearPx() {
+    const n = this.o.near;
+    return typeof n === "function" ? n() : n || 0;
+  }
+  now() {
+    return this.o.now ? this.o.now() : typeof performance !== "undefined" ? performance.now() : 0;
+  }
+};
+
+// src/play/items.ts
+var items_exports = {};
+__export(items_exports, {
+  bag: () => bag,
+  gear: () => gear,
+  group: () => group,
+  slots: () => slots,
+  things: () => things
+});
+var bag = {
+  /** How many of a kind (0 if none). */
+  count(b, kind) {
+    return b[kind] || 0;
+  },
+  /** How many in all: of the kinds given, or of every kind in the bag. */
+  total(b, kinds) {
+    let n = 0;
+    if (kinds) for (const k of kinds) n += b[k] || 0;
+    else for (const k in b) n += b[k];
+    return n;
+  },
+  /** Puts n of a kind in; returns how many went in (none for n <= 0). */
+  add(b, kind, n) {
+    if (n <= 0) return 0;
+    b[kind] = (b[kind] || 0) + n;
+    return n;
+  },
+  /** Takes n of a kind out if there are as many; false (and nothing taken) if not. */
+  take(b, kind, n) {
+    if ((b[kind] || 0) < n) return false;
+    b[kind] = (b[kind] || 0) - n;
+    return true;
+  },
+  /** Are there as many of each kind as a cost asks ({ wire: 2, glass: 1 })? */
+  has(b, cost) {
+    for (const k in cost) if ((b[k] || 0) < cost[k]) return false;
+    return true;
+  },
+  /** Takes a cost out if it's all there; false (and nothing taken) if not. */
+  pay(b, cost) {
+    if (!bag.has(b, cost)) return false;
+    for (const k in cost) b[k] = (b[k] || 0) - cost[k];
+    return true;
+  },
+  /** Every count to 0 (those of the kinds given, each set even if it wasn't
+   * there, or every kind in the bag); returns what there was, [kind, n] for
+   * each above 0. */
+  empty(b, kinds) {
+    const out = [];
+    for (const k of kinds || Object.keys(b)) {
+      if (b[k] > 0) out.push([k, b[k]]);
+      b[k] = 0;
+    }
+    return out;
+  },
+  /** Moves everything from one bag into another (of the kinds given, in
+   * their order, or of every kind in `from`), leaving 0 behind; returns what
+   * moved, [kind, n] for each above 0. */
+  move(from, to, kinds) {
+    const out = [];
+    for (const k of kinds || Object.keys(from)) {
+      const n = from[k];
+      if (!(n > 0)) continue;
+      to[k] = (to[k] || 0) + n;
+      out.push([k, n]);
+      from[k] = 0;
+    }
+    return out;
+  },
+  /** What a bag is worth: value(kind, count) summed over the kinds given (in
+   * their order), or over every kind in the bag. */
+  worth(b, value, kinds) {
+    let v = 0;
+    for (const k of kinds || Object.keys(b)) v += value(k, b[k] || 0);
+    return v;
+  }
+};
+var things = {
+  /** The next id from a counter kept in the save, holder[key]: one more than
+   * the last given, or than `from` before any was. */
+  nextId(holder, key = "id", from = 0) {
+    const n = (holder[key] || from) + 1;
+    holder[key] = n;
+    return n;
+  },
+  /** A thing: its id first, then its attributes (later ones over earlier). */
+  make(id, ...attrs) {
+    return Object.assign({ id }, ...attrs);
+  },
+  /** Takes the thing with that id out of a list: it, or null. */
+  pull(list, id) {
+    const i = list.findIndex((t) => t.id === id);
+    return i < 0 ? null : list.splice(i, 1)[0];
+  },
+  /** The things in a list with these attributes (each equal), or passing a test. */
+  where(list, what) {
+    if (typeof what === "function") return list.filter(what);
+    const keys2 = Object.keys(what);
+    return list.filter((t) => keys2.every((k) => t[k] === what[k]));
+  }
+};
+var slots = {
+  /** n empty slots. */
+  make(n) {
+    return new Array(n).fill(null);
+  },
+  /** Puts n of a kind in: topping up its stacks first, in slot order, then
+   * the empty slots; `stack` is the most a slot holds (a number, or a
+   * kind's). Returns how many didn't fit. */
+  put(S, kind, n, stack = Infinity) {
+    const max = typeof stack === "function" ? stack(kind) : stack;
+    for (const s of S) {
+      if (n <= 0) break;
+      if (s && s.k === kind && s.n < max) {
+        const m = Math.min(n, max - s.n);
+        s.n += m;
+        n -= m;
+      }
+    }
+    for (let i = 0; i < S.length && n > 0; i++) if (!S[i]) {
+      const m = Math.min(n, max);
+      S[i] = { k: kind, n: m };
+      n -= m;
+    }
+    return Math.max(0, n);
+  },
+  /** How many of a kind, over every slot. */
+  count(S, kind) {
+    let n = 0;
+    for (const s of S) if (s && s.k === kind) n += s.n;
+    return n;
+  },
+  /** Takes n of a kind if there are as many (from the last stacks first, a
+   * slot emptied when it runs out); false (and nothing taken) if not. */
+  take(S, kind, n) {
+    if (slots.count(S, kind) < n) return false;
+    for (let i = S.length - 1; i >= 0 && n > 0; i--) {
+      const s = S[i];
+      if (!s || s.k !== kind) continue;
+      const m = Math.min(n, s.n);
+      s.n -= m;
+      n -= m;
+      if (s.n <= 0) S[i] = null;
+    }
+    return true;
+  },
+  /** How many slots are empty. */
+  free(S) {
+    let n = 0;
+    for (const s of S) if (!s) n++;
+    return n;
+  }
+};
+var gear = {
+  /** Empty slots of these names. */
+  make(names) {
+    const g = {};
+    for (const n of names) g[n] = null;
+    return g;
+  },
+  /** Puts a thing on in a slot, if the slot is there and (by `fits`) takes
+   * it. Returns what came off to make room (null if the slot was empty), or
+   * undefined if it doesn't go there. */
+  equip(g, slot, thing, fits) {
+    if (!(slot in g) || fits && !fits(slot, thing)) return void 0;
+    const off = g[slot];
+    g[slot] = thing;
+    return off;
+  },
+  /** Takes off what's in a slot: it, or null. */
+  unequip(g, slot) {
+    const off = g[slot] ?? null;
+    if (slot in g) g[slot] = null;
+    return off;
+  },
+  /** What's on, in the slots' order. */
+  worn(g) {
+    return Object.values(g).filter((t) => t !== null && t !== void 0);
+  }
+};
+function group(list, levels) {
+  if (!levels.length) return [];
+  const [L, ...rest] = levels, by = L.by;
+  const keyOf = typeof by === "function" ? by : (t) => t[by];
+  const buckets = /* @__PURE__ */ new Map();
+  for (const t of list) {
+    const k = keyOf(t);
+    let b = buckets.get(k);
+    if (!b) buckets.set(k, b = []);
+    b.push(t);
+  }
+  let keys2;
+  if (Array.isArray(L.order)) keys2 = L.order.filter((k) => buckets.has(k));
+  else if (typeof L.order === "function") keys2 = [...buckets.keys()].sort(L.order);
+  else keys2 = [...buckets.keys()].sort();
+  return keys2.map((key) => {
+    const items = buckets.get(key), g = { key, n: items.length, items };
+    if (rest.length) g.groups = group(items, rest);
+    return g;
+  });
+}
+
+// src/play/guide.ts
+var guide_exports = {};
+__export(guide_exports, {
+  Guide: () => Guide,
+  fresh: () => fresh
+});
+function fresh() {
+  return { i: 0 };
+}
+var Guide = class {
+  constructor(o) {
+    this.o = o;
+    this.steps = o.steps;
+  }
+  /** Where it stands (the save's object), or null. */
+  get s() {
+    return this.o.state() || null;
+  }
+  /** Running: there's a place, it wasn't skipped, and it isn't past the end. */
+  active() {
+    const t = this.s;
+    return !!t && !t.off && t.i < this.steps.length;
+  }
+  /** The step it's on. */
+  get step() {
+    return this.steps[this.s.i];
+  }
+  /** Every frame: moves on past whatever is done, more than one step if the
+   * player is ahead (never past an `end`). Returns the steps passed, oldest
+   * first (none, mostly). */
+  tick() {
+    const passed = [];
+    while (this.active() && !this.step.end && this.step.done && this.step.done()) {
+      passed.push(this.step);
+      this.s.i++;
+    }
+    return passed;
+  }
+  /** Skipped: it never shows again. */
+  skip() {
+    const t = this.s;
+    if (t) t.off = true;
+  }
+  /** Read to the end: past the last step. */
+  finish() {
+    const t = this.s;
+    if (t) t.i = this.steps.length;
+  }
+  /** A field of a step that may be a function (called) or a value. */
+  read(field, step = this.step) {
+    const v = step[field];
+    return typeof v === "function" ? v() : v;
+  }
+  /** Where a step is in its chapter: its chapter, which it is (from 1) and of how many. */
+  place(step = this.step) {
+    const all = this.steps.filter((q) => q.ch === step.ch);
+    return { ch: step.ch, at: all.indexOf(step) + 1, of: all.length };
+  }
+};
+
 // src/shell/save.ts
 var save_exports = {};
 __export(save_exports, {
@@ -1805,7 +2446,7 @@ var Store = class {
    * one. Old keys are deleted first. Returns `data`. */
   load() {
     for (const k of this.o.old || []) remove(k);
-    const fresh = this.o.fresh();
+    const fresh2 = this.o.fresh();
     let stored = null, r = null;
     try {
       r = raw(this.o.key);
@@ -1820,8 +2461,8 @@ var Store = class {
       this.unread = r !== null;
       stored = null;
     }
-    this.loaded = !!stored && (!this.o.accept || this.o.accept(stored, fresh));
-    this.data = this.loaded ? Object.assign(fresh, stored) : fresh;
+    this.loaded = !!stored && (!this.o.accept || this.o.accept(stored, fresh2));
+    this.data = this.loaded ? Object.assign(fresh2, stored) : fresh2;
     if (this.o.clean) this.o.clean(this.data);
     return this.data;
   }

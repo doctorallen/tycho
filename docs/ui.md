@@ -49,7 +49,7 @@ rising.add(machine.x, machine.y, [{ n: 1, name: 'coil' }, { n: 12, name: 'cr', k
 gains.innerHTML = rising.html((x, y) => [(x - View.cx) * sc, (y - View.cy) * sc]);
 ```
 
-Each line is a `div` of class `cls` (`gain`) and its `kind`, placed with `left`, `top` and `opacity`. It lasts `life` (2.4 s), fades from `fadeAt` (1.8) over `fadeFor` (0.6), rises `rise` px a second (12), sits `gap` px under the one before (21), comes `stagger` s after it (0.12), and starts `left` px left of the point (34).
+Each line is a `div` of class `cls` (`gain`) and its `kind`, placed with `left`, `top` and `opacity`, moving as the pixels' rising words do (`Tycho.fx.rise`, [pixels.md](pixels.md)); `Rising` keeps the list and makes the HTML. It lasts `life` (2.4 s), fades from `fadeAt` (1.8) over `fadeFor` (0.6), rises `rise` px a second (12), sits `gap` px under the one before (21), comes `stagger` s after it (0.12), and starts `left` px left of the point (34).
 
 ## Buttons
 

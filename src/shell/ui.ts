@@ -7,12 +7,16 @@
 // after it opens). The games' skins (the CSS, the fonts, the words) stay
 // theirs: what's made here is plain elements with the classes a game gives.
 //
+// The rising lines move as the pixels' rising words do (Tycho.fx.rise);
+// this keeps the list and makes the HTML.
+//
 // Two games' toasts are in, each reachable by its options: the White
 // Dragon's (a short list on game time, the whole of it redrawn on each
 // change, the same words again soon keeping the last one longer, faded by
 // opacity near the end) and Lodestar's (elements added and taken away on
 // their own timers, the same words on screen giving way to the new, a CSS
 // animation over each one's life, hints queued while a screen is open).
+import { rise } from '../pixels/fx';
 
 /** A toast shown (in the list that's redrawn whole). */
 export interface ToastItem { text: string; kind: string; t: number }
@@ -188,14 +192,15 @@ export class Rising {
     lines.forEach((g, i) => this.list.push(Object.assign({ x, y, t: t + i * st, i, of: lines.length }, g) as RisingLine));
   }
   html(at: (x: number, y: number) => [number, number]): string {
-    const o = this.o, now = o.clock(), life = o.life ?? 2.4, fadeAt = o.fadeAt ?? 1.8, fadeFor = o.fadeFor ?? 0.6, rise = o.rise ?? 12, gap = o.gap ?? 21, left = o.left ?? 34, cls = o.cls ?? 'gain';
+    const o = this.o, now = o.clock(), life = o.life ?? 2.4, left = o.left ?? 34, cls = o.cls ?? 'gain';
+    const R = { life, fade: o.fadeAt ?? 1.8, out: o.fadeFor ?? 0.6, speed: o.rise ?? 12, line: o.gap ?? 21 };
     this.list = this.list.filter((g) => now - g.t < life);
     let h = '';
     for (const g of this.list) {
-      const a = now - g.t;
-      if (a < 0) continue;
-      const [sx, sy] = at(g.x, g.y), y = sy - (g.of - 1 - g.i) * gap - a * rise, op = a > fadeAt ? Math.max(0, 1 - (a - fadeAt) / fadeFor) : 1;
-      h += `<div class="${cls}${g.kind ? ' ' + g.kind : ''}" style="left:${(sx - left).toFixed(1)}px;top:${y.toFixed(1)}px;opacity:${op.toFixed(2)}">${o.line(g)}</div>`;
+      const r = rise(now - g.t, g.i, g.of, R);
+      if (!r) continue;
+      const [sx, sy] = at(g.x, g.y), y = sy - r.stack - r.up;
+      h += `<div class="${cls}${g.kind ? ' ' + g.kind : ''}" style="left:${(sx - left).toFixed(1)}px;top:${y.toFixed(1)}px;opacity:${r.alpha.toFixed(2)}">${o.line(g)}</div>`;
     }
     return h;
   }

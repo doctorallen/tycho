@@ -37,6 +37,11 @@ test('the clock runs the minds forward, back through time walk, and remakes them
   assert.equal(c.sync(), 'remade');
   assert.equal(made, 1);
   assert.equal(M.clock({ world: () => null, minutes: () => 0 }).sync(), 'off');
+  const f = town(); let ft = f.now + HOUR;
+  const fc = M.clock({ world: () => f, minutes: () => ft, back: false });
+  fc.sync(); ft -= 30;
+  assert.equal(fc.sync(), 'same', 'with time walk off, a time behind is left');
+  assert.equal(f.now, ft + 30);
 });
 
 test('the minds go in the save and come back the same; a save the game will not take leaves a new world', () => {
@@ -51,7 +56,9 @@ test('the minds go in the save and come back the same; a save the game will not 
   const c = town(), now = c.now + 2 * HOUR;
   assert.equal(M.restore(c, saved, { accept: (s) => s.pop === 4, now }), false);
   assert.equal(c.now, now);
-  assert.equal(M.restore(town(), { tyrell: 'world', v: 1, s: { nonsense: true } }), false, 'an unreadable save is left');
+  let told = 0;
+  assert.equal(M.restore(town(), { tyrell: 'world', v: 1, s: { nonsense: true } }, { onError: () => told++ }), false, 'an unreadable save is left');
+  assert.equal(told, 1, 'and the game is told');
   assert.equal(M.restore(town(), null), false);
 });
 

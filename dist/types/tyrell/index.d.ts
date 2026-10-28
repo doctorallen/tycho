@@ -15,13 +15,14 @@ import { Athelas } from './modules/athelas';
 import { Delos } from './modules/delos';
 import { Voice } from './modules/voice';
 import { Bree, OUTCOMES, breeStarter } from './modules/bree';
+import { Morgul } from './modules/morgul';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
 /** The engine's version. */
 export declare const VERSION = "2.0.0";
 /** Every module that ships with Tyrell, by name. */
-export declare const MODULES: readonly ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree"];
+export declare const MODULES: readonly ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree", "morgul"];
 export type ModuleName = (typeof MODULES)[number];
 export interface CreateOptions extends Options {
     /** Settings for the modules, by name: { reverie: { breaks: 0.5 }, cradle: { year: 12 * 1440 } }. Every field is in docs/tuning.md. */
@@ -38,7 +39,7 @@ export declare const VoightKampff: {
 };
 /** Every module's default settings, by name (what moduleConfig is merged over): see docs/tuning.md. */
 export declare const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>>;
-export { World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA, Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, OUTCOMES, breeStarter, curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR, };
+export { World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA, Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, Morgul, OUTCOMES, breeStarter, curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR, };
 export type { SaveData, Module };
 export type * from './core/types';
 export type { FeelingDef, BreakDef, MemoryKindDef, Belief, Memory, PersonFile, Shift, ReverieConfig } from './modules/reverie';
@@ -50,12 +51,13 @@ export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
 export type { GoodDef, ChainDef, GoodReport, ProductionReport, CeresConfig } from './modules/ceres';
 export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken, JoiConfig } from './modules/joi';
-export type { CourseDef, CoursePhase, AthelasConfig } from './modules/athelas';
+export type { CourseDef, CoursePhase, CourseBranch, CourseSeverity, CourseView, AthelasConfig } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
 export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
 export type { LandRules } from './modules/landing';
 export type { Outcome, OutcomeKey, OutcomeDo, KindDef, TopicDef, TopicSource, MannerDef, BreeConfig, Exchange, ExchangeView, Turn, Feud, Finished, StarterOptions } from './modules/bree';
+export type { Intent, MeansUse, MeansDef, WoundDef, TrapDef, TaintDef, Harm, HarmView, Blow, Response, MorgulConfig } from './modules/morgul';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
-export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions } from './tools/voightkampff';
+export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions, VKHarm } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';
 export type { LogFilter } from './core/westmarch';

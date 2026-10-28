@@ -43,6 +43,7 @@ import type { World } from '../core/world';
 import { DAY, HOUR, Stream, clamp, hash01, round } from '../core/util';
 import { landing } from './landing';
 import type { LandRules } from './landing';
+import type { Blow } from './morgul';
 
 /** The steps an exchange can come out at, best first. */
 export type Outcome = 'warm' | 'good' | 'fine' | 'awkward' | 'sour' | 'row';
@@ -550,6 +551,8 @@ export interface Turn {
   line: string; key?: string; text?: string;
   /** The exchange ends with this turn. */
   end: boolean;
+  /** A fight by numbers (Morgul): the blow this turn landed, one way or the other. */
+  harm?: Blow;
 }
 
 interface State {
@@ -969,6 +972,8 @@ export class Bree implements Module {
   /** Is someone free to talk: about, not walking, not doing something quiet (asleep)? */
   private free(p: PersonState | undefined): p is PersonState {
     if (!p || p.status !== 'active' || !p.place || p.doing?.kind === 'travel') return false;
+    // someone down (Morgul) talks to nobody
+    if (this.w.morgul?.isDown(p.id)) return false;
     const d = p.doing;
     if (d && d.kind === 'act') {
       const tags = this.w.actions.get(d.action)?.tags;
@@ -1031,10 +1036,14 @@ export class Bree implements Module {
     if (def.group && def.topics?.length && why !== 'game') for (const id of this.joiners(ex, r)) ex.who.push(id);
     for (const id of ex.who) { const m = this.mannerOf(id); if (m) ex.manners[id] = m; }
     ex.turns = turns !== undefined ? Math.max(1, Math.round(turns)) : this.plan(def, ex.who, r, minutes);
+    // a fight by numbers (Morgul) goes on until someone yields or goes down, wherever they were going
+    const brawl = !!w.morgul?.fights(kind);
+    if (brawl) { if (turns === undefined) ex.turns = (w.morgul as NonNullable<World['morgul']>).blows; delete ex.until; }
     st.ex[ex.id] = ex;
     for (const id of ex.who) st.of[id] = ex.id;
     w.log('exchange', who[0], { id: ex.id, kind, with: ex.who.slice(1), why });
     w.emit('bree:start', this.view(ex));
+    if (brawl) w.morgul?.brawl(ex.who, kind);
     // a fight from the first blow: seen as it starts
     if (def.crime) this.breaksOut(ex, def);
     this.turn(ex);
@@ -1445,19 +1454,28 @@ export class Bree implements Module {
     ex.n++;
     // opening a topic: news is passed on if it's heard out, old times are brought to mind
     if (topic && step === 'open' && typeof subject === 'string') this.opened(ex, topic, s, subject, landed, r);
+    // a fight by numbers (Morgul): a blow lands one way or the other, and it's over if one yields or goes down
+    const mg = w.morgul;
+    const blow = mg && mg.fights(ex.kind) ? mg.applyBlow(ex.id, ex.by ?? ex.who[0], s, l, ex.place, this.seers(ex)) : null;
     // words that land badly: the one hurt may answer back harder, or walk off
     let act: Reaction = { act: 'none' };
-    if (this.bad(landed)) { ex.sour++; ex.sourBy = who; act = this.react(ex, def, s, l, r); }
+    let leaver = to;
+    if (this.bad(landed)) { ex.sour++; ex.sourBy = who; }
+    if (blow) {
+      // a fight by numbers: someone there may step in; the one struck walks off (or yields, or goes down), as Morgul says
+      if (blow.end === 'left') { act = { act: 'leave' }; leaver = blow.to; }
+      else if (!blow.end) { const by = this.stepper(ex, s, l, r); if (by) act = { act: 'step_in', by }; }
+    } else if (this.bad(landed)) act = this.react(ex, def, s, l, r);
     const ends = act.act === 'leave' || act.act === 'step_in';
     // (a conversation takes its leave on a turn of its own)
     const kd = this.kinds.get(ex.kind);
-    const over = ends || (act.act !== 'escalate' && !(kd && this.talks(kd)) && ex.n >= ex.turns);
-    this.tell(ex, { who, to, step, landed, end: over && !ends });
+    const over = ends || blow?.end === 'down' || blow?.end === 'yielded' || (act.act !== 'escalate' && !(kd && this.talks(kd)) && ex.n >= ex.turns);
+    this.tell(ex, { who, to, step, landed, end: over && !ends, ...(blow ? { harm: blow } : {}) });
     if (act.act === 'calm') { ex.n++; ex.lastWho = who; this.tell(ex, { who, to, step: 'calm', landed: null, end: over }); }
     else if (act.act === 'step_in' && act.by) { ex.n++; ex.mediator = act.by; this.tell(ex, { who: act.by, to, step: 'step_in', landed: null, end: true }); }
-    else if (act.act === 'leave') { ex.n++; this.tell(ex, { who: to, to: who, step: 'leave', landed: null, end: true }); }
+    else if (act.act === 'leave') { ex.n++; this.tell(ex, { who: leaver, to: leaver === to ? who : to, step: 'leave', landed: null, end: true }); }
     else if (act.act === 'escalate') this.escalate(ex, def, l, s, r);
-    if (over) { this.finish(ex, act.act === 'leave' ? 'left' : act.act === 'step_in' ? 'stepped in' : 'done', act.act === 'leave' ? to : undefined); return; }
+    if (over) { this.finish(ex, act.act === 'leave' ? 'left' : act.act === 'step_in' ? 'stepped in' : blow?.end ?? 'done', act.act === 'leave' ? leaver : undefined); return; }
     this.schedule(ex, r);
   }
 
@@ -1493,20 +1511,9 @@ export class Bree implements Module {
       if (r.chance(p)) {
         // the other keeps their patience
         if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, 'patience') + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: 'calm' };
-        // someone there steps in: whoever likes one of them best, with the nerve for it
-        let best: { id: Id; v: number } | null = null;
-        for (const id of this.seers(ex)) {
-          const m = w.s.people[id];
-          const like = Math.max(regard(id, s.id), regard(id, l.id));
-          if (!m || like < c.stepInFrom) continue;
-          const v = like + (this.nature(m, 'courage') - 0.5) * 2 * c.stepInCourage;
-          if (!best || v > best.v) best = { id, v };
-        }
-        if (best) {
-          const m = w.s.people[best.id] as PersonState;
-          const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
-          if (r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, 'courage') - 0.5) * 2))) return { act: 'step_in', by: best.id };
-        }
+        // someone there steps in
+        const by = this.stepper(ex, s, l, r);
+        if (by) return { act: 'step_in', by };
         return { act: 'escalate' };
       }
     }
@@ -1516,6 +1523,24 @@ export class Bree implements Module {
       if (r.chance(p)) return { act: 'leave' };
     }
     return { act: 'none' };
+  }
+
+  /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
+  private stepper(ex: Exchange, s: PersonState, l: PersonState, r: Stream): Id | null {
+    const w = this.w, c = this.c, fs = w.fellowship;
+    const regard = (x: Id, y: Id): number => (fs ? fs.regard(x, y) : 0);
+    let best: { id: Id; v: number } | null = null;
+    for (const id of this.seers(ex)) {
+      const m = w.s.people[id];
+      const like = Math.max(regard(id, s.id), regard(id, l.id));
+      if (!m || like < c.stepInFrom) continue;
+      const v = like + (this.nature(m, 'courage') - 0.5) * 2 * c.stepInCourage;
+      if (!best || v > best.v) best = { id, v };
+    }
+    if (!best) return null;
+    const m = w.s.people[best.id] as PersonState;
+    const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
+    return r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, 'courage') - 0.5) * 2)) ? best.id : null;
   }
 
   /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
@@ -1535,9 +1560,12 @@ export class Bree implements Module {
     delete ex.topic;
     delete ex.opener;
     const left = ex.until !== undefined ? ex.until - w.s.now : undefined;
-    ex.turns = ex.n + this.plan(next, ex.who, r, left);
+    const brawl = !!w.morgul?.fights(next.id);
+    ex.turns = ex.n + (brawl ? (w.morgul as NonNullable<World['morgul']>).blows : this.plan(next, ex.who, r, left));
+    if (brawl) delete ex.until;
     w.log('escalated', angry.id, { id: ex.id, from, to: next.id, against: other.id });
     w.emit('bree:escalated', { id: ex.id, from, to: next.id, by: angry.id, against: other.id });
+    if (brawl) w.morgul?.brawl(ex.who, next.id);
     this.breaksOut(ex, next);
   }
 
@@ -1622,7 +1650,7 @@ export class Bree implements Module {
   }
 
   /** Tells the game about a turn. */
-  private tell(ex: Exchange, t: { who: Id; to: Id; step: string; landed: Outcome | null; end: boolean }): void {
+  private tell(ex: Exchange, t: { who: Id; to: Id; step: string; landed: Outcome | null; end: boolean; harm?: Blow }): void {
     const w = this.w;
     const tp = ex.topic && ['open', 'reply', 'more', 'back'].includes(t.step) ? ex.topic : undefined;
     // the words: the most specific line there is, the topic's, then the kind's, then any exchange's
@@ -1633,6 +1661,7 @@ export class Bree implements Module {
     };
     if (tp && tp.subject !== undefined) turn.subject = tp.subject;
     if (ex.manners[t.who]) turn.manner = ex.manners[t.who];
+    if (t.harm) turn.harm = t.harm;
     const cs = w.cityspeak;
     if (cs && w.s.people[t.who]) {
       for (const topic of tries) {
@@ -1712,6 +1741,8 @@ export class Bree implements Module {
     if (c.again > 0 && why === 'done' && ex.who.length === 2 && ex.place) this.later(a, b, w.ring.root(ex.place));
     w.log('exchanged', a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
     w.emit('bree:end', { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
+    // a fight by numbers over: whoever was held in it thinks again
+    if (w.morgul?.fights(ex.kind)) w.morgul.parted(ex.who);
   }
 
   /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */

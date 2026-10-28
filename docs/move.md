@@ -12,7 +12,7 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 | 5 | World: grid, shapes, space, collide, move, path, gen | |
 | 6 | Play: input, interact, items, craft, trade, build, mine, guide | |
 | 7 | The rest of the shell: ui, hud, map, audio, inspect | |
-| 8 | Tyrell: Voice, Delos, skills, conditions, novelty and wishes, production | |
+| 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production | Tyrell done; the White Dragon's talk next |
 | 9 | Merryfolk's minds onto Tyrell | |
 | 10 | The bridge | |
 

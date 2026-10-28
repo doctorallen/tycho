@@ -3136,12 +3136,12 @@ var Platform = class {
     return [x - P.w / 2, y - P.h, x + P.w / 2, y];
   }
   /** What the body's box at x, y overlaps (a hair inside its edges), or null. */
-  hits(space, x, y) {
+  hits(space2, x, y) {
     const P = this.n;
-    return space.hits(x - P.w / 2 + 0.01, y - P.h + 0.01, x + P.w / 2 - 0.01, y - 0.01);
+    return space2.hits(x - P.w / 2 + 0.01, y - P.h + 0.01, x + P.w / 2 - 0.01, y - 0.01);
   }
   /** One step of dt seconds. The result is kept and reused: read it before the next step. */
-  step(space, b, c, dt) {
+  step(space2, b, c, dt) {
     const P = this.n, O = this.o, res = this.res;
     const ax = c.ax, ay = c.ay, jumpHit = c.jumpHit;
     let busy = c.busy === void 0 ? 1 : c.busy;
@@ -3150,7 +3150,7 @@ var Platform = class {
     b.drop = Math.max(0, b.drop - dt);
     if (ax) b.face = ax > 0 ? 1 : -1;
     if (!b.ladder && Math.abs(ay) > O.grabY && Math.abs(ax) < O.grabX) {
-      const l = space.ladderAt(b.x, b.y - P.h, b.y + (ay > 0 ? O.grabBelow : 0));
+      const l = space2.ladderAt(b.x, b.y - P.h, b.y + (ay > 0 ? O.grabBelow : 0));
       if (l && (ay < 0 ? b.y > l.y0 + O.grabTop : b.y < l.y1 - O.grabBottom)) {
         b.ladder = l;
         b.x = l.x;
@@ -3194,7 +3194,7 @@ var Platform = class {
     else b.vx -= clamp(b.vx, -P.friction * dt, P.friction * dt);
     b.coyote = b.ground ? P.coyote : Math.max(0, b.coyote - dt);
     if (jumpHit) {
-      const onWay = b.ground && !space.hits(b.x - O.dropFoot, b.y, b.x + O.dropFoot, b.y + 2) && space.way(b.x, b.y - 1, b.y + 1) !== null;
+      const onWay = b.ground && !space2.hits(b.x - O.dropFoot, b.y, b.x + O.dropFoot, b.y + 2) && space2.way(b.x, b.y - 1, b.y + 1) !== null;
       if (ay > O.dropY && onWay) {
         b.drop = O.dropTime;
         b.ground = false;
@@ -3208,11 +3208,11 @@ var Platform = class {
     b.vy = Math.min(b.vy + P.gravity * dt, P.maxFall);
     if (!c.jump && b.vy < -O.hop) b.vy += P.gravity * dt * O.hopGravity;
     let nx = b.x + b.vx * dt;
-    const hx = this.hits(space, nx, b.y);
+    const hx = this.hits(space2, nx, b.y);
     if (hx) {
       let stepped = false;
       if (b.ground) {
-        for (let s = O.stepMin; s <= O.stepMax; s += 1) if (!this.hits(space, nx, b.y - s)) {
+        for (let s = O.stepMin; s <= O.stepMax; s += 1) if (!this.hits(space2, nx, b.y - s)) {
           b.y -= s;
           stepped = true;
           break;
@@ -3220,27 +3220,27 @@ var Platform = class {
       }
       if (!stepped) {
         nx = b.vx > 0 ? hx.x0 - P.w / 2 - 0.01 : hx.x1 + P.w / 2 + 0.01;
-        if (this.hits(space, nx, b.y)) nx = b.x;
+        if (this.hits(space2, nx, b.y)) nx = b.x;
         b.vx = 0;
       }
     }
     b.walked += Math.abs(nx - b.x);
     b.x = nx;
     if (b.ground && b.vy >= 0 && !b.drop) {
-      const s = space.way(b.x, b.y - O.follow, b.y + O.follow);
-      if (s !== null && !this.hits(space, b.x, s)) b.y = s;
+      const s = space2.way(b.x, b.y - O.follow, b.y + O.follow);
+      if (s !== null && !this.hits(space2, b.x, s)) b.y = s;
     }
     const wasY = b.y;
     let ny = b.y + b.vy * dt;
     b.ground = false;
     if (b.vy >= 0) {
-      const hy = this.hits(space, b.x, ny);
+      const hy = this.hits(space2, b.x, ny);
       if (hy) {
         ny = hy.y0;
         b.vy = 0;
         b.ground = true;
       } else if (!b.drop) {
-        const s = space.way(b.x, wasY - 0.5, ny + 0.5);
+        const s = space2.way(b.x, wasY - 0.5, ny + 0.5);
         if (s !== null) {
           ny = s;
           b.vy = 0;
@@ -3248,7 +3248,7 @@ var Platform = class {
         }
       }
     } else {
-      const hy = this.hits(space, b.x, ny);
+      const hy = this.hits(space2, b.x, ny);
       if (hy) {
         ny = hy.y1 + P.h + 0.01;
         b.vy = 0;
@@ -3260,16 +3260,16 @@ var Platform = class {
 };
 var TURNS = [0.7, -0.7, 1.2, -1.2];
 var TURN_CS = TURNS.map((t) => [Math.cos(t), Math.sin(t)]);
-function topdown(space, b, dx, dy, r, o = {}) {
+function topdown(space2, b, dx, dy, r, o = {}) {
   if (!dx && !dy) return;
-  if (!space.circleHits(b.x + dx, b.y + dy, r)) {
+  if (!space2.circleHits(b.x + dx, b.y + dy, r)) {
     b.x += dx;
     b.y += dy;
     return;
   }
-  if (space.circleHits(b.x, b.y, r)) {
-    const was = space.circleDepth(b.x, b.y, r), now = space.circleDepth(b.x + dx, b.y + dy, r);
-    if (now < was || now === was && !space.inTiles(b.x + dx, b.y + dy)) {
+  if (space2.circleHits(b.x, b.y, r)) {
+    const was = space2.circleDepth(b.x, b.y, r), now = space2.circleDepth(b.x + dx, b.y + dy, r);
+    if (now < was || now === was && !space2.inTiles(b.x + dx, b.y + dy)) {
       b.x += dx;
       b.y += dy;
     }
@@ -3280,10 +3280,10 @@ function topdown(space, b, dx, dy, r, o = {}) {
     const mx = axis ? 0 : dx, my = axis ? dy : 0;
     if (!mx && !my) continue;
     let lo = 0, hi = 1;
-    if (!space.circleHits(b.x + mx, b.y + my, r)) lo = 1;
+    if (!space2.circleHits(b.x + mx, b.y + my, r)) lo = 1;
     else for (let k = 0; k < halvings; k++) {
       const mid = (lo + hi) / 2;
-      if (space.circleHits(b.x + mx * mid, b.y + my * mid, r)) hi = mid;
+      if (space2.circleHits(b.x + mx * mid, b.y + my * mid, r)) hi = mid;
       else lo = mid;
     }
     b.x += mx * lo;
@@ -3294,7 +3294,7 @@ function topdown(space, b, dx, dy, r, o = {}) {
     const turns = o.turns ? o.turns.map((t) => [Math.cos(t), Math.sin(t)]) : TURN_CS, k = o.reach === void 0 ? 0.8 : o.reach;
     for (const [c, s] of turns) {
       const tx = (dx * c - dy * s) * k, ty = (dx * s + dy * c) * k;
-      if (!space.circleHits(x0 + tx, y0 + ty, r)) {
+      if (!space2.circleHits(x0 + tx, y0 + ty, r)) {
         b.x = x0 + tx;
         b.y = y0 + ty;
         return;
@@ -4038,8 +4038,8 @@ var slots = {
   /** Puts n of a kind in: topping up its stacks first, in slot order, then
    * the empty slots; `stack` is the most a slot holds (a number, or a
    * kind's). Returns how many didn't fit. */
-  put(S, kind, n, stack = Infinity) {
-    const max = typeof stack === "function" ? stack(kind) : stack;
+  put(S, kind, n, stack2 = Infinity) {
+    const max = typeof stack2 === "function" ? stack2(kind) : stack2;
     for (const s of S) {
       if (n <= 0) break;
       if (s && s.k === kind && s.n < max) {
@@ -4599,10 +4599,1398 @@ var Tasks = class {
   }
 };
 
+// src/shell/audio.ts
+var audio_exports = {};
+__export(audio_exports, {
+  Bank: () => Bank,
+  Engine: () => Engine,
+  Music: () => Music,
+  Rand: () => Rand,
+  band: () => band,
+  curve: () => curve,
+  drone: () => drone,
+  env: () => env,
+  fm: () => fm,
+  hz: () => hz,
+  impulse: () => impulse,
+  noise: () => noise2,
+  noiseBuffer: () => noiseBuffer,
+  presence: () => presence,
+  quiet: () => quiet,
+  setting: () => setting,
+  space: () => space,
+  stack: () => stack,
+  tone: () => tone2,
+  trem: () => trem,
+  trim: () => trim,
+  voiceOut: () => voiceOut,
+  waves: () => waves
+});
+var Rand = class {
+  constructor(seed = 625341585) {
+    this.s = seed >>> 0;
+  }
+  /** 0..1. */
+  next() {
+    let s = this.s;
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    s >>>= 0;
+    this.s = s;
+    return s / 4294967296;
+  }
+  /** a..b. */
+  range(a, b) {
+    return a + (b - a) * this.next();
+  }
+};
+function hz(semi, root = 440) {
+  return root * Math.pow(2, semi / 12);
+}
+function setting(v) {
+  if (v === void 0 || v === true) return 1;
+  if (v === false) return 0;
+  const n = +v || 0;
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+function quiet(p) {
+  if (p && p.catch) p.catch(() => {
+  });
+}
+function waves(c, recipes = {}) {
+  const out = {};
+  for (const [name, [n, f]] of Object.entries(recipes)) {
+    let w = null;
+    Object.defineProperty(out, name, { enumerable: true, get() {
+      if (!w) {
+        const re = new Float32Array(n + 1), im = new Float32Array(n + 1);
+        for (let k = 1; k <= n; k++) im[k] = f(k);
+        w = c.createPeriodicWave(re, im);
+      }
+      return w;
+    } });
+  }
+  return out;
+}
+function env(p, t, a, g, d, hold) {
+  p.setValueAtTime(0, t);
+  p.linearRampToValueAtTime(g, t + a);
+  if (hold) p.setValueAtTime(g, t + a + hold);
+  p.setTargetAtTime(0, t + a + (hold || 0), d);
+  return t + a + (hold || 0) + d * 6;
+}
+function voiceOut(S, o, v, g) {
+  g.connect(o.node);
+  if (v.send) {
+    if (!o.send) {
+      o.send = S.ctx.createGain();
+      o.send.gain.value = o.level;
+      o.send.connect(o.sendTo);
+    }
+    const s = S.ctx.createGain();
+    s.gain.value = v.send;
+    g.connect(s);
+    s.connect(o.send);
+  }
+}
+function tone2(S, o, t, v) {
+  const c = S.ctx, osc = c.createOscillator(), g = c.createGain();
+  if (v.w && S.waves[v.w]) osc.setPeriodicWave(S.waves[v.w]);
+  else osc.type = v.w || "sine";
+  osc.frequency.setValueAtTime(v.f, t);
+  if (v.f2) osc.frequency.exponentialRampToValueAtTime(v.f2, t + (v.glide || 0.1));
+  if (v.det) osc.detune.value = v.det;
+  let node = osc;
+  if (v.lp) {
+    const f = c.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = v.lp;
+    f.Q.value = v.q || 0.7;
+    node.connect(f);
+    node = f;
+  }
+  node.connect(g);
+  const end = env(g.gain, t, v.a || 5e-3, v.g === void 0 ? 1 : v.g, v.d || 0.1, v.hold);
+  if (v.vib) {
+    const lfo = c.createOscillator(), lg = c.createGain();
+    lfo.frequency.value = v.vib[0];
+    lg.gain.value = v.vib[1];
+    lfo.connect(lg);
+    lg.connect(osc.frequency);
+    lfo.start(t);
+    lfo.stop(end);
+  }
+  voiceOut(S, o, v, g);
+  osc.start(t);
+  osc.stop(end);
+  osc.stopAt = end;
+  o.srcs.push(osc);
+  o.end = Math.max(o.end, end);
+  return end;
+}
+function noise2(S, o, t, v) {
+  const c = S.ctx, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  src.buffer = S.noise;
+  src.loop = true;
+  f.type = v.ft || "bandpass";
+  f.Q.value = v.q || 1;
+  f.frequency.setValueAtTime(v.f, t);
+  if (v.f2) f.frequency.exponentialRampToValueAtTime(v.f2, t + (v.glide || 0.1));
+  src.connect(f);
+  f.connect(g);
+  const end = env(g.gain, t, v.a || 3e-3, v.g === void 0 ? 1 : v.g, v.d || 0.05, v.hold);
+  voiceOut(S, o, v, g);
+  src.start(t, S.rand.next() * 1.5);
+  src.stop(end);
+  src.stopAt = end;
+  o.srcs.push(src);
+  o.end = Math.max(o.end, end);
+  return end;
+}
+function trem(S, node, t, tr) {
+  if (!tr) return node;
+  const c = S.ctx, g = c.createGain(), l = c.createOscillator(), lg = c.createGain();
+  g.gain.value = 1 - tr[1] / 2;
+  l.frequency.value = tr[0];
+  lg.gain.value = tr[1] / 2;
+  l.connect(lg);
+  lg.connect(g.gain);
+  node.connect(g);
+  l.start(t);
+  return g;
+}
+function fm(S, o, t, v) {
+  const c = S.ctx, car = c.createOscillator(), mod = c.createOscillator(), mg = c.createGain(), g = c.createGain(), gl = v.glide || 0.1, ratio = v.ratio;
+  car.frequency.setValueAtTime(v.f, t);
+  mod.frequency.setValueAtTime(v.f * ratio, t);
+  if (v.f2) {
+    car.frequency.exponentialRampToValueAtTime(v.f2, t + gl);
+    mod.frequency.exponentialRampToValueAtTime(v.f2 * ratio, t + gl);
+  }
+  mg.gain.setValueAtTime(v.f * v.i0, t);
+  mg.gain.setTargetAtTime(v.f * (v.i1 || 0), t, v.id || 0.05);
+  mod.connect(mg);
+  mg.connect(car.frequency);
+  let node = car;
+  if (v.lp) {
+    const f = c.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = v.lp;
+    f.Q.value = 0.7;
+    node.connect(f);
+    node = f;
+  }
+  node = trem(S, node, t, v.trem);
+  node.connect(g);
+  const end = env(g.gain, t, v.a || 2e-3, v.g === void 0 ? 1 : v.g, v.d || 0.1, v.hold);
+  voiceOut(S, o, v, g);
+  car.start(t);
+  mod.start(t);
+  car.stop(end);
+  mod.stop(end);
+  car.stopAt = end;
+  o.srcs.push(car);
+  o.end = Math.max(o.end, end);
+}
+function stack(S, o, t, v) {
+  const c = S.ctx, f = c.createBiquadFilter(), g = c.createGain(), n = v.n || 3, gl = v.glide || 0.2;
+  f.type = "lowpass";
+  f.Q.value = v.q || 0.9;
+  f.frequency.setValueAtTime(v.lp, t);
+  if (v.lp2) f.frequency.exponentialRampToValueAtTime(v.lp2, t + (v.sweep || 0.2));
+  trem(S, f, t, v.trem).connect(g);
+  const end = env(g.gain, t, v.a || 0.01, (v.g === void 0 ? 1 : v.g) / Math.sqrt(n), v.d || 0.2, v.hold);
+  for (let i = 0; i < n; i++) {
+    const osc = c.createOscillator(), k = Math.pow(2, ((n > 1 ? i / (n - 1) : 0.5) - 0.5) * (v.spread || 10) / 1200);
+    if (v.w && S.waves[v.w]) osc.setPeriodicWave(S.waves[v.w]);
+    else osc.type = v.w || "sine";
+    osc.frequency.setValueAtTime(v.f * k, t);
+    if (v.f2) osc.frequency.exponentialRampToValueAtTime(v.f2 * k, t + gl);
+    osc.connect(f);
+    osc.start(t);
+    osc.stop(end);
+    osc.stopAt = end;
+    o.srcs.push(osc);
+  }
+  voiceOut(S, o, v, g);
+  o.end = Math.max(o.end, end);
+}
+function noiseBuffer(c, rand, secs = 2) {
+  const n = c.sampleRate * secs, buf = c.createBuffer(1, n, c.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = rand.next() * 2 - 1;
+  return buf;
+}
+var CHAIN = { threshold: -10, knee: 6, ratio: 10, attack: 3e-3, release: 0.25, lp: 9e3, lpQ: 0.5, hp: 80, hpQ: 0.6 };
+var SPACE = { taps: [[0.193, -0.6], [0.311, 0.6], [0.467, 0]], lp: 2200, fb: 0.48 };
+function space(c, dest, level, o = {}) {
+  const taps = o.taps || SPACE.taps, lpf = o.lp ?? SPACE.lp, fbg = o.fb ?? SPACE.fb;
+  const inp = c.createGain(), out = c.createGain();
+  inp.gain.value = 1;
+  out.gain.value = level;
+  out.connect(dest);
+  taps.forEach(([dt, pan]) => {
+    const dl = c.createDelay(1), lp = c.createBiquadFilter(), fb = c.createGain();
+    dl.delayTime.value = dt;
+    lp.type = "lowpass";
+    lp.frequency.value = lpf;
+    fb.gain.value = fbg;
+    inp.connect(dl);
+    dl.connect(lp);
+    lp.connect(fb);
+    fb.connect(dl);
+    if (c.createStereoPanner) {
+      const p = c.createStereoPanner();
+      p.pan.value = pan;
+      lp.connect(p);
+      p.connect(out);
+    } else lp.connect(out);
+  });
+  return inp;
+}
+var Engine = class {
+  constructor(o) {
+    this.ready = false;
+    this.failed = false;
+    this.realtime = false;
+    this.noise = null;
+    this.waves = {};
+    /** When each voice sounding now ends. */
+    this.ends = [];
+    /** When each cue last played. */
+    this.last = {};
+    /** The levels last applied. */
+    this.levels = { music: -1, sfx: -1 };
+    /** The music (built with the context, ticked with the engine), if any. */
+    this.score = null;
+    /** The bank the cues' rendered parts come from, if any. */
+    this.bank = null;
+    this.listening = false;
+    this.o = o;
+    this.rand = o.rand || new Rand();
+    this.root = o.root ?? 440;
+  }
+  /** Makes the whole graph on ctx: the page's AudioContext (realtime), or a
+   * test's OfflineAudioContext. */
+  build(ctx, realtime) {
+    const c = ctx, ch = Object.assign({}, CHAIN, this.o.chain || {}), M = this.o.mix;
+    this.ctx = c;
+    this.realtime = !!realtime;
+    this.ends = [];
+    this.last = {};
+    const lim = c.createDynamicsCompressor();
+    lim.threshold.value = ch.threshold;
+    lim.knee.value = ch.knee;
+    lim.ratio.value = ch.ratio;
+    lim.attack.value = ch.attack;
+    lim.release.value = ch.release;
+    lim.connect(c.destination);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = ch.lp;
+    lp.Q.value = ch.lpQ;
+    lp.connect(lim);
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = ch.hp;
+    hp.Q.value = ch.hpQ;
+    hp.connect(lp);
+    this.out = c.createGain();
+    this.out.gain.value = M.master;
+    this.out.connect(hp);
+    this.sfx = c.createGain();
+    this.sfx.gain.value = 0;
+    this.sfx.connect(this.out);
+    this.music = c.createGain();
+    this.music.gain.value = 0;
+    this.music.connect(this.out);
+    this.space = space(c, this.out, M.space, this.o.space);
+    this.sfxSend = c.createGain();
+    this.sfxSend.gain.value = 0;
+    this.sfxSend.connect(this.space);
+    this.musicSend = c.createGain();
+    this.musicSend.gain.value = 0;
+    this.musicSend.connect(this.space);
+    this.noise = noiseBuffer(c, this.rand, this.o.noiseSecs ?? 2);
+    this.waves = waves(c, this.o.waves);
+    this.levels = { music: -1, sfx: -1 };
+    this.applyLevels(true);
+    this.ready = true;
+  }
+  /** A setting's level: 'music' or 'sfx'. */
+  level(kind) {
+    return this.o.level ? this.o.level(kind) : 1;
+  }
+  /** Whether either setting wants sound at all. */
+  wanted() {
+    return this.level("music") > 0 || this.level("sfx") > 0;
+  }
+  /** The settings onto the buses (at once with `now`, else gliding); with
+   * nothing wanted the live context sleeps, and costs nothing. */
+  applyLevels(now) {
+    if (!this.ctx) return;
+    const m = this.level("music"), e = this.level("sfx"), t = this.ctx.currentTime, M = this.o.mix;
+    if (m !== this.levels.music) {
+      for (const b of [this.music, this.musicSend]) b.gain.setTargetAtTime(m * M.music, t, now ? 1e-3 : 0.3);
+      this.levels.music = m;
+    }
+    if (e !== this.levels.sfx) {
+      for (const b of [this.sfx, this.sfxSend]) b.gain.setTargetAtTime(e * M.sfx, t, now ? 1e-3 : 0.05);
+      this.levels.sfx = e;
+    }
+    if (this.realtime && this.ctx.state !== "closed" && typeof document !== "undefined") {
+      const ac = this.ctx;
+      if (!this.wanted()) quiet(ac.suspend());
+      else if (!document.hidden && this.ctx.state !== "running") quiet(ac.resume());
+    }
+  }
+  /** A cue's output: its voices meet in one node, its level and its pan, and
+   * leave through the effects' bus (or `bus`; the space through the same
+   * bus's send). */
+  cueOut(t, g, pan, bus) {
+    const c = this.ctx, node = c.createGain(), b = bus || this.sfx;
+    node.gain.value = g;
+    let last = node;
+    if (pan && c.createStereoPanner) {
+      const p = c.createStereoPanner();
+      p.pan.value = pan;
+      node.connect(p);
+      last = p;
+    }
+    last.connect(b);
+    return { node, last, send: null, sendTo: b === this.sfx ? this.sfxSend : this.musicSend, level: g, srcs: [], end: t, pan };
+  }
+  /** Cuts a finished cue loose once its last voice is done. */
+  cueDone(o) {
+    let tail = null;
+    for (const s of o.srcs) if (!tail || s.stopAt > tail.stopAt) tail = s;
+    if (tail) tail.onended = () => {
+      try {
+        o.node.disconnect();
+        if (o.extra) o.extra.disconnect();
+        if (o.last !== o.node) o.last.disconnect();
+        if (o.send) o.send.disconnect();
+      } catch (e) {
+      }
+    };
+  }
+  /** Where a cue is heard from, by its distance from the listener. */
+  where(o) {
+    const p = o.x === void 0 || !this.o.listener ? null : this.o.listener();
+    if (!p) return { g: 1, pan: 0 };
+    const M = this.o.mix, dx = o.x - p.x, dy = o.y - p.y, m = Math.hypot(dx, dy), N = M.near;
+    const k = m <= N[0] ? 1 : m >= N[1] ? 0 : 1 - (m - N[0]) / (N[1] - N[0]);
+    const pan = dx / M.panW;
+    return { g: k * k, pan: pan < -M.panMax ? -M.panMax : pan > M.panMax ? M.panMax : pan };
+  }
+  /** Plays cue `name` at `when` (now, if not given). Returns whether it played. */
+  play(name, opts, when) {
+    const cue = this.o.cues[name];
+    if (!cue || !this.ready) return false;
+    const o = opts || {}, now = this.ctx.currentTime, t = Math.max(now, when || now), M = this.o.mix;
+    if (cue.music) {
+      if (cue.fn) cue.fn(this, null, t, o);
+      return true;
+    }
+    if (this.levels.sfx <= 0) return false;
+    if (t - (this.last[name] === void 0 ? -99 : this.last[name]) < (cue.gap === void 0 ? M.gap : cue.gap)) return false;
+    this.ends = this.ends.filter((e) => e > t);
+    if (this.ends.length >= M.voices && !cue.pri) return false;
+    const parts = cue.bank ? cue.bank(o) : null;
+    if (parts && (!this.bank || !this.bank.has(parts[0][0]))) return false;
+    const w = cue.where ? cue.where(o) : this.where(o.x === void 0 && cue.at ? cue.at() : o);
+    if (w.g < 0.03) return false;
+    this.last[name] = t;
+    const out = this.cueOut(t, (cue.g || 0.3) * w.g * (o.g || 1), w.pan);
+    if (parts) this.playBank(out, t, parts, cue.spread === void 0 ? 0.04 : cue.spread, w.rate || 1, cue.lp);
+    else if (cue.fn) cue.fn(this, out, t, o);
+    if (cue.also) cue.also(t);
+    this.cueDone(out);
+    this.ends.push(out.end);
+    return true;
+  }
+  /** A cue from the bank: each part a rendered variant, all at one speed a
+   * little off true (and through a low pass somewhere in lp, if it has one),
+   * so no two plays are the same. */
+  playBank(out, t, parts, spread, k, lp) {
+    const c = this.ctx, rate = k * (1 + this.rand.range(-spread, spread)), bank = this.bank;
+    if (lp) {
+      const f = c.createBiquadFilter(), was = out.node;
+      f.type = "lowpass";
+      f.frequency.value = this.rand.range(lp[0], lp[1]);
+      f.Q.value = 0.6;
+      f.connect(was);
+      out.node = f;
+      out.extra = was;
+    }
+    for (const [key, g, dt] of parts) {
+      if (!bank.has(key)) continue;
+      const b = bank.pick(key), src = c.createBufferSource(), at = t + (dt || 0);
+      src.buffer = b;
+      src.playbackRate.value = rate;
+      let node = src;
+      if (g !== 1) {
+        const gn = c.createGain();
+        gn.gain.value = g;
+        src.connect(gn);
+        node = gn;
+      }
+      node.connect(out.node);
+      src.start(at);
+      src.stopAt = at + b.duration / rate;
+      out.srcs.push(src);
+      out.end = Math.max(out.end, src.stopAt);
+    }
+  }
+  /** Every frame: the settings, then the music. Sound never stops the game. */
+  tick(dt) {
+    if (!this.ready || this.ctx.state !== "running") return;
+    try {
+      this.applyLevels(false);
+      if (this.score) this.score.tick(dt);
+    } catch (e) {
+    }
+  }
+  /** Whether a cue could sound now: its rendered parts are ready (a cue made
+   * live always is). */
+  canPlay(name, opts) {
+    const cue = this.o.cues[name];
+    if (!cue || !cue.bank || !this.ready || !this.bank) return true;
+    const bank = this.bank;
+    return cue.bank(opts || {}).every(([k]) => bank.has(k));
+  }
+  /** The hook the game calls: a cue by name, never an error, nothing before
+   * the first tap. */
+  cue(name, opts) {
+    if (!this.ready) return;
+    try {
+      this.play(name, opts);
+    } catch (e) {
+    }
+  }
+  /** The first tap (or key) makes the sound, as browsers ask; later ones wake
+   * it if the browser put it to sleep. */
+  unlock() {
+    if (this.failed) return;
+    try {
+      if (!this.ctx) {
+        const W = window;
+        const AC = W.AudioContext || W.webkitAudioContext;
+        if (!AC || this.o.canStart && !this.o.canStart()) {
+          this.failed = !AC;
+          return;
+        }
+        let ctx;
+        try {
+          ctx = new AC({ latencyHint: "interactive" });
+        } catch (e) {
+          ctx = new AC();
+        }
+        this.build(ctx, true);
+        if (this.score) this.score.build(this);
+        if (this.o.onStart) this.o.onStart(ctx);
+        const b = ctx.createBufferSource();
+        b.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        b.connect(ctx.destination);
+        b.start(0);
+      }
+      if (this.ctx.state !== "running" && !document.hidden && this.wanted()) quiet(this.ctx.resume());
+    } catch (e) {
+      this.failed = true;
+    }
+  }
+  /** Listens for the first tap or key, and sleeps while the page is hidden
+   * (waking when it's back, if sound is wanted). Once. */
+  listen() {
+    if (this.listening || typeof window === "undefined" || !window.addEventListener || typeof document === "undefined" || !document.addEventListener) return this;
+    this.listening = true;
+    const unlock = () => this.unlock();
+    for (const ev of ["pointerdown", "touchend", "keydown", "click"]) window.addEventListener(ev, unlock, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", () => {
+      if (!this.ctx) return;
+      try {
+        const ac = this.ctx;
+        if (document.hidden) quiet(ac.suspend());
+        else if (this.wanted()) quiet(ac.resume());
+      } catch (e) {
+      }
+    });
+    window.addEventListener("pagehide", () => {
+      try {
+        if (this.ctx) quiet(this.ctx.suspend());
+      } catch (e) {
+      }
+    });
+    return this;
+  }
+};
+var BANK_CHAIN = { lp: 8e3, lpQ: 0.5, hp: 35, drive: 1.4, oversample: "2x", verbLp: 5e3, wet: 0.2 };
+var BANK_VERBS = { room: { secs: 0.45, modes: [431, 1173, 1777, 2390] }, hall: { secs: 1.4 } };
+function curve(k) {
+  const n = 1025, a = new Float32Array(n), m = Math.tanh(k);
+  for (let i = 0; i < n; i++) {
+    const x = i / (n - 1) * 2 - 1;
+    a[i] = Math.tanh(k * x) / m;
+  }
+  return a;
+}
+function impulse(rate, secs, modes, rand) {
+  const n = Math.floor(rate * secs), chs = [new Float32Array(n), new Float32Array(n)];
+  for (let ch = 0; ch < 2; ch++) {
+    let lp = 0;
+    const d = chs[ch];
+    for (let i = 0; i < n; i++) {
+      const t = i / rate, env2 = Math.exp(-t * 6.5 / secs), k = 0.15 + 0.8 * Math.exp(-t * 4 / secs);
+      lp += (rand.next() * 2 - 1 - lp) * k;
+      let v = lp * env2;
+      for (let m = 0; m < modes.length; m++) v += Math.sin(2 * Math.PI * modes[m] * (1 + ch * 3e-3) * t) * 0.05 * Math.exp(-t * (9 + m * 4));
+      d[i] = t < 4e-3 ? v * (t / 4e-3) : v;
+    }
+  }
+  return chs;
+}
+function trim(c, buf, floor = 5e-3, fadeSecs = 0.03) {
+  const chs = [];
+  let peak = 0, last = 0;
+  for (let k = 0; k < buf.numberOfChannels; k++) {
+    const d = buf.getChannelData(k);
+    chs.push(d);
+    for (let i = 0; i < d.length; i++) {
+      const a = Math.abs(d[i]);
+      if (a > peak) peak = a;
+    }
+  }
+  if (peak < 1e-5) return null;
+  for (const d of chs) for (let i = d.length - 1; i > last; i--) if (Math.abs(d[i]) > peak * floor) {
+    last = i;
+    break;
+  }
+  const n = Math.min(buf.length, last + 1), fade = Math.floor(buf.sampleRate * fadeSecs), out = c.createBuffer(chs.length, n, buf.sampleRate);
+  chs.forEach((d, k) => {
+    const a = new Float32Array(n);
+    for (let i = 0; i < n; i++) a[i] = d[i] / peak * Math.min(1, (n - i) / fade);
+    out.copyToChannel(a, k);
+  });
+  return out;
+}
+var Bank = class {
+  constructor(o) {
+    this.bufs = {};
+    this.started = false;
+    this.done = false;
+    this.bytes = 0;
+    this.ms = 0;
+    this.irs = null;
+    this.noises = null;
+    this.queue = null;
+    this.total = 0;
+    this.first = 0;
+    this.made = 0;
+    this.idling = false;
+    this.o = o;
+    this.rand = o.rand || new Rand();
+    this.rate = o.rate ?? 48e3;
+  }
+  has(k) {
+    const b = this.bufs[k];
+    return !!(b && b !== "busy" && b.length);
+  }
+  /** A variant, not the one just played. */
+  pick(k) {
+    const b = this.bufs[k];
+    let i = Math.floor(this.rand.next() * b.length);
+    if (b.length > 1 && i === b.last) i = (i + 1) % b.length;
+    b.last = i;
+    return b[i];
+  }
+  /** Renders everything, a buffer at a time, yielding between them: every
+   * sound's first variant (in order), then each one's second, and so on, so
+   * each can play as soon as possible. An offline context needs no tap, so
+   * this can run while the game loads, before any; its buffers play in the
+   * live context the tap makes (resampled, if its rate differs). `wait` (ms)
+   * puts it off a moment (so a tap that starts it isn't slowed). */
+  async start(rate, wait = 0, o = {}) {
+    if (this.started) return;
+    this.started = true;
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    const max = this.o.rate ?? 48e3;
+    this.rate = Math.min(max, rate || max);
+    const t0 = performance.now(), per = [], R = this.o.recipes;
+    this.irs = {};
+    const f = this.o.first ? this.o.first(this, o) : null;
+    if (f) await f;
+    for (const k of this.o.order) {
+      const B = R[k], n = this.o.count ? this.o.count(k, B) : B.n || 1;
+      this.bufs[k] = this.bufs[k] || [];
+      per.push([k, B, n]);
+    }
+    const q = this.queue = [], most = per.reduce((a, p) => Math.max(a, p[2]), 0);
+    for (let v = 0; v < most; v++) for (const [k, B, n] of per) if (v < n) q.push([k, B, v]);
+    this.total = q.length;
+    this.first = per.length;
+    this.made = 0;
+    while (q.length) {
+      if (this.made >= this.first && o.enough && o.enough()) break;
+      await this.renderNext();
+      if (o.pace) await o.pace(this.made, this.total);
+      else if (q.length) await new Promise((r) => setTimeout(r, this.o.gap ?? 40));
+    }
+    this.ms = performance.now() - t0;
+    this.done = !q.length;
+  }
+  async renderNext() {
+    const [k, B, v] = this.queue.shift(), b = await this.renderOne(B, v);
+    if (b) {
+      this.bufs[k].push(b);
+      this.bytes += b.length * b.numberOfChannels * 4;
+    }
+    this.made++;
+  }
+  /** What the start left, a buffer at a time, only when it can't be felt:
+   * at a free moment (the game says), or when the browser says it's idle
+   * with time to spare. */
+  idle() {
+    if (this.idling || this.done || !this.queue || !this.queue.length) return;
+    this.idling = true;
+    const ric = typeof requestIdleCallback === "function", ms = this.o.idleMs ?? 12;
+    const free = () => this.o.free ? this.o.free() : false;
+    const go = async () => {
+      await this.renderNext();
+      if (!this.queue.length) {
+        this.done = true;
+        this.idling = false;
+        return;
+      }
+      wait();
+    };
+    const wait = () => {
+      if (ric) requestIdleCallback((dl) => free() || dl.timeRemaining() >= ms ? go() : wait(), { timeout: 1e3 });
+      else setTimeout(() => free() ? go() : wait(), 250);
+    };
+    wait();
+  }
+  /** Renders those of keys not yet rendered, in turn, one variant each,
+   * while still(); pace, if given, is awaited between them instead of the
+   * gap. */
+  async want(keys2, still = () => true, pace = null) {
+    if (!this.rate || !this.irs) return;
+    for (const k of keys2) {
+      if (!still()) return;
+      if (this.has(k) || this.bufs[k] === "busy") continue;
+      this.bufs[k] = "busy";
+      const b = await this.renderOne(this.o.recipes[k], 0);
+      this.bufs[k] = b ? [b] : [];
+      if (b) this.bytes += b.length * b.numberOfChannels * 4;
+      if (pace) await pace(0, 0);
+      else await new Promise((r) => setTimeout(r, this.o.gap ?? 40));
+    }
+  }
+  /** Lets them go. */
+  drop(keys2) {
+    for (const k of keys2) {
+      const b = this.bufs[k];
+      if (b && b.length && b !== "busy") for (const x of b) this.bytes -= x.length * x.numberOfChannels * 4;
+      delete this.bufs[k];
+    }
+  }
+  /** One variant of a sound, rendered. */
+  async renderOne(B, v) {
+    const ch0 = Object.assign({}, BANK_CHAIN, this.o.chain || {}), verbs = this.o.verbs || BANK_VERBS;
+    const rate = Math.min(this.rate, B.rate || this.rate), ch = B.ch || 1, c = new OfflineAudioContext(ch, Math.ceil(B.dur * rate), rate);
+    const nz = this.noises || (this.noises = {});
+    if (!nz[rate]) nz[rate] = noiseBuffer(c, this.rand, 2);
+    const R = { ctx: c, waves: waves(c, this.o.waves), noise: nz[rate], rand: this.rand };
+    const out = c.createGain(), lp = c.createBiquadFilter(), hp = c.createBiquadFilter(), sh = c.createWaveShaper(), dry = c.createGain();
+    out.connect(c.destination);
+    lp.type = "lowpass";
+    lp.frequency.value = ch0.lp;
+    lp.Q.value = ch0.lpQ;
+    lp.connect(out);
+    hp.type = "highpass";
+    hp.frequency.value = ch0.hp;
+    hp.connect(lp);
+    sh.curve = curve(B.drive || ch0.drive);
+    sh.oversample = ch0.oversample;
+    sh.connect(hp);
+    dry.connect(sh);
+    let verbIn = dry;
+    if (B.verb) {
+      const V = verbs[B.verb] || { secs: 1 }, irs = this.irs || (this.irs = {});
+      const ir = irs[B.verb + rate] || (irs[B.verb + rate] = impulse(rate, V.secs, V.modes || [], this.rand)), ib = c.createBuffer(2, ir[0].length, rate);
+      ib.copyToChannel(ir[0], 0);
+      ib.copyToChannel(ir[1], 1);
+      const cv = c.createConvolver(), vl = c.createBiquadFilter(), vg = c.createGain();
+      cv.buffer = ib;
+      vl.type = "lowpass";
+      vl.frequency.value = ch0.verbLp;
+      vg.gain.value = B.wet || ch0.wet;
+      verbIn = c.createGain();
+      verbIn.gain.value = 1;
+      dry.connect(verbIn);
+      verbIn.connect(cv);
+      cv.connect(vl);
+      vl.connect(vg);
+      vg.connect(out);
+    }
+    const o = { node: dry, sendTo: verbIn, level: 1, srcs: [], end: 0, send: null };
+    B.fn(R, o, 4e-3, v);
+    const buf = await c.startRendering();
+    return trim(c, buf, this.o.trim && this.o.trim.floor, this.o.trim && this.o.trim.fade);
+  }
+};
+function drone(S, L, dest) {
+  const c = S.ctx, out = c.createGain(), tr = c.createGain(), lp = c.createBiquadFilter();
+  out.gain.value = 0;
+  tr.gain.value = 1;
+  lp.type = "lowpass";
+  lp.frequency.value = L.lp;
+  lp.Q.value = 0.6;
+  lp.connect(tr);
+  tr.connect(out);
+  out.connect(dest);
+  let head = lp;
+  if (L.bp) {
+    const bp = c.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = L.bp;
+    bp.Q.value = 0.7;
+    bp.connect(lp);
+    head = bp;
+  }
+  const lfo = (rate, depth, param) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = rate;
+    g.gain.value = depth;
+    o.connect(g);
+    g.connect(param);
+    o.start();
+  };
+  if (L.trem) lfo(L.trem[0], L.trem[1], tr.gain);
+  if (L.lfo) lfo(L.lfo[0], L.lfo[1], lp.frequency);
+  const oscs = L.notes.map(([s, det]) => {
+    const o = c.createOscillator();
+    if (S.waves[L.w]) o.setPeriodicWave(S.waves[L.w]);
+    else o.type = L.w;
+    o.frequency.value = hz(s, S.root);
+    o.detune.value = det;
+    o.connect(head);
+    o.start();
+    return o;
+  });
+  return { out, lp, oscs, L };
+}
+function band(S, dest, type) {
+  const c = S.ctx, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  src.buffer = S.noise;
+  src.loop = true;
+  f.type = type || "bandpass";
+  f.frequency.value = 500;
+  f.Q.value = 0.8;
+  g.gain.value = 0;
+  src.connect(f);
+  f.connect(g);
+  g.connect(dest);
+  src.start(0, S.rand.next() * 1.8);
+  return { f, g };
+}
+function presence(s, at, w = 0.2) {
+  let k = (s - at + w / 2) / w;
+  k = k < 0 ? 0 : k > 1 ? 1 : k;
+  return k * k * (3 - 2 * k);
+}
+var Music = class {
+  constructor(o = {}) {
+    this.S = null;
+    this.built = false;
+    /** The layers' drones, by id. */
+    this.v = {};
+    this.master = null;
+    this.lastUp = -9;
+    /** When each kind of event is next due. */
+    this.nextEv = {};
+    this.targets = /* @__PURE__ */ new WeakMap();
+    this.layers = o.layers || {};
+    this.every = o.every ?? 0.1;
+  }
+  build(S) {
+    this.S = S;
+    const c = S.ctx;
+    this.master = c.createGain();
+    this.master.gain.value = 1;
+    this.master.connect(S.music);
+    this.v = {};
+    for (const id of Object.keys(this.layers)) this.v[id] = drone(S, this.layers[id], this.master);
+    if (this.setup) this.setup(S);
+    this.built = true;
+  }
+  tick(_dt) {
+    if (!this.built) return;
+    const now = this.S.ctx.currentTime;
+    if (this.listen) this.listen(now);
+    if (now - this.lastUp < this.every) return;
+    this.lastUp = now;
+    if (this.update) this.update(now, this.state ? this.state() : null);
+  }
+  /** A param glides to v (time constant tc) from now, unless that's already
+   * its target. */
+  set(p, v, now, tc) {
+    const was = this.targets.get(p);
+    if (was !== void 0 && Math.abs(was - v) < 1e-4) return;
+    this.targets.set(p, v);
+    p.setTargetAtTime(v, now, tc);
+  }
+  /** Forgets a param's target (it was set some other way). */
+  forget(p) {
+    this.targets.delete(p);
+  }
+  /** Events now and then: each [kind, least gap, most gap, ...] is first due
+   * somewhere in its gap from now, and when it comes due fn(entry) runs and
+   * the next is set. Kinds no longer listed are forgotten. */
+  due(now, list, fn) {
+    const R = this.S.rand;
+    for (const e of list) {
+      const [kind, lo, hi] = e;
+      if (this.nextEv[kind] === void 0) this.nextEv[kind] = now + R.range(lo, hi);
+      if (now < this.nextEv[kind]) continue;
+      this.nextEv[kind] = now + R.range(lo, hi);
+      fn(e);
+    }
+    for (const kind of Object.keys(this.nextEv)) if (!list.some((e) => e[0] === kind)) delete this.nextEv[kind];
+  }
+  /** The music dips a moment: to k at t, back after hold. */
+  duck(t, k, hold) {
+    const p = this.master && this.master.gain;
+    if (!p) return;
+    p.cancelScheduledValues(t);
+    p.setTargetAtTime(k, t, 0.04);
+    p.setTargetAtTime(1, t + hold, 0.6);
+  }
+};
+
+// src/shell/inspect.ts
+var inspect_exports = {};
+__export(inspect_exports, {
+  Inspector: () => Inspector,
+  esc: () => esc,
+  hhmm: () => hhmm,
+  mind: () => mind
+});
+function hhmm(m) {
+  const h = (m / 60 % 24 + 24) % 24;
+  return String(Math.floor(h)).padStart(2, "0") + ":" + String(Math.floor(h % 1 * 60)).padStart(2, "0");
+}
+function esc(t) {
+  return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+}
+var NEED_COLORS = ["#3af0e0", "#ffb040", "#ff4a5a"];
+function mind(w, id, o = {}) {
+  const P = o.prefix ?? "insp", p = w.get(id);
+  const name = (x) => o.name ? o.name(x) : w.get(x) && w.get(x).name || x;
+  if (!p) return `<h3>${esc(name(id))}</h3><p class="dim">Not in the world.</p><div class="buttons"><button data-${P}do="close">Close</button></div>`;
+  const walk = o.walking ? o.walking(id) : "";
+  const d = p.doing, at = (pid) => o.place ? o.place(pid, id) : !pid ? "anywhere" : String(pid);
+  let h = `<h3>${esc(name(id))}</h3>${o.who ? `<p class="sub">${esc(o.who(id))}</p>` : ""}`;
+  const now = !d ? "Nothing, waiting to choose." : d.kind === "travel" ? `Walking${walk} from ${esc(at(d.from))} to ${esc(at(d.to))}, to ${d.action}, till ${hhmm(d.end)}.` : d.kind === "wait" ? `Waiting at ${esc(at(p.place))} till ${hhmm(d.end)}.` : `${d.action} at ${esc(at(d.place || p.place))}, till ${hhmm(d.end)}.`;
+  h += `<p><b>Now</b> ${now}${d && d.rank !== void 0 ? ` <small class="dim">(${d.layer || "free"}, rank ${d.rank})</small>` : ""}</p>`;
+  if (p.directive && !p.directive.done) h += `<p class="dim">Told to: ${p.directive.do}${p.directive.label ? " · " + esc(p.directive.label) : ""}</p>`;
+  const NC = o.needColors || NEED_COLORS;
+  h += `<div class="${P}needs">` + Object.keys(p.needs).map((k) => {
+    const v = w.needOf(id, k), c = v < 0 ? 0 : v > 1 ? 1 : v;
+    return `<div><span>${k}</span><i><b style="width:${Math.round(c * 100)}%;background:${v > 0.85 ? NC[2] : v > 0.6 ? NC[1] : NC[0]}"></b></i></div>`;
+  }).join("") + "</div>";
+  const rv = w.reverie;
+  if (rv) h += `<p class="dim">Mood ${(rv.mood(id) || 0).toFixed(2)}${o.about ? o.about(id, p) : ""}</p>`;
+  const dec = w.why(id);
+  if (!dec) h += '<h3>Why</h3><p class="dim">No choice made since the last time walk: play the clock on a little.</p>';
+  if (dec) {
+    h += `<h3>Why · ${hhmm(dec.t)}</h3><p class="dim">${esc(dec.reason || "")}</p><div class="${P}why">`;
+    const pk = dec.picked, isPick = (c) => !!pk && c.id === pk.id && c.place === pk.place && c.target === pk.target;
+    const cands = dec.candidates.slice().sort((a, b) => +isPick(b) - +isPick(a) || b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
+    if (pk) h += `<p>Chose <b>${pk.id}</b> at ${esc(at(pk.place))}${pk.layer ? ` <small class="dim">(${pk.layer})</small>` : ""}. It's drawn from the best few, by weight squared, so the top one doesn't always win.</p>`;
+    for (const c of cands) h += `<div class="${isPick(c) ? "pick" : c.blocked ? "no" : ""}"><b>${c.id}</b> <small>${esc(at(c.place))} · rank ${c.rank}${c.blocked ? "" : " · " + c.weight.toFixed(3)}</small><br><small>${esc(c.blocked || (c.parts || []).map(([n, v]) => n + " " + (+v).toFixed(2)).join(" × "))}</small></div>`;
+    h += "</div>";
+  }
+  const ra = w.mind.routineAt(p), plan = (w.mind.routineFor(p, w.now) || []).slice().sort((a, b) => a[0] - b[0]), cur = ra && ra.entry;
+  if (plan.length) h += `<h3>Today</h3><div class="${P}day">` + plan.map((e) => `<div class="${e === cur ? "cur" : ""}"><span>${String(Math.floor(e[0])).padStart(2, "0")}:${String(Math.round(e[0] % 1 * 60)).padStart(2, "0")}</span> ${e[2] === "*" ? "free" : e[2]} <small>${e[1] === null ? "" : esc(e[1] === "home" ? "home" : at(e[1]))}${e[3] && e[3].rank ? " · holds" : ""}</small></div>`).join("") + "</div>";
+  const lines = w.westmarch.chronicle(id, w.now - (o.lately ?? 12 * 60)).slice(-(o.lines ?? 10));
+  if (lines.length) h += `<h3>Lately</h3><div class="${P}log">` + lines.map((l) => `<div>${esc(l)}</div>`).join("") + "</div>";
+  const fs = w.fellowship ? w.fellowship.relations(id).slice(0, o.known ?? 4) : [];
+  const can = (x) => o.selectable ? o.selectable(x) : !!w.get(x);
+  if (fs.length) h += `<h3>People</h3><div class="${P}list">` + fs.map((f) => can(f.id) ? `<button data-${P}sel="${f.id}">${esc(name(f.id))} <small>regard ${f.regard.toFixed(2)}</small></button>` : `<span class="dim">${esc(f.id)} · ${f.regard.toFixed(2)}</span>`).join("") + "</div>";
+  h += `<div class="buttons">${o.buttons ? o.buttons(id) : ""}<button data-${P}do="close">Close</button></div>`;
+  return h;
+}
+var STEP_LABEL = (m) => (m < 0 ? "−" : "+") + (Math.abs(m) % 60 ? Math.abs(m) + "m" : Math.abs(m) / 60 + "h");
+var Inspector = class {
+  constructor(o) {
+    /** Whoever's picked. */
+    this.sel = null;
+    /** Who's somewhere, listed in the side: a title and their ids. */
+    this.list = null;
+    this.playing = false;
+    this.dots = [];
+    this.badges = [];
+    /** The canvas's size in CSS px, and the device pixels to one. */
+    this.w = 0;
+    this.h = 0;
+    this.dpr = 1;
+    this.root = null;
+    this.raf = 0;
+    this.last = 0;
+    this.sideT = 0;
+    this.o = o;
+    this.P = o.prefix ?? "insp";
+    this.speed = o.speed ?? 60;
+  }
+  /** An element of the panel, by its name (its id is the prefix and it). */
+  el(name) {
+    const r = this.root, id = this.P + name;
+    if (r && r.querySelector) return r.querySelector("#" + id);
+    return typeof document !== "undefined" ? document.getElementById(id) : null;
+  }
+  html() {
+    const P = this.P, speeds = this.o.speeds || [1, 10, 60, 240], steps = this.o.steps || [-60, -15, 15, 60];
+    const sp = speeds.map((v) => `<option value="${v}"${v === this.speed ? " selected" : ""}>×${v === 1 ? "1 (game)" : v}</option>`).join("");
+    const btn = (m) => `<button data-${P}="${m}"${m === -60 ? ' title="Back an hour"' : ""}>${STEP_LABEL(m)}</button>`;
+    const back = steps.filter((m) => m < 0).map(btn).join(""), on = steps.filter((m) => m > 0).map(btn).join("");
+    return `<div class="${P}"><div class="${P}bar">
+      <span class="${P}clock" id="${P}clock"></span>
+      ${back}<button data-${P}="play" class="go" id="${P}play">Play</button>${on}
+      <select id="${P}speed" aria-label="Speed">${sp}</select>
+      ${this.o.bar ? this.o.bar() : ""}
+    </div><div class="${P}body"><div class="${P}view" id="${P}view"><canvas id="${P}cv"></canvas></div><div class="${P}side" id="${P}side"></div></div></div>`;
+  }
+  /** Wires the panel in root (where html() went) and runs it. */
+  attach(root) {
+    this.root = root;
+    const P = this.P, cv = this.el("cv");
+    if (!cv) return;
+    root.querySelectorAll(`button[data-${P}]`).forEach((b) => b.onclick = () => {
+      const k = b.dataset[P];
+      if (k === "play") {
+        this.playing = !this.playing;
+        this.last = performance.now();
+      } else if (/^-?\d+(\.\d+)?$/.test(k)) this.step(+k);
+      else if (this.o.act && this.o.act(k, null, this) === false) return;
+      this.draw();
+      this.side(true);
+    });
+    const sp = this.el("speed");
+    if (sp) sp.onchange = (e) => {
+      this.speed = +e.target.value;
+    };
+    let down = null;
+    const V = this.o.view;
+    cv.onpointerdown = (e) => {
+      down = { x: e.clientX, y: e.clientY, at: V && V.grab ? V.grab(this) : null, moved: 0 };
+      cv.setPointerCapture(e.pointerId);
+    };
+    cv.onpointermove = (e) => {
+      if (!down) return;
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      down.moved = Math.max(down.moved, Math.abs(dx) + Math.abs(dy));
+      if (V && V.drag) V.drag(dx, dy, down.at, this);
+    };
+    cv.onpointerup = (e) => {
+      const d = down;
+      down = null;
+      if (d && d.moved < 6) {
+        const r = cv.getBoundingClientRect();
+        this.tap(e.clientX - r.left, e.clientY - r.top);
+      }
+    };
+    cv.onwheel = (e) => {
+      if (!V || !V.wheel) return;
+      const r = cv.getBoundingClientRect();
+      V.wheel(e, e.clientX - r.left, e.clientY - r.top, this);
+    };
+    this.size();
+    this.draw();
+    this.side(true);
+    cancelAnimationFrame(this.raf);
+    this.last = performance.now();
+    const tick2 = (t) => {
+      const c = this.el("cv");
+      if (this.o.open && !this.o.open() || !c || !c.isConnected) {
+        this.playing = false;
+        return;
+      }
+      const dt = Math.min(0.1, (t - this.last) / 1e3);
+      this.last = t;
+      if (this.playing) {
+        this.step(this.speed * dt, true);
+        this.draw();
+      }
+      if (t - this.sideT > 250) {
+        this.sideT = t;
+        this.side();
+        this.clock();
+      }
+      this.raf = requestAnimationFrame(tick2);
+    };
+    this.raf = requestAnimationFrame(tick2);
+  }
+  /** The canvas, sized to its box (or taller, as the view asks: the box scrolls). */
+  size() {
+    const cv = this.el("cv"), box = this.el("view");
+    if (!cv || !box) return;
+    const dpr = typeof window !== "undefined" && window.devicePixelRatio || 1, V = this.o.view;
+    const w = box.clientWidth, h = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    this.w = w;
+    this.h = h;
+    this.dpr = dpr;
+  }
+  /** Draws the view afresh (sized again if its box or its height changed). */
+  draw() {
+    const cv = this.el("cv"), box = this.el("view");
+    if (!cv || !box) return;
+    const V = this.o.view, want = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
+    if (want !== this.h || cv.width !== Math.round(box.clientWidth * this.dpr)) this.size();
+    const g = cv.getContext("2d");
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.fillStyle = this.o.bg || "#0a0812";
+    g.fillRect(0, 0, this.w, this.h);
+    this.dots = [];
+    this.badges = [];
+    if (V) V.draw(g, this);
+  }
+  /** Someone on the view, at x, y (CSS px), in their color: a ring if
+   * they're picked, another if they're on the move. */
+  dot(g, x, y, col, id, moving, r = 2.2) {
+    const sel = id === this.sel;
+    if (sel) {
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(x, y, r + 3, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.fillStyle = col;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    if (moving) {
+      g.strokeStyle = "rgba(255,255,255,0.7)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.arc(x, y, r + 1.2, 0, Math.PI * 2);
+      g.stroke();
+    }
+    this.dots.push({ x, y, id });
+  }
+  /** A box on the view to tap. */
+  badge(b) {
+    this.badges.push(b);
+  }
+  /** A person's color now. */
+  color(id) {
+    const K = this.o.kinds || {}, k = this.o.kind ? this.o.kind(id) : "";
+    return (K[k] || K.other || { color: "#c8c0d8" }).color;
+  }
+  /** A tap at x, y (CSS px on the view): the nearest person within 9 px is
+   * picked; else the view hears of it, with the box under it. */
+  tap(x, y) {
+    let best = null, bd = 9;
+    for (const d of this.dots) {
+      const dd = Math.hypot(d.x - x, d.y - y);
+      if (dd < bd) {
+        bd = dd;
+        best = d;
+      }
+    }
+    if (best) {
+      this.sel = best.id;
+      this.list = null;
+      this.draw();
+      this.side(true);
+      return;
+    }
+    const b = this.badges.find((q) => x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) || null;
+    if (this.o.view && this.o.view.tap) this.o.view.tap(b, x, y, this);
+  }
+  /** The clock on (or back) by `min` game minutes; back no further than
+   * Esper remembers (the nearest quarter hour after, said unless quiet). */
+  step(min, quiet2) {
+    const w = this.o.world();
+    let t = this.o.clock.now() + min;
+    if (min < 0 && w && w.esper) {
+      const e = w.esper.earliest();
+      if (t < e) {
+        t = Math.ceil(e / 15) * 15;
+        if (!quiet2 && this.o.say) this.o.say("Esper only remembers back to " + hhmm(e) + ".");
+      }
+    }
+    this.o.clock.set(t);
+    this.clock();
+  }
+  /** The bar: the clock's text, Play or Pause, and the game's own. */
+  clock() {
+    const c = this.el("clock");
+    if (c) c.textContent = this.o.clock.text();
+    const p = this.el("play");
+    if (p) p.textContent = this.playing ? "Pause" : "Play";
+    if (this.o.status) this.o.status(this);
+  }
+  /** Picks someone (or nobody). */
+  select(id) {
+    this.sel = id;
+    this.list = null;
+    if (id && this.o.onSelect) this.o.onSelect(id, this);
+    this.draw();
+    this.side(true);
+  }
+  /** The side: someone's mind, a list, or the summary; not redrawn under
+   * the pointer while it's being read, unless forced. */
+  side(force) {
+    const el = this.el("side");
+    if (!el) return;
+    if (!force && el.matches(":hover")) return;
+    const w = this.o.world();
+    el.innerHTML = this.sel && w ? mind(w, this.sel, Object.assign({}, this.o, { prefix: this.P })) : this.list ? this.listHtml(this.list) : this.summary();
+    const P = this.P;
+    el.querySelectorAll(`[data-${P}sel]`).forEach((b) => b.onclick = () => this.select(b.dataset[P + "sel"]));
+    el.querySelectorAll(`[data-${P}do]`).forEach((b) => b.onclick = () => {
+      const k = b.dataset[P + "do"];
+      if (k === "close") {
+        this.sel = null;
+        this.list = null;
+      } else if (this.o.act && this.o.act(k, this.sel, this) === false) return;
+      this.draw();
+      this.side(true);
+    });
+  }
+  /** Counts of everyone by kind, with their colors and words. */
+  legend(n) {
+    const K = this.o.kinds || {};
+    return `<div class="${this.P}legend">` + Object.keys(K).filter((k) => n[k]).map((k) => `<span><i style="background:${K[k].color}"></i>${K[k].word} <b>${n[k]}</b></span>`).join("") + "</div>";
+  }
+  summary() {
+    if (this.o.summary) return this.o.summary(this);
+    const n = {}, ids = this.o.people();
+    for (const id of ids) {
+      const k = this.o.kind ? this.o.kind(id) : "other";
+      n[k] = (n[k] || 0) + 1;
+    }
+    return `<h3>${ids.length} people</h3><p class="dim">Tap someone to see their mind.</p>` + this.legend(n);
+  }
+  /** Who's somewhere: a button each, in their color, with what they're doing. */
+  listHtml(L) {
+    const P = this.P, name = (id) => this.o.name ? this.o.name(id) : id;
+    return `<h3>${L.title}</h3><div class="${P}list">` + L.ids.map((id) => `<button data-${P}sel="${id}"><i style="background:${this.color(id)}"></i>${name(id)} <small>${this.o.note ? this.o.note(id) : ""}</small></button>`).join("") + `</div><div class="buttons"><button data-${P}do="close">Back</button></div>`;
+  }
+};
+
+// src/shell/ui.ts
+var ui_exports = {};
+__export(ui_exports, {
+  Acts: () => Acts,
+  Rising: () => Rising,
+  Toasts: () => Toasts,
+  bind: () => bind
+});
+var Toasts = class {
+  constructor(o) {
+    /** A redrawn list's toasts, oldest first. */
+    this.list = [];
+    /** Those waiting their turn. */
+    this.queue = [];
+    /** Words that waited and have been shown. */
+    this.seen = /* @__PURE__ */ new Set();
+    this.kinds = /* @__PURE__ */ new WeakMap();
+    this.o = o;
+  }
+  now() {
+    return this.o.clock ? this.o.clock() : performance.now() / 1e3;
+  }
+  most() {
+    const m = this.o.most;
+    return m === void 0 ? Infinity : typeof m === "function" ? m() : m;
+  }
+  life(text, kind) {
+    const l = this.o.life;
+    return l === void 0 ? 4 : typeof l === "function" ? l(text, kind) : l;
+  }
+  cls(kind) {
+    return this.o.cls ? this.o.cls(kind) : "toast" + (kind ? " " + kind : "");
+  }
+  /** A toast: shown now, or (a kind that waits) queued, unless it's waiting
+   * already or (once) has been shown. */
+  show(text, kind = "") {
+    const o = this.o;
+    if (o.waits && o.waits(kind)) {
+      if (this.seen.has(text) || this.queue.some((h) => h.text === text)) return;
+      this.queue.push({ text, kind });
+      this.pump();
+      return;
+    }
+    this.put(text, kind);
+  }
+  /** Shown now, whatever its kind. */
+  put(text, kind = "") {
+    const o = this.o;
+    if (o.redraw) {
+      const now = this.now(), last = this.list[this.list.length - 1];
+      if (o.merge !== void 0 && last && last.text === text && now - last.t < o.merge) {
+        last.t = now;
+        return;
+      }
+      this.list.push({ text, kind, t: now });
+      if (this.list.length > this.most()) this.list.shift();
+      this.draw();
+      if (o.after) o.after();
+      return;
+    }
+    const box = o.box();
+    if (!box) return;
+    if (o.replace) {
+      for (const c of Array.from(box.children)) if (c.textContent === text) c.remove();
+    }
+    const el = document.createElement("div");
+    el.className = this.cls(kind);
+    if (o.html) el.innerHTML = text;
+    else el.textContent = text;
+    el.dataset.born = String(Date.now());
+    this.kinds.set(el, kind);
+    const secs = this.life(text, kind);
+    if (o.animate) el.style.animationDuration = secs + "s";
+    box.appendChild(el);
+    while (box.children.length > this.most()) box.firstChild.remove();
+    if (o.after) o.after();
+    if (o.waits && o.waits(kind) && o.once) this.seen.add(text);
+    setTimeout(() => {
+      el.remove();
+      this.pump();
+    }, secs * 1e3);
+  }
+  /** A redrawn list, drawn. */
+  draw() {
+    const box = this.o.box();
+    if (!box) return;
+    const esc2 = (t) => this.o.html ? t : t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+    box.innerHTML = this.list.map((t) => `<div class="${this.cls(t.kind)}" data-t="${t.t}">${esc2(t.text)}</div>`).join("");
+  }
+  /** Every frame: a redrawn list fades and lets go of its oldest when its
+   * time's up; and any waiting are shown if there's room. */
+  tick() {
+    const o = this.o;
+    if (o.redraw) {
+      const box = o.box(), now = this.now();
+      if (box && o.fadeAt !== void 0) for (const n of Array.from(box.children)) n.style.opacity = now - +n.dataset.t > o.fadeAt ? 0 : 1;
+      if (this.list.length && now - this.list[0].t > this.life(this.list[0].text, this.list[0].kind)) {
+        this.list.shift();
+        this.draw();
+      }
+    }
+    if (this.queue.length) this.pump();
+  }
+  /** Those waiting, shown while there's room (and nothing holds them). */
+  pump() {
+    if (this.o.held && this.o.held()) return;
+    const box = this.o.box();
+    if (!box) return;
+    while (this.queue.length && box.children.length < this.most()) {
+      const h = this.queue.shift();
+      this.put(h.text, h.kind);
+    }
+  }
+  /** Everything on screen goes (a screen opened): news is dropped; one of
+   * the kinds that wait, shown less than `fresh` seconds ago, goes back to
+   * the front of the queue to be shown after, and the rest count as read. */
+  clear(fresh2 = 0) {
+    const box = this.o.box();
+    if (this.o.redraw) {
+      this.list = [];
+      this.draw();
+      return;
+    }
+    if (!box) return;
+    for (const t of Array.from(box.children)) {
+      const kind = this.kinds.get(t) || "";
+      if (!(this.o.waits && this.o.waits(kind))) {
+        t.remove();
+        continue;
+      }
+      if (Date.now() - +t.dataset.born < fresh2 * 1e3) {
+        this.seen.delete(t.textContent);
+        this.queue.unshift({ text: t.textContent, kind });
+      }
+      t.remove();
+    }
+  }
+  /** Forgets which have been shown (a new world: its hints again). */
+  forget() {
+    this.seen.clear();
+  }
+};
+var Rising = class {
+  constructor(o) {
+    this.list = [];
+    this.o = o;
+  }
+  add(x, y, lines) {
+    const t = this.o.clock(), st = this.o.stagger ?? 0.12;
+    lines.forEach((g, i) => this.list.push(Object.assign({ x, y, t: t + i * st, i, of: lines.length }, g)));
+  }
+  html(at) {
+    const o = this.o, now = o.clock(), life = o.life ?? 2.4, left = o.left ?? 34, cls = o.cls ?? "gain";
+    const R = { life, fade: o.fadeAt ?? 1.8, out: o.fadeFor ?? 0.6, speed: o.rise ?? 12, line: o.gap ?? 21 };
+    this.list = this.list.filter((g) => now - g.t < life);
+    let h = "";
+    for (const g of this.list) {
+      const r = rise(now - g.t, g.i, g.of, R);
+      if (!r) continue;
+      const [sx, sy] = at(g.x, g.y), y = sy - r.stack - r.up;
+      h += `<div class="${cls}${g.kind ? " " + g.kind : ""}" style="left:${(sx - left).toFixed(1)}px;top:${y.toFixed(1)}px;opacity:${r.alpha.toFixed(2)}">${o.line(g)}</div>`;
+    }
+    return h;
+  }
+};
+function bind(root, handlers, tag = "button") {
+  for (const key of Object.keys(handlers)) {
+    const m = /^([a-z0-9-]+)(.*)$/.exec(key), name = m[1], camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    root.querySelectorAll(`${tag}[data-${name}]${m[2]}`).forEach((b) => b.onclick = () => handlers[key](b.dataset[camel], b));
+  }
+}
+var Acts = class {
+  constructor(o) {
+    this.o = o;
+  }
+  /** Listens for taps on el (a screen, or the document). */
+  listen(el, type = "click") {
+    el.addEventListener(type, (e) => this.tap(e));
+    return this;
+  }
+  tap(e) {
+    const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+    if (!el || el.disabled || this.o.guard && this.o.guard()) return;
+    if (el.dataset.confirm && !el.classList.contains("armed")) {
+      for (const o of Array.from(document.querySelectorAll(".armed"))) {
+        o.classList.remove("armed");
+        o.textContent = o.dataset.label;
+      }
+      el.dataset.label = el.textContent;
+      el.classList.add("armed");
+      el.textContent = el.dataset.confirm;
+      if (this.o.armed) this.o.armed(el);
+      return;
+    }
+    const acts = typeof this.o.acts === "function" ? this.o.acts() : this.o.acts, name = el.dataset.act, fn = acts[name];
+    if (fn) {
+      if (this.o.onAct) this.o.onAct(name, el);
+      fn(el.dataset.arg, el);
+    }
+  }
+};
+
 // src/index.ts
 var VERSION = "2.0.0";
 export {
   VERSION,
+  audio_exports as audio,
   collide_exports as collide,
   color_exports as color,
   dev_exports as dev,
@@ -4611,6 +5999,7 @@ export {
   grid_exports as grid,
   guide_exports as guide,
   input_exports as input,
+  inspect_exports as inspect,
   items_exports as items,
   light_exports as light,
   loader_exports as loader,
@@ -4623,5 +6012,6 @@ export {
   pwa_exports as pwa,
   save_exports as save,
   seed_exports as seed,
-  sprite_exports as sprite
+  sprite_exports as sprite,
+  ui_exports as ui
 };

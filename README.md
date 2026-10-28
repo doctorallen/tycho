@@ -53,7 +53,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 | Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade), `sprite` (canvases, letter-row sprites, outlines, copies, letter grids enlarged by rule, sprites painted from shapes), `paint` (the chunked lazy painter: a pixel buffer, flat or stroked, operations with their own seeds, the chunk cache), `fx` (particles, effects that run out, rising words); then figure, life, sky | Partly in |
 | World | `grid` (tile layers in chunks, changes from the seed), `collide` (one query over shapes and tiles), `move` (a platform runner, a top-down body), `path` (flow fields, A*, routes over places); then gen, liquid, tilelight | Partly in |
 | Play | `input` (the controls: a stick, buttons and keys holding actions, presses taken once, edges, a test's bot, blocking and the tap guard; drag, pinch and tap for maps), `items` (bags by count, things of their own, slots, gear, counted views), `guide` (a tutorial's steps); then interact, craft, trade, build, mine | Partly in |
-| Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices); then ui, hud, map, audio, inspect | Partly in |
+| Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices), `audio` (sound made in code: the engine, the voices, a bank rendered ahead, the music's machinery), `inspect` (the minds inspector for a game on Tyrell), `ui` (toasts, lines rising over the world, buttons wired by data attributes, a screen's acts); then hud, map | Partly in |
 
 The move is planned in [the Tycho plan](https://claude.ai/artifact/NrDPrQpmBQpjMmQPUEAgWu) and recorded in [docs/move.md](docs/move.md). [docs/](docs/README.md) has a page for each part that's in.
 
@@ -73,7 +73,7 @@ npm install            # TypeScript and esbuild (pinned), for building only
 npm run build          # every output into dist/ (commit dist/ with any change to the sources)
 npm test               # builds, then the engine's and Tyrell's suites
 npm run typecheck
-npm run test:browser   # the pixels' canvas work in Chromium, against the games' originals (needs Playwright or puppeteer-core)
+npm run test:browser   # the pixels' canvas work and the sound in Chromium, against the games' originals (needs Playwright or puppeteer-core)
 npm run vk             # Voight-Kampff: a week of Rocinante
 ```
 

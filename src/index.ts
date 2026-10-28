@@ -28,10 +28,13 @@ import * as save from './shell/save';
 import * as pwa from './shell/pwa';
 import * as dev from './shell/dev';
 import * as loader from './shell/loader';
+import * as audio from './shell/audio';
+import * as inspect from './shell/inspect';
+import * as ui from './shell/ui';
 
 declare const __VERSION__: string;
 
 /** Tycho's version (and Tyrell's, and the bridge's: one version for all). */
 export const VERSION: string = __VERSION__;
 
-export { seed, math, color, loop, gpu, light, post, sprite, paint, fx, grid, collide, move, path, input, items, guide, save, pwa, dev, loader };
+export { seed, math, color, loop, gpu, light, post, sprite, paint, fx, grid, collide, move, path, input, items, guide, save, pwa, dev, loader, audio, inspect, ui };

@@ -1,6 +1,6 @@
 # The shell
 
-The parts around the game: saving, staying current as an installed app, dev settings and loading. More (the interface kit, the HUD, maps, sound, the inspector) move in with phase 7.
+The parts around the game: saving, staying current as an installed app, dev settings and loading. Sound ([audio.md](audio.md)), the minds inspector ([inspect.md](inspect.md)) and the interface kit ([ui.md](ui.md)) have pages of their own.
 
 ## Tycho.save
 

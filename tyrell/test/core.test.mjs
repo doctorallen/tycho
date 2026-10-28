@@ -383,8 +383,8 @@ test('strangers: the same passers-by from the seed, and one can be promoted', ()
 test('a big city stays fast: 150 people for a day', () => {
   const w = tiny();
   for (let i = 0; i < 150; i++) w.person('p' + i, { home: i % 2 ? 'home_a' : 'home_b', needs: { hunger: (i % 10) / 10 } });
-  const t0 = Date.now();
+  const t0 = process.cpuUsage(); // (CPU time, so a busy machine doesn't fail it)
   w.advance(DAY);
-  const ms = Date.now() - t0;
+  const u = process.cpuUsage(t0), ms = Math.round((u.user + u.system) / 1000);
   assert.ok(ms < 8000, `a day for 150 people took ${ms} ms`);
 });

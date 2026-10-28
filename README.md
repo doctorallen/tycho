@@ -10,7 +10,7 @@ It's TypeScript, built into plain JavaScript that a game loads with script tags:
 |---|---|---|
 | `dist/tycho.js` | `Tycho` | The engine: seeds, colors, the loop, and (as they move in) the renderer, the world, play systems and the shell |
 | `dist/tyrell.js` | `Tyrell` | The minds engine: people with needs, routines, plans, feelings, memories and relationships, with time walk. See [tyrell/README.md](tyrell/README.md) |
-| `dist/tycho-minds.js` | `TychoMinds` (and `Tycho.minds`) | The bridge between them: Tyrell's clock from the game's, travel times from the engine's paths, who might be on screen, who saw what |
+| `dist/tycho-minds.js` | `TychoMinds` (and `Tycho.minds`) | The bridge between them: Tyrell's clock from the game's, the minds in the save, seats, travel times, who might be on screen, who saw what. See [docs/minds.md](docs/minds.md) |
 
 Each is also built as an ES module (`.mjs`) and for Node's require (`.cjs`), with types (`.d.ts`, and `.global.d.ts` for the global). Beside them, `dist/tycho-sw.js` is the service worker an installable game imports, and `dist/testkit.cjs` the Node test kit. A game without people (Lodestar) loads `tycho.js` alone.
 
@@ -51,7 +51,7 @@ The engine comes in layers, each using only those below it (`scripts/layers.mjs`
 |---|---|---|
 | Core | `seed` (hashes, value noise, seeded streams), `math`, `color` (mixing, shading, painter's ramps), `loop` (fixed steps, frame samples, the quality governor) | In |
 | Pixels | `gpu` (the frame on the GPU: a batcher standing in for the 2D canvas, an atlas, the ground's textures, bloom), `light` (the smooth model), `post` (the blur finish: bloom, reflections, fade), `sprite` (canvases, letter-row sprites, outlines, copies, letter grids enlarged by rule, sprites painted from shapes), `paint` (the chunked lazy painter: a pixel buffer, flat or stroked, operations with their own seeds, the chunk cache), `fx` (particles, effects that run out, rising words); then figure, life, sky | Partly in |
-| World | grid, shapes, space, collide, move, path, gen, liquid, tilelight | Planned |
+| World | `grid` (tile layers in chunks, changes from the seed), `collide` (one query over shapes and tiles), `move` (a platform runner, a top-down body), `path` (flow fields, A*, routes over places); then gen, liquid, tilelight | Partly in |
 | Play | input, interact, items, craft, trade, build, mine, guide | Planned |
 | Shell | `save` (storage that never throws, a save store with renames and starting over), `pwa` (staying current, installing), `dev` (flags), `loader` (loading in slices); then ui, hud, map, audio, inspect | Partly in |
 

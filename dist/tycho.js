@@ -23,15 +23,19 @@ var Tycho = (() => {
   var index_exports = {};
   __export(index_exports, {
     VERSION: () => VERSION,
+    collide: () => collide_exports,
     color: () => color_exports,
     dev: () => dev_exports,
     fx: () => fx_exports,
     gpu: () => gpu_exports,
+    grid: () => grid_exports,
     light: () => light_exports,
     loader: () => loader_exports,
     loop: () => loop_exports,
     math: () => math_exports,
+    move: () => move_exports,
     paint: () => paint_exports,
+    path: () => path_exports,
     post: () => post_exports,
     pwa: () => pwa_exports,
     save: () => save_exports,
@@ -2682,6 +2686,910 @@ void main() {
     if (age2 < 0 || !(age2 < life)) return null;
     return { stack: (of - 1 - i) * (o.line === void 0 ? 21 : o.line), up: age2 * (o.speed === void 0 ? 12 : o.speed), alpha: age2 > fade ? Math.max(0, 1 - (age2 - fade) / out) : 1 };
   }
+
+  // src/world/grid.ts
+  var grid_exports = {};
+  __export(grid_exports, {
+    Grid: () => Grid
+  });
+  var Grid = class {
+    constructor(def) {
+      this.data = [];
+      // flat
+      this.chunks = [];
+      // chunked
+      // a chunk's dirty box (by chunk index): x0, y0, x1, y1 in tiles
+      this.dirtyBox = /* @__PURE__ */ new Map();
+      // once sealed: by chunk index, the cells changed (layer × side² + cell) and what the seed made them
+      this.sealed = false;
+      this.orig = /* @__PURE__ */ new Map();
+      const side = def.chunk || 32;
+      if (side & side - 1) throw new Error("Tycho.grid: a chunk's side is a power of two");
+      this.w = def.w;
+      this.h = def.h;
+      this.chunk = side;
+      this.shift = Math.log2(side) | 0;
+      this.mask = side - 1;
+      this.cw = Math.ceil(def.w / side);
+      this.ch = Math.ceil(def.h / side);
+      this.defs = def.layers;
+      this.names = def.layers.map((l) => l.name);
+      this.edges = def.layers.map((l) => l.edge !== void 0 ? l.edge : l.fill || 0);
+      this.flat = !!def.flat || def.layers.some((l) => l.data);
+      this.make = def.make;
+      if (this.flat) {
+        for (const l of def.layers) {
+          if (l.data && l.data.length !== def.w * def.h) throw new Error(`Tycho.grid: layer ${l.name} has ${l.data.length} tiles, not ${def.w * def.h}`);
+          const d = l.data || (l.bits === 16 ? new Uint16Array(def.w * def.h) : new Uint8Array(def.w * def.h));
+          if (!l.data && l.fill) d.fill(l.fill);
+          this.data.push(d);
+        }
+      }
+    }
+    /** A layer's index by name. */
+    layer(name) {
+      const i = this.names.indexOf(name);
+      if (i < 0) throw new Error("Tycho.grid: no layer " + name);
+      return i;
+    }
+    /** The tile at x, y (whole tiles) in layer l; the layer's edge value outside. */
+    get(l, x, y) {
+      if (x < 0 || y < 0 || x >= this.w || y >= this.h) return this.edges[l];
+      if (this.flat) return this.data[l][y * this.w + x];
+      const s = this.shift, c = this.chunks[(y >> s) * this.cw + (x >> s)] || this.chunkAt(x >> s, y >> s);
+      return c.cells[l][(y & this.mask) << s | x & this.mask];
+    }
+    /** Sets a tile (false outside the grid): its chunk's rectangle is marked changed and, once sealed, the change kept. */
+    set(l, x, y, v) {
+      if (x < 0 || y < 0 || x >= this.w || y >= this.h) return false;
+      const s = this.shift, ci = (y >> s) * this.cw + (x >> s);
+      let cells, i;
+      if (this.flat) {
+        cells = this.data[l];
+        i = y * this.w + x;
+      } else {
+        cells = (this.chunks[ci] || this.chunkAt(x >> s, y >> s)).cells[l];
+        i = (y & this.mask) << s | x & this.mask;
+      }
+      const was = cells[i];
+      cells[i] = v;
+      if (cells[i] === was) return true;
+      const d = this.dirtyBox.get(ci);
+      if (!d) this.dirtyBox.set(ci, { x0: x, y0: y, x1: x + 1, y1: y + 1 });
+      else {
+        if (x < d.x0) d.x0 = x;
+        if (y < d.y0) d.y0 = y;
+        if (x + 1 > d.x1) d.x1 = x + 1;
+        if (y + 1 > d.y1) d.y1 = y + 1;
+      }
+      if (this.sealed) {
+        const k = l * this.chunk * this.chunk + ((y & this.mask) << s | x & this.mask);
+        let m = this.orig.get(ci);
+        if (!m) this.orig.set(ci, m = /* @__PURE__ */ new Map());
+        if (!m.has(k)) m.set(k, was);
+        else if (m.get(k) === cells[i]) m.delete(k);
+      }
+      return true;
+    }
+    /** Fills the tiles from x0, y0 up to x1, y1 (clipped to the grid). */
+    fill(l, x0, y0, x1, y1, v) {
+      x0 = Math.max(0, x0);
+      y0 = Math.max(0, y0);
+      x1 = Math.min(this.w, x1);
+      y1 = Math.min(this.h, y1);
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) this.set(l, x, y, v);
+    }
+    /** A flat grid's layer: its w × h tiles (the array it was given, if it was). */
+    array(l) {
+      if (!this.flat) throw new Error("Tycho.grid: only a flat grid has a layer in one array");
+      return this.data[l];
+    }
+    /** Has the chunk at cx, cy been made? (A flat grid's always have.) */
+    has(cx, cy) {
+      return this.flat || !!this.chunks[cy * this.cw + cx];
+    }
+    /** A chunked grid's chunk at cx, cy, made if it hasn't been. */
+    chunkAt(cx, cy) {
+      if (this.flat) throw new Error("Tycho.grid: a flat grid has no chunks of its own");
+      const ci = cy * this.cw + cx;
+      let c = this.chunks[ci];
+      if (c) return c;
+      const n = this.chunk * this.chunk;
+      c = { cx, cy, x0: cx * this.chunk, y0: cy * this.chunk, cells: this.defs.map((l) => {
+        const a = l.bits === 16 ? new Uint16Array(n) : new Uint8Array(n);
+        if (l.fill) a.fill(l.fill);
+        return a;
+      }) };
+      this.chunks[ci] = c;
+      if (this.make) this.make(c, this);
+      return c;
+    }
+    /** The rectangles of tiles changed since the last take, one a chunk, in rows of chunks. */
+    takeDirty() {
+      const out = [...this.dirtyBox.keys()].sort((a, b) => a - b).map((k) => this.dirtyBox.get(k));
+      this.dirtyBox.clear();
+      return out;
+    }
+    /** What's in the grid now is what the seed made: from here on every change from it is kept. */
+    seal() {
+      this.sealed = true;
+      this.orig.clear();
+    }
+    /** Every tile that isn't what the seed made, by layer, in rows: for a save. */
+    changes() {
+      const out = {}, side = this.chunk, n = side * side, all = [];
+      for (const [ci, m] of this.orig) {
+        const cx = ci % this.cw, cy = (ci - cx) / this.cw;
+        for (const k of m.keys()) {
+          const l = Math.floor(k / n), i = k - l * n, x = cx * side + (i & this.mask), y = cy * side + (i >> this.shift);
+          all.push([l, y, x, this.get(l, x, y)]);
+        }
+      }
+      all.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+      for (const [l, y, x, v] of all) (out[this.names[l]] || (out[this.names[l]] = [])).push(x, y, v);
+      return out;
+    }
+    /** Puts a save's changes back (over a world made again from its seed and sealed). */
+    apply(changes) {
+      for (const name of Object.keys(changes)) {
+        const l = this.names.indexOf(name), list = changes[name];
+        if (l < 0) continue;
+        for (let i = 0; i + 2 < list.length; i += 3) this.set(l, list[i], list[i + 1], list[i + 2]);
+      }
+    }
+  };
+
+  // src/world/collide.ts
+  var collide_exports = {};
+  __export(collide_exports, {
+    Space: () => Space,
+    Tiles: () => Tiles
+  });
+  var Tiles = class {
+    constructor(grid, layer, def) {
+      this.grid = grid;
+      this.layer = layer;
+      this.size = def.size;
+      this.solid = def.solid;
+      this.smooth = !!def.smooth;
+      const s = def.smooth || {};
+      this.noise = s.noise || null;
+      this.amp = s.amp || 0;
+      this.pinch = s.pinch === void 0 ? 0.55 : s.pinch;
+      this.cells = grid.flat ? grid.array(layer) : null;
+      this.w = grid.w;
+      this.h = grid.h;
+    }
+    /** The tile under world px x, y. */
+    tileAt(x, y) {
+      return this.grid.get(this.layer, Math.floor(x / this.size), Math.floor(y / this.size));
+    }
+    /** Is world px x, y solid? (by `solid`, or another table, such as which tiles rise as rock) */
+    at(x, y, solid = this.solid) {
+      const g = this.grid, l = this.layer;
+      if (!this.smooth) return !!solid[g.get(l, Math.floor(x / this.size), Math.floor(y / this.size))];
+      const gx = x / this.size - 0.5, gy = y / this.size - 0.5, tx = Math.floor(gx), ty = Math.floor(gy), u = gx - tx, v = gy - ty;
+      let a, b, c, d;
+      const C = this.cells, w = this.w;
+      if (C && tx >= 0 && ty >= 0 && tx + 1 < w && ty + 1 < this.h) {
+        const i = ty * w + tx;
+        a = solid[C[i]] ? 1 : 0;
+        b = solid[C[i + 1]] ? 1 : 0;
+        c = solid[C[i + w]] ? 1 : 0;
+        d = solid[C[i + w + 1]] ? 1 : 0;
+      } else {
+        a = solid[g.get(l, tx, ty)] ? 1 : 0;
+        b = solid[g.get(l, tx + 1, ty)] ? 1 : 0;
+        c = solid[g.get(l, tx, ty + 1)] ? 1 : 0;
+        d = solid[g.get(l, tx + 1, ty + 1)] ? 1 : 0;
+      }
+      if (a === b && b === c && c === d) return a === 1;
+      const ab = a + (b - a) * u, cd = c + (d - c) * u;
+      let blend = ab + (cd - ab) * v;
+      if (a === d && b === c) blend *= this.pinch;
+      return blend + (this.noise ? this.amp * this.noise(x, y) : 0) > 0.5;
+    }
+    /** Square tiles: the first solid tile (row by row) under the box, as a box. */
+    box(x0, y0, x1, y1) {
+      const S = this.size, g = this.grid, l = this.layer;
+      const tx0 = Math.floor(x0 / S), ty0 = Math.floor(y0 / S), tx1 = Math.ceil(x1 / S), ty1 = Math.ceil(y1 / S);
+      for (let ty = ty0; ty < ty1; ty++) for (let tx = tx0; tx < tx1; tx++) if (this.solid[g.get(l, tx, ty)]) return { x0: tx * S, y0: ty * S, x1: tx * S + S, y1: ty * S + S };
+      return null;
+    }
+  };
+  var RING = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => [Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4)]);
+  var read = (list) => typeof list === "function" ? list() : list;
+  var Space = class {
+    constructor() {
+      this.boxSets = [];
+      this.tileSets = [];
+      this.ellipseSets = [];
+      this.waySets = [];
+      this.ladderSets = [];
+      this.side = null;
+      /** The points round a body's edge, as [cos, sin] (eight, evenly round). */
+      this.ring = RING;
+    }
+    /** Solid boxes: the list's items, or what `pick` makes of each (nothing for one that isn't solid now). */
+    boxes(list, pick) {
+      this.boxSets.push({ list, pick: pick || null });
+      return this;
+    }
+    /** Solid walls either side of the world: everything left of x0 and right of x1. */
+    bounds(x0, x1) {
+      this.side = [x0, x1];
+      return this;
+    }
+    /** A grid's tiles. */
+    tiles(t) {
+      this.tileSets.push(t);
+      return this;
+    }
+    /** Round solids. */
+    ellipses(list) {
+      this.ellipseSets.push(list);
+      return this;
+    }
+    /** One-way surfaces: walkways and stairs. */
+    ways(list) {
+      this.waySets.push(list);
+      return this;
+    }
+    /** Ladders, taken within `reach` px of their line (6). */
+    ladders(list, reach = 6) {
+      this.ladderSets.push({ list, reach });
+      return this;
+    }
+    /**
+     * The first solid that the box x0..x1, y0..y1 overlaps (edges touching
+     * don't count): the boxes in the order given, square tiles, then the
+     * sides (a wall 100 px thick and 2e4 tall); null when it's clear.
+     */
+    hits(x0, y0, x1, y1) {
+      for (const set2 of this.boxSets) {
+        const list = read(set2.list), pick = set2.pick;
+        for (let i = 0; i < list.length; i++) {
+          const r = pick ? pick(list[i]) : list[i];
+          if (r && x1 > r.x0 && x0 < r.x1 && y1 > r.y0 && y0 < r.y1) return r;
+        }
+      }
+      for (const t of this.tileSets) if (!t.smooth) {
+        const r = t.box(x0, y0, x1, y1);
+        if (r) return r;
+      }
+      const s = this.side;
+      if (s && (x0 < s[0] || x1 > s[1])) return { x0: x0 < s[0] ? s[0] - 100 : s[1], y0: -1e4, x1: x0 < s[0] ? s[0] : s[1] + 100, y1: 1e4 };
+      return null;
+    }
+    /** Is the point solid in any grid's tiles? */
+    inTiles(x, y) {
+      for (const t of this.tileSets) if (t.at(x, y)) return true;
+      return false;
+    }
+    /** Is the point solid: in the tiles, a box (its left and top edges in, right and bottom out), an ellipse, or past the sides? */
+    solidAt(x, y) {
+      if (this.inTiles(x, y)) return true;
+      for (const set2 of this.boxSets) {
+        const list = read(set2.list), pick = set2.pick;
+        for (let i = 0; i < list.length; i++) {
+          const r = pick ? pick(list[i]) : list[i];
+          if (r && x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) return true;
+        }
+      }
+      for (const set2 of this.ellipseSets) for (const o of read(set2)) {
+        const u = (x - o.x) / o.rx, v = (y - o.y) / o.ry;
+        if (u * u + v * v < 1) return true;
+      }
+      const s = this.side;
+      return !!s && (x < s[0] || x > s[1]);
+    }
+    /**
+     * Does a round body of radius r at x, y touch anything solid? Felt in the
+     * tiles at its middle and the eight points round its edge (so a smooth
+     * wall line is met where it matters), and by overlap with ellipses
+     * (grown by r), boxes and the sides.
+     */
+    circleHits(x, y, r) {
+      const ring = this.ring;
+      for (const t of this.tileSets) {
+        if (t.at(x, y)) return true;
+        for (let k = 0; k < ring.length; k++) if (t.at(x + ring[k][0] * r, y + ring[k][1] * r)) return true;
+      }
+      for (const set2 of this.ellipseSets) for (const o of read(set2)) {
+        const u = (x - o.x) / (o.rx + r), v = (y - o.y) / (o.ry + r);
+        if (u * u + v * v < 1) return true;
+      }
+      for (const set2 of this.boxSets) {
+        const list = read(set2.list), pick = set2.pick;
+        for (let i = 0; i < list.length; i++) {
+          const b = pick ? pick(list[i]) : list[i];
+          if (!b) continue;
+          const nx = x < b.x0 ? b.x0 : x > b.x1 ? b.x1 : x, ny = y < b.y0 ? b.y0 : y > b.y1 ? b.y1 : y;
+          if ((x - nx) * (x - nx) + (y - ny) * (y - ny) < r * r) return true;
+        }
+      }
+      const s = this.side;
+      return !!s && (x - r < s[0] || x + r > s[1]);
+    }
+    /** How far into the tiles a round body is: its edge's points in them, its middle counting double. */
+    circleDepth(x, y, r) {
+      const ring = this.ring;
+      let n = this.inTiles(x, y) ? 2 : 0;
+      for (let k = 0; k < ring.length; k++) if (this.inTiles(x + ring[k][0] * r, y + ring[k][1] * r)) n++;
+      return n;
+    }
+    /** The height of the highest one-way surface at x between y0 and y1 (inclusive), or null. */
+    way(x, y0, y1) {
+      let best = null;
+      for (const set2 of this.waySets) for (const w of read(set2)) {
+        if (x < w.x0 || x > w.x1) continue;
+        const y = w.y0 + (w.y1 - w.y0) * ((x - w.x0) / Math.max(1, w.x1 - w.x0));
+        if (y >= y0 && y <= y1 && (best === null || y < best)) best = y;
+      }
+      return best;
+    }
+    /** The first ladder within reach of x whose span overlaps y0..y1, or null. */
+    ladderAt(x, y0, y1) {
+      for (const set2 of this.ladderSets) for (const l of read(set2.list)) if (Math.abs(x - l.x) < set2.reach && y1 > l.y0 && y0 < l.y1) return l;
+      return null;
+    }
+    /**
+     * What the ray from x0, y0 to x1, y1 hits first, or null if it gets there:
+     * boxes and the sides by their edges, square tiles cell by cell as the
+     * line crosses them, smooth tiles felt every `step` px along it (1), and
+     * ellipses exactly. A ray that starts inside something hits it at t = 0.
+     */
+    ray(x0, y0, x1, y1, step = 1) {
+      const dx = x1 - x0, dy = y1 - y0;
+      const found = { hit: null };
+      const take = (h) => {
+        if (!found.hit || h.t < found.hit.t) found.hit = h;
+      };
+      const past = (t) => !!found.hit && t >= found.hit.t;
+      const slab = (b) => {
+        let lo = 0, hi = 1;
+        for (const [o, d, a, z] of [[x0, dx, b.x0, b.x1], [y0, dy, b.y0, b.y1]]) {
+          if (d === 0) {
+            if (o < a || o >= z) return null;
+            continue;
+          }
+          let t0 = (a - o) / d, t1 = (z - o) / d;
+          if (t0 > t1) {
+            const q = t0;
+            t0 = t1;
+            t1 = q;
+          }
+          if (t0 > lo) lo = t0;
+          if (t1 < hi) hi = t1;
+          if (lo > hi) return null;
+        }
+        return lo;
+      };
+      for (const set2 of this.boxSets) {
+        const list = read(set2.list), pick = set2.pick;
+        for (let i = 0; i < list.length; i++) {
+          const b = pick ? pick(list[i]) : list[i];
+          if (!b) continue;
+          const t = slab(b);
+          if (t !== null) take({ t, x: x0 + dx * t, y: y0 + dy * t, box: b });
+        }
+      }
+      const s = this.side;
+      if (s) for (const b of [{ x0: s[0] - 1e9, y0: -1e9, x1: s[0], y1: 1e9 }, { x0: s[1], y0: -1e9, x1: s[1] + 1e9, y1: 1e9 }]) {
+        const t = slab(b);
+        if (t !== null) take({ t, x: x0 + dx * t, y: y0 + dy * t, box: b });
+      }
+      for (const o of this.ellipseSets.flatMap((set2) => read(set2))) {
+        const px = (x0 - o.x) / o.rx, py = (y0 - o.y) / o.ry, qx = dx / o.rx, qy = dy / o.ry;
+        const A = qx * qx + qy * qy, B = 2 * (px * qx + py * qy), C = px * px + py * py - 1;
+        if (C < 0) {
+          take({ t: 0, x: x0, y: y0, ellipse: o });
+          continue;
+        }
+        if (A === 0) continue;
+        const D = B * B - 4 * A * C;
+        if (D < 0) continue;
+        const t = (-B - Math.sqrt(D)) / (2 * A);
+        if (t >= 0 && t <= 1) take({ t, x: x0 + dx * t, y: y0 + dy * t, ellipse: o });
+      }
+      for (const T of this.tileSets) {
+        const S = T.size;
+        if (T.smooth) {
+          const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+          for (let k = 0; k <= n; k++) {
+            const t2 = k / n;
+            if (past(t2)) break;
+            const x = x0 + dx * t2, y = y0 + dy * t2;
+            if (T.at(x, y)) {
+              take({ t: t2, x, y, tile: { x: Math.floor(x / S), y: Math.floor(y / S), v: T.tileAt(x, y) } });
+              break;
+            }
+          }
+          continue;
+        }
+        let tx = Math.floor(x0 / S), ty = Math.floor(y0 / S);
+        const ex = Math.floor(x1 / S), ey = Math.floor(y1 / S), sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+        const ddx = dx ? Math.abs(S / dx) : Infinity, ddy = dy ? Math.abs(S / dy) : Infinity;
+        let nx = dx ? ((dx > 0 ? (tx + 1) * S : tx * S) - x0) / dx : Infinity, ny = dy ? ((dy > 0 ? (ty + 1) * S : ty * S) - y0) / dy : Infinity, t = 0;
+        for (let guard = 0; guard < 1e6; guard++) {
+          if (past(t)) break;
+          const v = T.grid.get(T.layer, tx, ty);
+          if (T.solid[v]) {
+            take({ t, x: x0 + dx * t, y: y0 + dy * t, tile: { x: tx, y: ty, v } });
+            break;
+          }
+          if (tx === ex && ty === ey) break;
+          if (nx < ny) {
+            t = nx;
+            nx += ddx;
+            tx += sx;
+          } else {
+            t = ny;
+            ny += ddy;
+            ty += sy;
+          }
+          if (t > 1) break;
+        }
+      }
+      return found.hit;
+    }
+  };
+
+  // src/world/move.ts
+  var move_exports = {};
+  __export(move_exports, {
+    Platform: () => Platform,
+    topdown: () => topdown
+  });
+  var PLATFORM = {
+    walkUnder: 0.62,
+    runSpan: 0.28,
+    grabY: 0.5,
+    grabX: 0.6,
+    grabBelow: 3,
+    grabTop: 2,
+    grabBottom: 1,
+    leap: 0.7,
+    leapKick: 60,
+    letGoX: 0.6,
+    letGoY: 0.3,
+    dropY: 0.5,
+    dropFoot: 4,
+    dropTime: 0.25,
+    hop: 70,
+    hopGravity: 0.9,
+    stepMin: 2,
+    stepMax: 7,
+    follow: 7
+  };
+  var Platform = class {
+    constructor(numbers, options = {}) {
+      this.res = { climbing: false, grabbed: false };
+      this.n = numbers;
+      this.o = Object.assign({}, PLATFORM, options);
+    }
+    /** The body's box at x, y: [x0, y0, x1, y1]. */
+    box(x, y) {
+      const P = this.n;
+      return [x - P.w / 2, y - P.h, x + P.w / 2, y];
+    }
+    /** What the body's box at x, y overlaps (a hair inside its edges), or null. */
+    hits(space, x, y) {
+      const P = this.n;
+      return space.hits(x - P.w / 2 + 0.01, y - P.h + 0.01, x + P.w / 2 - 0.01, y - 0.01);
+    }
+    /** One step of dt seconds. The result is kept and reused: read it before the next step. */
+    step(space, b, c, dt) {
+      const P = this.n, O = this.o, res = this.res;
+      const ax = c.ax, ay = c.ay, jumpHit = c.jumpHit;
+      let busy = c.busy === void 0 ? 1 : c.busy;
+      res.climbing = false;
+      res.grabbed = false;
+      b.drop = Math.max(0, b.drop - dt);
+      if (ax) b.face = ax > 0 ? 1 : -1;
+      if (!b.ladder && Math.abs(ay) > O.grabY && Math.abs(ax) < O.grabX) {
+        const l = space.ladderAt(b.x, b.y - P.h, b.y + (ay > 0 ? O.grabBelow : 0));
+        if (l && (ay < 0 ? b.y > l.y0 + O.grabTop : b.y < l.y1 - O.grabBottom)) {
+          b.ladder = l;
+          b.x = l.x;
+          b.vx = 0;
+          res.grabbed = true;
+          busy = 1;
+        }
+      }
+      if (b.ladder) {
+        const l = b.ladder;
+        b.vy = ay * P.climb;
+        b.y += b.vy * dt;
+        b.vx = 0;
+        if (b.y <= l.y0) {
+          b.y = l.y0;
+          b.ladder = null;
+          b.ground = true;
+          b.vy = 0;
+        } else if (b.y >= l.y1) {
+          b.y = l.y1;
+          b.ladder = null;
+          b.ground = true;
+          b.vy = 0;
+        } else if (jumpHit) {
+          b.ladder = null;
+          b.vy = -P.jump * O.leap;
+          b.vx = b.face * O.leapKick;
+        } else if (Math.abs(ax) > O.letGoX && Math.abs(ay) < O.letGoY) {
+          b.ladder = null;
+        }
+        if (b.ladder) {
+          b.walked += Math.abs(b.vy * dt);
+          res.climbing = true;
+          return res;
+        }
+      }
+      const m = Math.abs(ax), sp = c.scale === void 0 ? 1 : c.scale;
+      const pace = (m < O.walkUnder ? P.walk : lerp(P.walk, P.speed, clamp((m - O.walkUnder) / O.runSpan, 0, 1))) * sp;
+      const target = Math.sign(ax) * pace * busy, acc = b.ground ? P.accel : P.airAccel;
+      if (ax) b.vx += clamp(target - b.vx, -acc * dt, acc * dt);
+      else b.vx -= clamp(b.vx, -P.friction * dt, P.friction * dt);
+      b.coyote = b.ground ? P.coyote : Math.max(0, b.coyote - dt);
+      if (jumpHit) {
+        const onWay = b.ground && !space.hits(b.x - O.dropFoot, b.y, b.x + O.dropFoot, b.y + 2) && space.way(b.x, b.y - 1, b.y + 1) !== null;
+        if (ay > O.dropY && onWay) {
+          b.drop = O.dropTime;
+          b.ground = false;
+          b.y += 1;
+        } else if (b.coyote > 0) {
+          b.vy = -P.jump;
+          b.coyote = 0;
+          b.ground = false;
+        }
+      }
+      b.vy = Math.min(b.vy + P.gravity * dt, P.maxFall);
+      if (!c.jump && b.vy < -O.hop) b.vy += P.gravity * dt * O.hopGravity;
+      let nx = b.x + b.vx * dt;
+      const hx = this.hits(space, nx, b.y);
+      if (hx) {
+        let stepped = false;
+        if (b.ground) {
+          for (let s = O.stepMin; s <= O.stepMax; s += 1) if (!this.hits(space, nx, b.y - s)) {
+            b.y -= s;
+            stepped = true;
+            break;
+          }
+        }
+        if (!stepped) {
+          nx = b.vx > 0 ? hx.x0 - P.w / 2 - 0.01 : hx.x1 + P.w / 2 + 0.01;
+          if (this.hits(space, nx, b.y)) nx = b.x;
+          b.vx = 0;
+        }
+      }
+      b.walked += Math.abs(nx - b.x);
+      b.x = nx;
+      if (b.ground && b.vy >= 0 && !b.drop) {
+        const s = space.way(b.x, b.y - O.follow, b.y + O.follow);
+        if (s !== null && !this.hits(space, b.x, s)) b.y = s;
+      }
+      const wasY = b.y;
+      let ny = b.y + b.vy * dt;
+      b.ground = false;
+      if (b.vy >= 0) {
+        const hy = this.hits(space, b.x, ny);
+        if (hy) {
+          ny = hy.y0;
+          b.vy = 0;
+          b.ground = true;
+        } else if (!b.drop) {
+          const s = space.way(b.x, wasY - 0.5, ny + 0.5);
+          if (s !== null) {
+            ny = s;
+            b.vy = 0;
+            b.ground = true;
+          }
+        }
+      } else {
+        const hy = this.hits(space, b.x, ny);
+        if (hy) {
+          ny = hy.y1 + P.h + 0.01;
+          b.vy = 0;
+        }
+      }
+      b.y = ny;
+      return res;
+    }
+  };
+  var TURNS = [0.7, -0.7, 1.2, -1.2];
+  var TURN_CS = TURNS.map((t) => [Math.cos(t), Math.sin(t)]);
+  function topdown(space, b, dx, dy, r, o = {}) {
+    if (!dx && !dy) return;
+    if (!space.circleHits(b.x + dx, b.y + dy, r)) {
+      b.x += dx;
+      b.y += dy;
+      return;
+    }
+    if (space.circleHits(b.x, b.y, r)) {
+      const was = space.circleDepth(b.x, b.y, r), now = space.circleDepth(b.x + dx, b.y + dy, r);
+      if (now < was || now === was && !space.inTiles(b.x + dx, b.y + dy)) {
+        b.x += dx;
+        b.y += dy;
+      }
+      return;
+    }
+    const x0 = b.x, y0 = b.y, halvings = o.bisect === void 0 ? 4 : o.bisect;
+    for (let axis = 0; axis < 2; axis++) {
+      const mx = axis ? 0 : dx, my = axis ? dy : 0;
+      if (!mx && !my) continue;
+      let lo = 0, hi = 1;
+      if (!space.circleHits(b.x + mx, b.y + my, r)) lo = 1;
+      else for (let k = 0; k < halvings; k++) {
+        const mid = (lo + hi) / 2;
+        if (space.circleHits(b.x + mx * mid, b.y + my * mid, r)) hi = mid;
+        else lo = mid;
+      }
+      b.x += mx * lo;
+      b.y += my * lo;
+    }
+    const m = Math.hypot(dx, dy);
+    if (Math.hypot(b.x - x0, b.y - y0) < m * (o.round === void 0 ? 0.3 : o.round)) {
+      const turns = o.turns ? o.turns.map((t) => [Math.cos(t), Math.sin(t)]) : TURN_CS, k = o.reach === void 0 ? 0.8 : o.reach;
+      for (const [c, s] of turns) {
+        const tx = (dx * c - dy * s) * k, ty = (dx * s + dy * c) * k;
+        if (!space.circleHits(x0 + tx, y0 + ty, r)) {
+          b.x = x0 + tx;
+          b.y = y0 + ty;
+          return;
+        }
+      }
+    }
+  }
+
+  // src/world/path.ts
+  var path_exports = {};
+  __export(path_exports, {
+    AStar: () => AStar,
+    Routes: () => Routes,
+    distances: () => distances
+  });
+  var QUEUE = new Int32Array(0);
+  function distances(cells, w, h, x, y, solid, avoid, out) {
+    const n = w * h, d = out || new Int16Array(n);
+    if (QUEUE.length < n) QUEUE = new Int32Array(n);
+    const q = QUEUE;
+    d.fill(-1);
+    const s = y * w + x;
+    if (x < 0 || y < 0 || x >= w || y >= h) return d;
+    d[s] = 0;
+    q[0] = s;
+    let tail = 1;
+    for (let qi = 0; qi < tail; qi++) {
+      const i = q[qi], cx = i % w, cy = (i - cx) / w, next = d[i] + 1;
+      if (cx + 1 < w) {
+        const j = i + 1;
+        if (d[j] < 0 && !solid[cells[j]] && !(avoid && avoid[j])) {
+          d[j] = next;
+          q[tail++] = j;
+        }
+      }
+      if (cx > 0) {
+        const j = i - 1;
+        if (d[j] < 0 && !solid[cells[j]] && !(avoid && avoid[j])) {
+          d[j] = next;
+          q[tail++] = j;
+        }
+      }
+      if (cy + 1 < h) {
+        const j = i + w;
+        if (d[j] < 0 && !solid[cells[j]] && !(avoid && avoid[j])) {
+          d[j] = next;
+          q[tail++] = j;
+        }
+      }
+      if (cy > 0) {
+        const j = i - w;
+        if (d[j] < 0 && !solid[cells[j]] && !(avoid && avoid[j])) {
+          d[j] = next;
+          q[tail++] = j;
+        }
+      }
+    }
+    return d;
+  }
+  var AStar = class {
+    constructor(w, h, o = {}) {
+      this.gen = 0;
+      this.heap = [];
+      const n = w * h;
+      this.w = w;
+      this.h = h;
+      this.cap = o.cap || n;
+      this.diag = o.diag || 1.414;
+      this.g = new Float32Array(n);
+      this.f = new Float32Array(n);
+      this.from = new Int32Array(n);
+      this.stamp = new Uint32Array(n);
+      this.closed = new Uint32Array(n);
+    }
+    /** The nearest walkable tile to x, y within r rings of it (rings outward, rows top to bottom), or null. */
+    near(x, y, walkable, r = 7) {
+      const ok = (i, j) => i >= 0 && j >= 0 && i < this.w && j < this.h && walkable(i, j);
+      if (ok(x, y)) return [x, y];
+      for (let k = 1; k <= r; k++) for (let j = -k; j <= k; j++) for (let i = -k; i <= k; i++) {
+        if (Math.max(Math.abs(i), Math.abs(j)) !== k) continue;
+        if (ok(x + i, y + j)) return [x + i, y + j];
+      }
+      return null;
+    }
+    /** The way from sx, sy to tx, ty: its tiles after the start, the goal last ([[tx, ty]] if they're one); null if there's none within the cap. */
+    find(sx, sy, tx, ty, o) {
+      const W = this.w, H = this.h, walkable = o.walkable, cost = o.cost, D = this.diag;
+      const snap = o.snap === void 0 ? 7 : o.snap;
+      const s = this.near(sx, sy, walkable, snap), t = this.near(tx, ty, walkable, snap);
+      if (!s || !t) return null;
+      [sx, sy] = s;
+      [tx, ty] = t;
+      if (sx === tx && sy === ty) return [[tx, ty]];
+      const G = this.g, F2 = this.f, from = this.from, stamp = this.stamp, closed = this.closed, heap = this.heap;
+      const gen = ++this.gen;
+      heap.length = 0;
+      const push = (n) => {
+        heap.push(n);
+        let i = heap.length - 1;
+        while (i > 0) {
+          const p = i - 1 >> 1;
+          if (F2[heap[p]] <= F2[heap[i]]) break;
+          const q = heap[p];
+          heap[p] = heap[i];
+          heap[i] = q;
+          i = p;
+        }
+      };
+      const pop = () => {
+        const top = heap[0], last = heap.pop();
+        if (heap.length) {
+          heap[0] = last;
+          let i = 0;
+          for (; ; ) {
+            const l = i * 2 + 1, r = l + 1;
+            let m = i;
+            if (l < heap.length && F2[heap[l]] < F2[heap[m]]) m = l;
+            if (r < heap.length && F2[heap[r]] < F2[heap[m]]) m = r;
+            if (m === i) break;
+            const q = heap[m];
+            heap[m] = heap[i];
+            heap[i] = q;
+            i = m;
+          }
+        }
+        return top;
+      };
+      const est = (x, y) => {
+        const dx = Math.abs(x - tx), dy = Math.abs(y - ty);
+        return (dx + dy + (D - 2) * Math.min(dx, dy)) * 1;
+      };
+      const ok = (x, y) => x >= 0 && y >= 0 && x < W && y < H && walkable(x, y);
+      const si = sy * W + sx, ti = ty * W + tx;
+      G[si] = 0;
+      F2[si] = est(sx, sy);
+      stamp[si] = gen;
+      from[si] = -1;
+      push(si);
+      let found = false, iter = 0;
+      while (heap.length && iter++ < this.cap) {
+        const cur = pop();
+        if (closed[cur] === gen) continue;
+        closed[cur] = gen;
+        if (cur === ti) {
+          found = true;
+          break;
+        }
+        const cx = cur % W, cy = cur / W | 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = cx + dx, ny = cy + dy;
+          if (!ok(nx, ny)) continue;
+          if (dx && dy && (!ok(cx + dx, cy) || !ok(cx, cy + dy))) continue;
+          const ni = ny * W + nx;
+          if (closed[ni] === gen) continue;
+          let c = cost ? cost(nx, ny, cx, cy) : 1;
+          c *= dx && dy ? D : 1;
+          const g = G[cur] + c;
+          if (stamp[ni] !== gen || g < G[ni]) {
+            stamp[ni] = gen;
+            G[ni] = g;
+            F2[ni] = g + est(nx, ny);
+            from[ni] = cur;
+            push(ni);
+          }
+        }
+      }
+      if (!found) return null;
+      const out = [];
+      for (let n = ti; n !== si && n !== -1; n = from[n]) out.push([n % W, n / W | 0]);
+      out.reverse();
+      return out;
+    }
+  };
+  var Routes = class {
+    constructor() {
+      this.out = /* @__PURE__ */ new Map();
+      this.seq = 0;
+    }
+    /** A link from a to b (and back, with the same leg, unless oneWay). */
+    link(a, b, cost, leg, oneWay = false) {
+      this.add(a, b, cost, leg);
+      if (!oneWay) this.add(b, a, cost, leg);
+      return this;
+    }
+    add(a, b, cost, leg) {
+      if (!(cost >= 0)) throw new Error("Tycho.path: a link costs nothing or more");
+      let l = this.out.get(a);
+      if (!l) this.out.set(a, l = []);
+      l.push({ to: b, cost, leg, seq: this.seq++ });
+      if (!this.out.has(b)) this.out.set(b, []);
+    }
+    /** The places linked so far. */
+    places() {
+      return [...this.out.keys()];
+    }
+    /** The cheapest route from a to b, or null if none joins them. */
+    route(a, b) {
+      if (!this.out.has(a) || !this.out.has(b)) return null;
+      if (a === b) return { cost: 0, places: [a], legs: [] };
+      const best = /* @__PURE__ */ new Map([[a, 0]]), prev = /* @__PURE__ */ new Map(), done = /* @__PURE__ */ new Set();
+      const heap = [[0, -1, a]];
+      const less = (p, q) => p[0] < q[0] || p[0] === q[0] && p[1] < q[1];
+      const push = (e) => {
+        heap.push(e);
+        let i = heap.length - 1;
+        while (i > 0) {
+          const p = i - 1 >> 1;
+          if (!less(heap[i], heap[p])) break;
+          [heap[p], heap[i]] = [heap[i], heap[p]];
+          i = p;
+        }
+      };
+      const pop = () => {
+        const top = heap[0], last = heap.pop();
+        if (heap.length) {
+          heap[0] = last;
+          let i = 0;
+          for (; ; ) {
+            const l = 2 * i + 1, r = l + 1;
+            let m = i;
+            if (l < heap.length && less(heap[l], heap[m])) m = l;
+            if (r < heap.length && less(heap[r], heap[m])) m = r;
+            if (m === i) break;
+            [heap[m], heap[i]] = [heap[i], heap[m]];
+            i = m;
+          }
+        }
+        return top;
+      };
+      while (heap.length) {
+        const [c, , p] = pop();
+        if (done.has(p)) continue;
+        done.add(p);
+        if (p === b) break;
+        for (const e of this.out.get(p)) {
+          const nc = c + e.cost;
+          if (done.has(e.to)) continue;
+          const was = best.get(e.to);
+          if (was === void 0 || nc < was) {
+            best.set(e.to, nc);
+            prev.set(e.to, { from: p, leg: e.leg });
+            push([nc, e.seq, e.to]);
+          }
+        }
+      }
+      if (!done.has(b)) return null;
+      const places = [b], legs = [];
+      for (let p = b; p !== a; ) {
+        const s = prev.get(p);
+        if (s.leg !== void 0) legs.push(s.leg);
+        places.push(s.from);
+        p = s.from;
+      }
+      return { cost: best.get(b), places: places.reverse(), legs: legs.reverse() };
+    }
+  };
 
   // src/shell/save.ts
   var save_exports = {};

@@ -54,6 +54,8 @@ export class Tasks {
   slice: number;
   jobs: TaskState[] = [];
   sliceAt = 0;
+  /** True once the main lane is done (a side task may stop early then). */
+  mainDone = false;
   onError: (e: unknown, task: TaskState) => void;
   /** Called after each slice's frame is drawn (redraw the bar). */
   onFrame: (() => void) | null;
@@ -61,11 +63,14 @@ export class Tasks {
     this.slice = o.slice ?? 12; this.onError = o.onError || (() => { /* skipped */ }); this.onFrame = o.onFrame || null;
   }
   /** Runs the tasks: the side lane at once, the main lane one after another.
-   * Resolves when all are done or skipped. */
+   * Resolves when all are done or skipped. `jobs` holds their states from
+   * the moment it's called. */
   async run(tasks: Task[]): Promise<void> {
     this.jobs = tasks.filter(Boolean).map((t) => Object.assign({ k: 0, n: 0, f: 0, line: t.label, state: 'wait', ms: 0 }, t));
+    this.mainDone = false;
     const side = this.jobs.filter((j) => j.side).map((j) => this.runOne(j));
     for (const j of this.jobs) if (!j.side) await this.runOne(j);
+    this.mainDone = true;
     await Promise.all(side);
   }
   async runOne(j: TaskState): Promise<void> {

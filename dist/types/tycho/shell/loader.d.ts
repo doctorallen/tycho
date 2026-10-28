@@ -30,6 +30,8 @@ export declare class Tasks {
     slice: number;
     jobs: TaskState[];
     sliceAt: number;
+    /** True once the main lane is done (a side task may stop early then). */
+    mainDone: boolean;
     onError: (e: unknown, task: TaskState) => void;
     /** Called after each slice's frame is drawn (redraw the bar). */
     onFrame: (() => void) | null;
@@ -39,7 +41,8 @@ export declare class Tasks {
         onFrame?: () => void;
     });
     /** Runs the tasks: the side lane at once, the main lane one after another.
-     * Resolves when all are done or skipped. */
+     * Resolves when all are done or skipped. `jobs` holds their states from
+     * the moment it's called. */
     run(tasks: Task[]): Promise<void>;
     runOne(j: TaskState): Promise<void>;
     jobFor(j: TaskState): Job;

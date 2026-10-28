@@ -86,7 +86,7 @@ test('the loader runs tasks in slices, skips one that throws, and counts by weig
   assert.deepEqual(errors, ['broken']);
   assert.equal(n, 3);
   assert.ok(seen.includes('a') && seen.includes('c') && seen.includes('s'));
-  assert.equal(T.progress(), 1);
+  assert.equal(T.progress(), 1); assert.equal(T.mainDone, true);
   assert.deepEqual(T.jobs.map((j) => j.state), ['ok', 'ok', 'skip', 'ok', 'ok']);
   const list = [1, 2, 3, 4], got = [];
   const job = T.jobFor(T.jobs[0]);

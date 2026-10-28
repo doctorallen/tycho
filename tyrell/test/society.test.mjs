@@ -524,6 +524,9 @@ test('Westmarch: the log and a chronicle of someone\'s day', () => {
   const lines = w.westmarch.chronicle('ruth', 0);
   assert.ok(lines.length > 3);
   assert.match(lines[0], /^\d\d:\d\d /);
+  // places by their names, not their ids
+  const named = lines.filter((l) => / (to|for|at) /.test(l));
+  assert.ok(named.length && named.every((l) => !/ (for|to|at) (cafe|market|bar|park|workshop)\b/.test(l)), named.join('\n'));
 });
 
 test('a chronicle shows deeds done for someone, what they heard, at the right minute', () => {

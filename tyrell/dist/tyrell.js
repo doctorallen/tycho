@@ -2003,6 +2003,7 @@ var Tyrell = (() => {
     chronicle(who, since) {
       const w = this.w;
       const out = [];
+      const at = (id) => id ? w.ring.get(id)?.name ?? id : id;
       for (const e of this.find({ who, since })) {
         const clock2 = clockOf(e.t);
         const d = e.d || {};
@@ -2017,13 +2018,13 @@ var Tyrell = (() => {
         let line;
         switch (e.k) {
           case "set-out":
-            line = `set out for ${d.to}`;
+            line = `set out for ${at(d.to)}`;
             break;
           case "arrived":
-            line = `got to ${d.place}`;
+            line = `got to ${at(d.place)}`;
             break;
           case "started":
-            line = `${w.actions.get(d.action)?.label ?? d.action}${d.place ? " at " + d.place : ""}`;
+            line = `${w.actions.get(d.action)?.label ?? d.action}${d.place ? " at " + at(d.place) : ""}`;
             break;
           case "failed":
             line = `couldn't: ${d.why}`;

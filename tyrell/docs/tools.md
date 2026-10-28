@@ -57,7 +57,7 @@ world.westmarch.chronicle('ruth', world.now - 1440);
 |---|---|
 | `find({ k?, who?, since?, until? })` | Entries matching, oldest first. `k` is a kind or a list of kinds; `who` matches the entry's person, or an entry whose data names them as `target`, `for` or `to` (a deed done for them, gossip told to them); `since` and `until` are times |
 | `since(t, k?)` | `find({ since: t, k })` |
-| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks, arrivals, actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them or for them, and what they heard (entries that name them as `target`, `for` or `to`) |
+| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks and arrivals (places by their `name`, when they have one), actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them or for them, and what they heard (entries that name them as `target`, `for` or `to`) |
 
 A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 

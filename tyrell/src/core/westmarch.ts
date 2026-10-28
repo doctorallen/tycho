@@ -51,6 +51,7 @@ export class Westmarch {
   chronicle(who: Id, since: Minutes): string[] {
     const w = this.w;
     const out: string[] = [];
+    const at = (id: Id | undefined) => (id ? w.ring.get(id)?.name ?? id : id); // (a place by its name, when it has one)
     for (const e of this.find({ who, since })) {
       const clock = clockOf(e.t);
       const d: any = e.d || {};
@@ -65,9 +66,9 @@ export class Westmarch {
       }
       let line: string;
       switch (e.k) {
-        case 'set-out': line = `set out for ${d.to}`; break;
-        case 'arrived': line = `got to ${d.place}`; break;
-        case 'started': line = `${w.actions.get(d.action)?.label ?? d.action}${d.place ? ' at ' + d.place : ''}`; break;
+        case 'set-out': line = `set out for ${at(d.to)}`; break;
+        case 'arrived': line = `got to ${at(d.place)}`; break;
+        case 'started': line = `${w.actions.get(d.action)?.label ?? d.action}${d.place ? ' at ' + at(d.place) : ''}`; break;
         case 'failed': line = `couldn't: ${d.why}`; break;
         case 'felt': line = `felt ${d.label ?? d.feeling}`; break;
         case 'told': line = `told ${w.s.people[d.to]?.name ?? d.to} about ${d.key}`; break;

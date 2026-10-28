@@ -28,8 +28,9 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 5. [Time](time.md): the clock, and time walk.
 6. [Conditions](conditions.md): the little language used everywhere.
 7. The [module](#modules) pages for the modules you use.
-8. [Recipes](recipes.md) to copy from, [Saving](saving.md), [Tools](tools.md).
-9. [API reference](api.md) when you need an exact signature.
+8. [Tuning](tuning.md): every setting, the headline knobs, a person's own pace, and changing them during play.
+9. [Recipes](recipes.md) to copy from, [Saving](saving.md), [Tools](tools.md).
+10. [API reference](api.md) when you need an exact signature.
 
 **If you're an AI agent asked to implement an integration:**
 
@@ -37,7 +38,8 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 2. [API reference](api.md) for exact signatures and events.
 3. [Integration](integration.md) for the reasoning behind each step, and the layout notes for the game's kind.
 4. [Conditions](conditions.md) for every term and effect.
-5. The module pages for each module the game switches on.
+5. [Tuning](tuning.md) for every setting and the headline knobs.
+6. The module pages for each module the game switches on.
 
 ## The parts
 
@@ -54,6 +56,8 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 **[Time (Entmoot and Esper)](time.md).** The event queue; tick, advance, seek and rewind; speed and the frame budget; timers; away, back and following; how Esper's snapshots and input log work; seeking and playing backward; branches, echoes and marks; keeping the game's own state in step; memory; the rules a game must follow to be rewind-safe; and building a rewind gadget, a fast-forward, a time loop and a replay viewer.
 
 **[Conditions and effects](conditions.md).** The syntax, where conditions are used and what they see, every term and effect from the core and the modules, functions instead of strings, extending the language, and which conditions are safe across a rewind.
+
+**[Tuning](tuning.md).** Every number that shapes the minds is a setting: the headline knobs that scale a whole behavior (how fast friendships form, how often breaks come, how readily gossip spreads...), a person's own pace for them (`PersonDef.tune`), `world.tune` to change any setting during play (an input, so time walk and saves keep it), and every setting of the core and each module, with its default and which way to turn it.
 
 **[Saving](saving.md).** Save and load, what's in a save, declaring and loading in either order, setup that must happen once, changing content under existing saves, history, schema versions and migrations.
 
@@ -114,6 +118,8 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **Focus.** The regions the game has loaded (`world.focus`). People in them are near.
 
+**Headline knob.** A plain multiplier on a whole behavior (`friendship`, `breaks`, `gossip`...), 1 by default, so 2 is twice as much and 0 none; a person can have their own (`PersonDef.tune`). See [Tuning](tuning.md).
+
 **Heat.** The weight of crime reports against someone, fading by the day (Wormtongue).
 
 **Input.** A change to the world from outside the simulation, made through `world.input` (every public mutator is one). Esper records inputs and replays them after a rewind.
@@ -157,3 +163,5 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 **Task.** A compound action that Mentat breaks into steps by its methods, tried in order.
 
 **Term.** A named value in the condition language (`need.hunger`, `thinks:open:cafe`, `regard`). Modules add their own; so can the game.
+
+**Tune.** A setting changed during play with `world.tune(module, values)`: an input, kept in the state over what was declared, so it rewinds and saves. See [Tuning](tuning.md#during-play).

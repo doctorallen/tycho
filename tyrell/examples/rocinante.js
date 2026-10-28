@@ -12,14 +12,29 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function buildRocinante(Tyrell, opts) {
   opts = opts || {};
   const HOUR = 60, DAY = 1440;
+  // ---- settings: Rocinante's own, under any the caller gives (opts.moduleConfig) ----
+  // With opts.tuned, a town tuned to taste (docs/tuning.md): the headline
+  // knobs for everyone, and a few people's own (their `tune`, below). Without
+  // it, Rocinante runs as it always has.
+  const tuned = !!opts.tuned;
+  const own = { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } };
+  if (tuned) {
+    own.fellowship = { friendship: 1.5, fading: 0.5 };   // friendships form half as fast again, and fade half as fast
+    own.wormtongue = { gossip: 0.8, cooling: 2 };        // a discreet town, and the Watch forgets quickly
+    own.reverie = { breaks: 0.5 };                       // people keep it together twice as long
+  }
+  const moduleConfig = {};
+  for (const k of [...new Set([...Object.keys(own), ...Object.keys(opts.moduleConfig || {})])]) moduleConfig[k] = Object.assign({}, own[k], (opts.moduleConfig || {})[k]);
   const w = Tyrell.create({
     seed: opts.seed || 'rocinante',
     start: opts.start !== undefined ? opts.start : 6 * HOUR,
     modules: opts.modules,
-    config: Object.assign({ minutesPerSecond: 1 }, opts.config || {}),
+    config: Object.assign({ minutesPerSecond: 1 }, tuned ? { needs: 1.1 } : {}, opts.config || {}),
     esper: opts.esper,
-    moduleConfig: { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } },
+    moduleConfig,
   });
+  // a person's own pace for the headline knobs, in the tuned town (none otherwise)
+  const tune = (t) => (tuned ? { tune: t } : {});
 
   // ---- needs: 0 is fine, 1 is desperate; rise is per game hour --------------
   w.need({ id: 'hunger', rise: 0.065, start: 0.3, emotion: 'irritable' });
@@ -165,11 +180,13 @@
       { when: ['fact:raining'], plan: [[8, 'home', '*'], [22, 'home', 'sleep']] },
       { plan: [[8, null, '*'], [9.5, 'market', 'buy_food'], [9.75, null, '*'], [14, 'park', 'sit_park'], [15, null, '*'], [18, 'tag:food', 'eat_cafe'], [19, null, '*'], [22, 'home', 'sleep']] },
     ],
+    ...tune({ reverie: { forgetting: 0.5 } }), // (tuned: Ruth forgets nothing in a hurry)
   });
   w.person('kofi', {
     name: 'Kofi', home: 'apt_5', vars: { money: 25 },
     traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5 }, values: { honesty: 0.5 },
     talents: { lore: 1.5 }, instincts: { walk: 1.25, read: 1.2 },   // a student who'd rather be outdoors
+    ...tune({ fellowship: { friendship: 2 }, cityspeak: { chatter: 1.5 } }), // (tuned: he makes friends fast, and talks)
   });
   w.person('lena', {
     name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],
@@ -180,6 +197,7 @@
   w.person('sam', {
     name: 'Sam', home: 'apt_3', vars: { money: 4 },
     traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8 }, values: { honesty: 0.05 },
+    ...tune({ wormtongue: { gossip: 1.5, lies: 2 }, reverie: { breaks: 2 } }), // (tuned: a gossip and a liar, quick to snap)
   });
   w.person('vance', {
     name: 'Officer Vance', home: 'apt_2', groups: ['watch'], vars: { money: 100 },

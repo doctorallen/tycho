@@ -17,7 +17,7 @@ The ideas come from Merryfolk's genetics (children who blend their parents' trai
 
 ## Ages and stages
 
-A person's age comes from `PersonDef.born` (a time in minutes, usually negative for people older than the world): `(now - born) / config.year`, in years. People without `born` are always 30.
+A person's age comes from `PersonDef.born` (a time in minutes, usually negative for people older than the world): `(now - born) / config.year`, in years. People without `born` are always 30 (`ageUnknown`).
 
 ```js
 world.person('pip', { home: 'apt_1', born: -9 * 365 * 1440, tags: ['child'] });
@@ -37,22 +37,22 @@ Tyrell.create({ moduleConfig: { cradle: { year: 12 * 1440, lifespan: [60, 80] } 
 
 Partners are kept by Fellowship. Cradle pairs people:
 
-- by the game: `cradle.pair(a, b)` (an input) makes them partners, gives each a 'my partner' sentiment (+0.3) and emits `paired`;
-- on their own, each midnight, when `config.autoPair` is set: two adults or elders, neither with a partner, whose regard and attraction for each other both reach the thresholds (0.6 and 0.5 by default). Set `autoPair: null` to leave couples to the game.
+- by the game: `cradle.pair(a, b)` (an input) makes them partners, gives each a 'my partner' sentiment (+0.3, `partnerSentiment`) and emits `paired`;
+- on their own, each midnight, when `config.autoPair` is set: two adults or elders (`pairStages`), neither with a partner, whose regard and attraction for each other both reach the thresholds (0.6 and 0.5 by default), each side's thresholds divided by the headline knob `courtship` (the world's times their own; 0: never). Set `autoPair: null` to leave couples to the game.
 
 ## Births
 
-Each midnight, every couple where both are within the fertile ages (20 to 42) has a child with probability `fertility / days in a year` (25% a year). People without `born` count as 30, so they're fertile. The game can make a birth happen with `cradle.birth(parents, def?, id?)`, an input that returns the child's id at once.
+Each midnight, every couple where both are within the fertile ages (20 to 42) has a child with probability `fertility × births / days in a year` (25% a year), `births` being the headline knob (the world's times both partners' own; 0: none). People without `born` count as 30, so they're fertile. The game can make a birth happen with `cradle.birth(parents, def?, id?)`, an input that returns the child's id at once.
 
 A child:
 
 - gets an id: the one given, or `'born1'`, `'born2'`...;
-- inherits every trait either parent has: the parents' average plus a draw in ±0.12, clamped to 0..1. With [Delos](delos.md) in use (anything declared), it inherits a whole genome instead: the traits Delos carries, talents and instincts come from it, and only the parents' other traits are blended this way;
+- inherits every trait either parent has: the parents' average plus a draw in ±0.12 (`traitSpread`), clamped to 0..1. With [Delos](delos.md) in use (anything declared), it inherits a whole genome instead: the traits Delos carries, talents and instincts come from it, and only the parents' other traits are blended this way;
 - gets a name from `cradle.namer(r, parents)` and the rest of its definition from `cradle.template(r, parents)` (both take the child's own stream `r`); `def` overrides both;
 - lives at `def.home`, else the template's, else the first parent's home, and starts there;
 - belongs to the groups in `def` and the template, and to each parent's household;
 - is `born` now, tagged `'born'`;
-- has each parent keep a 'my child' sentiment (+0.5) about it.
+- has each parent keep a 'my child' sentiment (+0.5, `childSentiment`) about it.
 
 ```js
 world.cradle.namer = (r, parents) => r.pick(['Asha', 'Ben', 'Cleo', 'Dov']) + ' ' + parents[0].name.split(' ').pop();
@@ -69,11 +69,11 @@ world.cradle.depart('tomas', 'died');
 
 `depart(id, why)` (an input) takes someone out for good, with consequences:
 
-1. **Grief.** Everyone active whose regard for them is 0.35 or more gets the `grief` feeling and a `loss` memory (importance by regard, 5 to 10).
+1. **Grief.** Everyone active whose regard for them is 0.35 or more (`griefAt`) gets the `grief` feeling and a `loss` memory (importance by regard, 5 to 10).
 2. **Inheritance.** Their own money goes to their partner and children (active ones), split equally, into their own money. With no heirs, it goes to their household's purse (with Ceres).
 3. **Gone.** They're recorded as departed (`departed()`), and removed (`status: 'gone'`, the `gone` event).
 
-Old age is a departure too: each midnight, people with `born` past `lifespan[0]` (72) may die, more likely the older they are, and almost surely past `lifespan[1]` (96).
+Old age is a departure too: each midnight, people with `born` past `lifespan[0]` (72) may die, more likely the older they are, and almost surely past `lifespan[1]` (96: a 20% chance a day on top, `pastLifespan`). The headline knob `deaths` scales the chance (the world's times their own; 0: nobody dies of old age).
 
 `world.remove` takes someone out without grief or inheritance; Cradle still records them as departed.
 
@@ -132,6 +132,17 @@ Log entries: `paired`, `born`, `stage`.
 | `fertility` | 0.25 | Chance per year a couple of the right age has a child |
 | `fertile` | `[20, 42]` | The ages at which people have children |
 | `autoPair` | `{ regard: 0.6, attraction: 0.5 }` | Couples form on their own past these; `null` to leave it to the game |
+| `courtship` | 1 | Headline knob: how readily couples form on their own |
+| `births` | 1 | Headline knob: how often couples have children |
+| `deaths` | 1 | Headline knob: how likely people are to die of old age |
+| `ageUnknown` | 30 | The age of someone with no `born` |
+| `pairStages` | `['adult', 'elder']` | The stages that couple up on their own |
+| `partnerSentiment`, `childSentiment` | 0.3, 0.5 | The sentiments of a couple, and of parents for a newborn |
+| `traitSpread` | 0.12 | A child's trait: the parents' average, give or take this (without Delos) |
+| `griefAt` | 0.35 | The regard at which someone grieves a departure |
+| `pastLifespan` | 0.2 | The chance a day, on top, of dying past `lifespan[1]` |
+
+A person's own `tune: { cradle: { courtship, births, deaths } }` multiplies the knobs for them. See [Tuning](../tuning.md#cradle); during play, `world.tune('cradle', { ... })`.
 
 ## With other modules
 

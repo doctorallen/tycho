@@ -67,6 +67,20 @@ export interface CourseDef {
   then?: Effect[];
 }
 
+export interface AthelasConfig {
+  /**
+   * The headline knobs: plain multipliers, 1 changing nothing. A person's own
+   * (PersonDef.tune.athelas) multiplies these for them alone: the catcher's
+   * for contagion, the sufferer's for duration.
+   */
+  /** How catching courses are: every course's contagion chance per hour together. 0: nothing spreads. Default 1. */
+  contagion: number;
+  /** How long courses last: every phase's minutes (when it starts). Default 1. */
+  duration: number;
+}
+
+export const DEFAULT_ATHELAS: AthelasConfig = { contagion: 1, duration: 1 };
+
 /** A course running for someone. */
 interface Running {
   /** The phase it's in. */
@@ -87,8 +101,15 @@ interface State {
 
 export class Athelas implements Module {
   readonly name = 'athelas';
+  readonly config: AthelasConfig;
+  readonly knobs = { contagion: 'person', duration: 'person' } as const;
   readonly courses = new Map<Id, CourseDef>();
   private w!: World;
+
+  constructor(cfg: Partial<AthelasConfig> = {}) { this.config = { ...DEFAULT_ATHELAS, ...cfg }; }
+
+  /** A headline knob for someone: the world's (as tuned), times their own. */
+  private knob(name: 'contagion' | 'duration', p: PersonState): number { return this.w.tuned(this.name, this.config)[name] * this.w.own(p, this.name, name); }
 
   /** The state for reading: undefined until someone is first afflicted. */
   private get st(): State | undefined { return this.w.s.mod.athelas as State | undefined; }
@@ -157,6 +178,8 @@ export class Athelas implements Module {
       const ctx = this.w.ctx(p);
       for (const k of ph.scale) m *= this.w.mind.consider(k, ctx);
     }
+    // the headline knob: how long courses last for them
+    m *= this.knob('duration', p);
     return round(Math.max(1, m), 4);
   }
 
@@ -334,7 +357,8 @@ export class Athelas implements Module {
       const cg = def?.contagion;
       if (!def || !cg || def.phases[on[course].p]?.spreads === false) continue;
       if (this.st?.on[to.id]?.[course] || this.immune(to.id, course)) continue;
-      let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance)), minutes / 60);
+      // the headline knob scales the chance an hour, for the one who might catch it
+      let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance * this.knob('contagion', to))), minutes / 60);
       if (cg.resist?.length) {
         const ctx = this.w.ctx(to, { target: from.id });
         for (const k of cg.resist) chance *= this.w.mind.consider(k, ctx);

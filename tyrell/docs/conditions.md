@@ -92,7 +92,7 @@ Always available. "The person" is the context's person.
 | `need.<id>` | The person's level of a need, 0..1 |
 | `var.<name>` | The person's variable |
 | `money` | The person's own `vars.money` (0 if unset). With a Ceres household purse, use `purse` |
-| `trait.<name>` | A trait from their definition; 0.5 if unset |
+| `trait.<name>` | A trait from their definition; `config.traitDefault` (0.5) if unset |
 | `value.<name>` | A value they hold; 0 if unset |
 | `has:<item>` | How many they have: their own goods plus their household's pantry |
 | `hour` | The hour of the day, 0 to 24 |

@@ -15,7 +15,7 @@ export interface StoryletDef {
     phase?: Phase | Phase[];
     /** The intensity subject it reads and bumps. Default 'world'. */
     subject?: string;
-    /** How much firing raises the subject's intensity. Default 0.2. */
+    /** How much firing raises the subject's intensity. Default config.bump (0.2). */
     bump?: number;
     /** Part of a deck: when it comes up, a card is drawn from the deck instead. */
     deck?: string;
@@ -55,11 +55,23 @@ export interface GaffConfig {
     relaxMinutes: number;
     /** Intensity lost per hour. */
     decay: number;
+    /** How often storylets fire: the chance each hour, against their mean time between. 0: never on their own (trigger still fires them). Default 1. */
+    events: number;
+    /** How much a storylet's firing raises its subject's intensity (its `bump`). Default 1. */
+    intensity: number;
+    /** How much firing raises the subject's intensity, for a storylet with no `bump`. Default 0.2. */
+    bump: number;
+    /** A fade turns to relaxing once intensity is under this share of peakAt. Default 0.4. */
+    relaxAt: number;
 }
 export declare const DEFAULT_GAFF: GaffConfig;
 export declare class Gaff implements Module {
     readonly name = "gaff";
     readonly config: GaffConfig;
+    readonly knobs: {
+        readonly events: "world";
+        readonly intensity: "world";
+    };
     readonly storylets: Map<string, StoryletDef>;
     private deckCards;
     private metricFns;
@@ -67,6 +79,8 @@ export declare class Gaff implements Module {
     constructor(cfg?: Partial<GaffConfig>);
     init(): State;
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
     attach(w: World): void;
     storylet(def: StoryletDef): this;
     /** A deck of storylet ids, drawn without repeating back to back. */

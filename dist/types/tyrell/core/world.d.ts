@@ -24,6 +24,12 @@ import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWi
 import { DAY, HOUR, Stream } from './util';
 export declare const SCHEMA = 2;
 export declare const DEFAULT_CONFIG: Config;
+/**
+ * The core's headline knobs (fields of Config): plain multipliers, 1 changing
+ * nothing. 'person' ones a person's own `tune.core` multiplies for them alone;
+ * 'world' ones are the world's only.
+ */
+export declare const CORE_KNOBS: Readonly<Record<string, 'person' | 'world'>>;
 /** A saved world: what world.save() returns and world.load() takes. */
 export interface SaveData {
     tyrell: string;
@@ -73,6 +79,8 @@ export declare class World {
     /** Calls that only look (choosing a line, explaining a choice): chance: draws change nothing then. */
     private looking;
     private _speed;
+    /** The settings in force, by module, made from the overrides they were made from (s.tune's, kept whole: a new tune makes a new object). */
+    private tunedCache;
     constructor(opts: Options, modules: Module[]);
     /** Minutes since the world began. */
     get now(): number;
@@ -203,6 +211,39 @@ export declare class World {
     /** Keeps a piece of the game's own state with the world, so it rewinds with it. */
     keep(key: string, value: unknown): void;
     kept<T = unknown>(key: string): T | undefined;
+    /**
+     * Changes settings during play (a slider in the game's options). It's an
+     * input, so time walk replays the change at the moment it was made, and
+     * the overrides are kept in the state, so a save keeps them. `module` is a
+     * module's name, or 'core' for the config; `values` are fields of its
+     * settings (any of them, not only the headline knobs), each over what was
+     * declared. A field set to null goes back to what was declared, and
+     * `values` null puts the whole module back. With `person`, it's that
+     * person's own headline knobs instead (their `tune`). See docs/tuning.md.
+     */
+    tune(module: string, values: Record<string, unknown> | null, person?: Id): void;
+    /**
+     * The settings in force for a module (or 'core'): a copy of what was
+     * declared with any overrides from tune() over it. With a person, their
+     * headline knobs as they apply to them: the world's times their own.
+     */
+    tuning(module: string, person?: Id): Record<string, unknown>;
+    /** The core config in force: what was declared (world.config), under any overrides made with tune(). */
+    get cfg(): Config;
+    /**
+     * A module's settings in force (or the core's, as 'core'): `base`, what was
+     * declared, under any overrides made with tune(). Untuned, it's `base`
+     * itself; tuned, an object whose own fields are the overrides and whose
+     * prototype is `base` (so a field the game sets on `base` still shows).
+     */
+    tuned<T extends object>(name: string, base: T): T;
+    /** A person's own multiplier for one of a module's headline knobs (their `tune`): 1 if they have none. */
+    own(p: PersonState | null | undefined, module: string, knob: string): number;
+    /** What tune() works over: the config for 'core', else the module's declared settings. */
+    private tuneBase;
+    private knobsOf;
+    /** Applies a tune (the input): the overrides kept whole, a new object each time, so what's made from them is made again. */
+    private applyTune;
     /** A person's state (read it, don't change it: go through the API). */
     get(id: Id): PersonState | undefined;
     /** Everyone active. */

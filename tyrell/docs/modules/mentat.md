@@ -73,8 +73,8 @@ A `go:` step walks to the nearest declared place its spec names that can be reac
 - **Place.** The nearest place that offers it, is open now, and has the stock to sell it.
 - **Cost**, in minutes of effort: the action's minutes, plus its `cost`, plus the walk, plus:
   - a price: impossible if they can't afford it, else `price × priceWeight × (0.5 + thrift) × (1 + min(1, price / money))`;
-  - an `'illegal'` tag: impossible for people with honesty 0.8 or more, else 60 + 300 × honesty + 20 × heat;
-  - each value it goes `against`: impossible if they hold it at 0.9 or more, else 200 × how much they hold it;
+  - an `'illegal'` tag: impossible for people with honesty 0.8 or more (`honestNever`), else 60 + 300 × honesty + 20 × heat (`riskBase`, `riskHonesty`, `riskHeat`), times the headline knob `scruples`;
+  - each value it goes `against`: impossible if they hold it at 0.9 or more (`valuesNever`), else 200 × how much they hold it (`valuesCost`), times `scruples`;
   - plus the costs of its sub-goals.
 
 So the same `get:food` buys for someone with money, and steals for someone broke and dishonest, and finds no way at all for someone broke and honest:
@@ -90,7 +90,7 @@ A chain works the same way: with `scavenge` giving `wire`, and `make_antenna` (i
 
 When a task is picked, Mentat chooses a method and returns the first step. The person does it; when it ends, the next step follows, at the same rank, with layer `'plan'`. When the last step is done, the plan is complete: the `planned` event fires with `ok: true`, a directive for the task is marked done, and the task's cooldown starts.
 
-When a step fails (the place was shut on arrival, the slot was taken, a step can't be done now), the plan **replans**: the innermost method is marked failed and the next method of that task is tried; if it has none left, the task above it replans, and so on. After `maxTries` (3) replans, or when nothing is left, the plan is given up: `planned` fires with `ok: false` and the reason, the person feels `frustrated` (with Reverie), and the task can't be chosen for two hours (or its cooldown, if longer).
+When a step fails (the place was shut on arrival, the slot was taken, a step can't be done now), the plan **replans**: the innermost method is marked failed and the next method of that task is tried; if it has none left, the task above it replans, and so on. After `maxTries` (3) replans (times the headline knob `persistence`), or when nothing is left, the plan is given up: `planned` fires with `ok: false` and the reason, the person feels `frustrated` (with Reverie), and the task can't be chosen for two hours (`giveUp`, or its cooldown, if longer).
 
 If no method fits at the start, the task isn't planned at all (a `no-plan` log entry) and the person waits (`config.idle` minutes) before thinking again. Nothing stops them choosing the same task again, so give a task `if` conditions that match its methods (a method with no conditions as the last resort does the same).
 
@@ -107,7 +107,7 @@ world.direct('ruth', { do: 'fix_radio' });
 
 ## Interrupted plans
 
-When something outranks a plan's step (an urgent need, a routine entry, a directive), the plan is set aside, with the interrupted step to be done again. At the person's next decision, the set-aside plan is picked up again, unless the new choice outranks it, or the new choice is the same task (then it starts fresh), or it was started more than a day ago (then it's dropped). At most two plans are kept set aside.
+When something outranks a plan's step (an urgent need, a routine entry, a directive), the plan is set aside, with the interrupted step to be done again. At the person's next decision, the set-aside plan is picked up again, unless the new choice outranks it, or the new choice is the same task (then it starts fresh), or it was started more than a day ago (`stale`; then it's dropped). At most two plans are kept set aside (`setAside`).
 
 ## State
 
@@ -144,6 +144,14 @@ Log entries: `planned` (a plan started, with the method), `no-plan`, `route` (a 
 | `maxTries` | 3 | Replans before giving up |
 | `depth` | 3 | How deep `get:` looks (getting a part to make the thing to get) |
 | `priceWeight` | 1 | Minutes of effort one unit of money is worth, before thrift |
+| `persistence` | 1 | Headline knob: how long people keep at a plan (`maxTries` times it); 0 gives up at the first failure |
+| `scruples` | 1 | Headline knob: what scruples cost (the risk of illegal ways and the cost of ways against their values, times it) |
+| `giveUp` | 120 | Minutes, at least, before a task given up on is chosen again |
+| `setAside`, `stale` | 2, 1440 | Plans kept set aside; minutes after which a set-aside plan is dropped |
+| `honestNever`, `riskBase`, `riskHonesty`, `riskHeat` | 0.8, 60, 300, 20 | What an illegal way costs |
+| `valuesNever`, `valuesCost` | 0.9, 200 | What a way against a value costs |
+
+A person's own `tune: { mentat: { persistence, scruples } }` multiplies the knobs for them. See [Tuning](../tuning.md#mentat); during play, `world.tune('mentat', { ... })`.
 
 ## With other modules
 

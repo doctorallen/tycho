@@ -63,7 +63,7 @@ export interface ThreadDef {
     if?: Cond[];
     /** How much it's worth raising, against the others. Default 1. */
     weight?: number | ((ctx: Ctx) => number);
-    /** Minutes for it to come round fresh again after it was talked about (it does so gradually). Default 3 days. */
+    /** Minutes for it to come round fresh again after it was talked about (it does so gradually). Default config.cooldown (3 days). */
     cooldown?: number;
     /** They raise it themselves (at the start, or between subjects), instead of being offered it. */
     theirs?: boolean;
@@ -87,7 +87,7 @@ export interface PromiseDef {
     kept?: Cond[];
     /** Broken when these hold. */
     broken?: Cond[];
-    /** Days before it comes due. Default 3. */
+    /** Days before it comes due. Default config.promiseDays (3). */
     days?: number;
     /** What it comes to when it's due and neither kept nor broken. Default 'lapsed'. */
     lapse?: 'kept' | 'broken' | 'lapsed';
@@ -118,6 +118,36 @@ export interface VoiceConfig {
     react: string;
     /** A deed recorded when a talk ends (world.deed: feelings, regard, a file on the speaker). Default none. */
     deed: string | null;
+    /**
+     * The headline knob: how chatty they are. It scales how long they'll talk
+     * (the patience a talk starts with, rounded, at least 1 beat) and the
+     * chance they raise something of their own (`theirs`). A person's own
+     * (PersonDef.tune.voice) multiplies it for them. Default 1.
+     */
+    chatter: number;
+    /** The default warmth a talk starts with: regard × warmthRegard, rounded, from warmthMin to warmthMax (with Fellowship). Defaults 3, -1 and 3. */
+    warmthRegard: number;
+    warmthMin: number;
+    warmthMax: number;
+    /** familiarity(): this much for each talk, and for each thing learned about them. Defaults 0.5 and 1. */
+    familiarTalk: number;
+    familiarLearned: number;
+    /** Minutes a subject takes to come round fresh again, for a thread with no `cooldown`. Default 3 days. */
+    cooldown: number;
+    /** Days a subject stays sore after `sore` with no number. Default 2. */
+    soreDays: number;
+    /** A sore subject is worth this share of its weight. Default 0.1. */
+    soreWeight: number;
+    /** A subject for learning something not yet learned is worth this much more. Default 1.5. */
+    revealPull: number;
+    /** Subjects worth less than this aren't offered. Default 0.05. */
+    salientFloor: number;
+    /** A little variety in what's offered: up to this much added to each subject's worth, the same for a pair all day. Default 0.2. */
+    variety: number;
+    /** Days before a promise comes due, for a promise with no `days`. Default 3. */
+    promiseDays: number;
+    /** Days a settled promise is remembered (the `promise:` term reads it). Default 30. */
+    promiseKeep: number;
 }
 export declare const DEFAULT_VOICE: VoiceConfig;
 /** A line said in a talk. */
@@ -176,18 +206,25 @@ interface Promised {
 export declare class Voice implements Module {
     readonly name = "voice";
     readonly config: VoiceConfig;
+    readonly knobs: {
+        readonly chatter: "person";
+    };
     readonly approaches: Map<string, ApproachDef>;
     readonly threads: Map<string, ThreadDef>;
     readonly promiseDefs: Map<string, PromiseDef>;
-    /** The warmth a talk starts with (a definition: set it on every start). Default: regard times 3, rounded, -1 to 3 (with Fellowship), else 0. */
+    /** The warmth a talk starts with (a definition: set it on every start). Default: regard times config.warmthRegard (3), rounded, from warmthMin to warmthMax (-1 to 3; with Fellowship), else 0. */
     warmth: (ctx: Ctx) => number;
-    /** How many beats they'll talk for (a definition). Default config.patience. */
+    /** How many beats they'll talk for (a definition), before `chatter`. Default config.patience. */
     patience: (ctx: Ctx) => number;
     private w;
     /** The talk being worked on inside an input (effects add their notes to it). */
     private live;
     constructor(cfg?: Partial<VoiceConfig>);
     private get st();
+    /** The config in force: as declared, under any world.tune. */
+    private get c();
+    /** How chatty the one talked to is: the world's chatter, times their own. */
+    private chatter;
     private mut;
     private bond;
     private peekBond;

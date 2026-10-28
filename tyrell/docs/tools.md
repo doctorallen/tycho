@@ -208,4 +208,4 @@ console.log(world.describe('ruth'));
 <script>const world = buildRocinante(Tyrell, {});</script>
 ```
 
-Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`. Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.
+Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`, `moduleConfig` (merged over Rocinante's own, module by module), and `tuned` (a town tuned to taste: the headline knobs for everyone and a few people's own `tune`; see [Tuning](tuning.md#an-example)). Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.

@@ -72,7 +72,7 @@ const back = world.cityspeak.answer(said, 'player');                            
 
 ## Barks
 
-When two people meet and at least one of them is near (has a body), Cityspeak plays a short exchange between them: a line from one on topic `'chat'`, the other's reply, and so on, up to `barkLength` (3) lines, `barkGap` (2.2) seconds apart.
+When two people meet and at least one of them is near (has a body), Cityspeak plays a short exchange between them: a line from one on topic `'chat'`, the other's reply, and so on, up to `barkLength` (3) lines, `barkGap` (2.2) seconds apart. The headline knob `chatter` (1) scales how readily people strike one up and how long it runs: under 1, only that share of meetings in view start an exchange (a draw that changes nothing) and it runs to `barkLength × chatter` lines, rounded; above 1, longer exchanges; 0, none. An exchange takes both people's own `chatter` (`tune: { cityspeak: { chatter } }`) as well as the world's.
 
 ```js
 world.on('bark', ({ a, b, lines }) => {
@@ -80,7 +80,7 @@ world.on('bark', ({ a, b, lines }) => {
 });
 ```
 
-Barks never change the world: they're chosen with a stream that changes nothing, and their cooldowns (each line's `cooldown`, or 60 minutes) are kept outside the state, so they aren't saved or rewound. A watched day hashes the same as an unwatched one, `chance:` in lines' conditions included (choosing a line is a look: see [Conditions](../conditions.md#rewind-safety)). `world.cityspeak.barkGap` and `barkLength` can be changed.
+Barks never change the world: they're chosen with a stream that changes nothing, and their cooldowns (each line's `cooldown`, or `barkCooldown`, 60 minutes) are kept outside the state, so they aren't saved or rewound. A watched day hashes the same as an unwatched one, `chance:` in lines' conditions included (choosing a line is a look: see [Conditions](../conditions.md#rewind-safety)). `world.cityspeak.barkGap` and `barkLength` can be changed (they set the config's), and so can `chatter`: none of them changes the world.
 
 ## Practices and the room
 
@@ -103,11 +103,11 @@ world.cityspeak.practice({ id: 'last_orders', at: 'tag:drink', hours: [0, 1], ro
 | `hours` | always | When it's going on |
 | `roles` | required | By role name: `{ who?, job?, actions }`: who can fill it (conditions on the person, at their place; a job) and the actions it makes more appealing |
 | `tone` | 0 | Shifts the mood of the room, -1..1 |
-| `boost` | 1.5 | How much more appealing role actions are |
+| `boost` | `config.practiceBoost` (1.5) | How much more appealing role actions are |
 
 An option's weight is multiplied by `boost` when the action is one of a role's actions, the practice is going on at the option's place, and the person fills the role (the part is shown as `dinner: diner`).
 
-**The room** is the mood of a place: the mean mood of everyone in the outermost place (0.5 when it's empty, or without Reverie), plus the tone of practices going on. Lines can read it with the `room` term.
+**The room** is the mood of a place: the mean mood of everyone in the outermost place (`roomEmpty`, 0.5, when it's empty, or without Reverie), plus the tone of practices going on. Lines can read it with the `room` term.
 
 ## Social acts
 
@@ -135,7 +135,7 @@ world.action({ id: 'chat', target: 'person', at: 'here', minutes: 20, relieves: 
 | `feelings` | `{ accepted?, refused?, target? }`: feelings for the asker on yes or no, and for the target either way |
 | `regard` | `[onYes, onNo]`: change in the target's regard for the asker |
 
-The act is resolved when an action with `social` and a target ends, if it wasn't interrupted and at least half was done. The outcome is logged as `social` and emitted.
+The act is resolved when an action with `social` and a target ends, if it wasn't interrupted and at least half was done (`socialDone`). The outcome is logged as `social` and emitted.
 
 `resolve(act, from, to)` resolves one now (the player asks someone out, say) and returns whether it was accepted. It's an input, recorded for time walk, and applies at once even inside a listener. Inside the simulation, use `applyResolve`.
 
@@ -200,7 +200,23 @@ Lines, practices and acts are definitions. Barks' cooldowns live outside the sta
 | `bark` | `{ a, b, lines }`: `lines` is `Array<Said & { after }>`, `after` in seconds |
 | `social` | `{ act, from, to, ok }` |
 
-Log entries: `said`, `social`. Cityspeak has no config through `moduleConfig`; set `barkGap` and `barkLength` on the module.
+Log entries: `said`, `social`.
+
+## Config
+
+`Tyrell.create({ moduleConfig: { cityspeak: { ... } } })`:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `chatter` | 1 | Headline knob: how chatty people in view are (above). A person's own multiplies it |
+| `barkGap` | 2.2 | Seconds between lines in an exchange (also `cityspeak.barkGap`) |
+| `barkLength` | 3 | Most lines in one exchange (also `cityspeak.barkLength`) |
+| `barkCooldown` | 60 | Minutes before someone barks the same line again, for a line with no `cooldown` |
+| `practiceBoost` | 1.5 | A practice's `boost` when it gives none |
+| `socialDone` | 0.5 | The share of an action with a `social` act that must be done for the act to be resolved |
+| `roomEmpty` | 0.5 | The mood of an empty room |
+
+See [Tuning](../tuning.md#cityspeak); during play, `world.tune('cityspeak', { ... })`.
 
 ## With other modules
 

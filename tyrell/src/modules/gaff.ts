@@ -29,7 +29,7 @@ export interface StoryletDef {
   phase?: Phase | Phase[];
   /** The intensity subject it reads and bumps. Default 'world'. */
   subject?: string;
-  /** How much firing raises the subject's intensity. Default 0.2. */
+  /** How much firing raises the subject's intensity. Default config.bump (0.2). */
   bump?: number;
   /** Part of a deck: when it comes up, a card is drawn from the deck instead. */
   deck?: string;
@@ -56,13 +56,26 @@ export interface GaffConfig {
   relaxMinutes: number;
   /** Intensity lost per hour. */
   decay: number;
+
+  // The headline knobs: plain multipliers, 1 changing nothing (the world's only: storylets aren't anyone's).
+  /** How often storylets fire: the chance each hour, against their mean time between. 0: never on their own (trigger still fires them). Default 1. */
+  events: number;
+  /** How much a storylet's firing raises its subject's intensity (its `bump`). Default 1. */
+  intensity: number;
+
+  // The finer numbers.
+  /** How much firing raises the subject's intensity, for a storylet with no `bump`. Default 0.2. */
+  bump: number;
+  /** A fade turns to relaxing once intensity is under this share of peakAt. Default 0.4. */
+  relaxAt: number;
 }
 
-export const DEFAULT_GAFF: GaffConfig = { peakAt: 0.7, peakMinutes: 4 * HOUR, relaxMinutes: 12 * HOUR, decay: 0.04 };
+export const DEFAULT_GAFF: GaffConfig = { peakAt: 0.7, peakMinutes: 4 * HOUR, relaxMinutes: 12 * HOUR, decay: 0.04, events: 1, intensity: 1, bump: 0.2, relaxAt: 0.4 };
 
 export class Gaff implements Module {
   readonly name = 'gaff';
   readonly config: GaffConfig;
+  readonly knobs = { events: 'world', intensity: 'world' } as const;
   readonly storylets = new Map<Id, StoryletDef>();
   private deckCards = new Map<string, Id[]>();
   private metricFns = new Map<string, (w: World) => number>();
@@ -72,6 +85,8 @@ export class Gaff implements Module {
 
   init(): State { return { last: {}, decks: {}, intensity: {}, fired: [] }; }
   private get st(): State { return this.w.s.mod.gaff as State; }
+  /** The config in force: as declared, under any world.tune. */
+  private get c(): GaffConfig { return this.w.tuned(this.name, this.config); }
 
   attach(w: World): void {
     this.w = w;
@@ -126,13 +141,13 @@ export class Gaff implements Module {
   }
 
   private stepPhases(): void {
-    const c = this.config, now = this.w.s.now;
+    const c = this.c, now = this.w.s.now;
     for (const subject in this.st.intensity) {
       const i = this.st.intensity[subject];
       i.v = round(clamp(i.v - c.decay), 4);
       if (i.phase === 'build' && i.v >= c.peakAt) { i.phase = 'peak'; i.since = now; }
       else if (i.phase === 'peak' && now - i.since >= c.peakMinutes) { i.phase = 'fade'; i.since = now; }
-      else if (i.phase === 'fade' && i.v < c.peakAt * 0.4) { i.phase = 'relax'; i.since = now; }
+      else if (i.phase === 'fade' && i.v < c.peakAt * c.relaxAt) { i.phase = 'relax'; i.since = now; }
       else if (i.phase === 'relax' && now - i.since >= c.relaxMinutes) { i.phase = 'build'; i.since = now; }
     }
   }
@@ -161,9 +176,11 @@ export class Gaff implements Module {
     const w = this.w;
     this.stepPhases();
     const r = w.worldStream('gaff');
+    const events = this.c.events;
     for (const def of this.storylets.values()) {
       if (!this.ready(def)) continue;
-      if (!r.chance(1 - Math.exp(-HOUR / Math.max(1, def.mtb)))) continue;
+      // the headline knob scales the chance: twice as often, half the mean time between
+      if (!r.chance(1 - Math.exp((-HOUR * events) / Math.max(1, def.mtb)))) continue;
       let id = def.id;
       if (def.deck) {
         const drawn = this.applyDraw(def.deck);
@@ -209,7 +226,8 @@ export class Gaff implements Module {
     this.st.last[id] = w.s.now;
     this.st.fired.push({ t: w.s.now, id, place: where });
     if (this.st.fired.length > 100) this.st.fired.shift();
-    this.applyBump(subject, def.bump ?? 0.2);
+    const c = this.c;
+    this.applyBump(subject, (def.bump ?? c.bump) * c.intensity);
     w.log('director', undefined, { storylet: id, place: where });
     w.emit('director', { id, place: where, label: def.label ?? id });
     w.internally(() => def.fire(w, { place: where, subject, id }));

@@ -8,22 +8,22 @@
 //   world.tick(1 / 60);  // every frame
 //
 // See docs/ for everything else.
-import { World, DEFAULT_CONFIG, MIGRATIONS, SCHEMA } from './core/world';
+import { World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA } from './core/world';
 import type { SaveData } from './core/world';
 import type { Module } from './core/module';
 import type { Options } from './core/types';
-import { Reverie } from './modules/reverie';
-import { Fellowship } from './modules/fellowship';
-import { Wormtongue } from './modules/wormtongue';
-import { Cityspeak } from './modules/cityspeak';
-import { Mentat } from './modules/mentat';
-import { Gaff } from './modules/gaff';
-import { Ceres } from './modules/ceres';
-import { Cradle } from './modules/cradle';
-import { Joi } from './modules/joi';
-import { Athelas } from './modules/athelas';
-import { Delos } from './modules/delos';
-import { Voice } from './modules/voice';
+import { Reverie, DEFAULT_REVERIE } from './modules/reverie';
+import { Fellowship, DEFAULT_FELLOWSHIP } from './modules/fellowship';
+import { Wormtongue, DEFAULT_WORMTONGUE } from './modules/wormtongue';
+import { Cityspeak, DEFAULT_CITYSPEAK } from './modules/cityspeak';
+import { Mentat, DEFAULT_MENTAT } from './modules/mentat';
+import { Gaff, DEFAULT_GAFF } from './modules/gaff';
+import { Ceres, DEFAULT_CERES } from './modules/ceres';
+import { Cradle, DEFAULT_CRADLE } from './modules/cradle';
+import { Joi, DEFAULT_JOI } from './modules/joi';
+import { Athelas, DEFAULT_ATHELAS } from './modules/athelas';
+import { Delos, DEFAULT_DELOS } from './modules/delos';
+import { Voice, DEFAULT_VOICE } from './modules/voice';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -36,7 +36,7 @@ export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'men
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
-  /** Settings for the modules, by name: { reverie: { base: 0.6 }, cradle: { year: 12 * 1440 } }. */
+  /** Settings for the modules, by name: { reverie: { breaks: 0.5 }, cradle: { year: 12 * 1440 } }. Every field is in docs/tuning.md. */
   moduleConfig?: Partial<Record<ModuleName, Record<string, unknown>>>;
   /** Your own modules, added after the built-in ones. */
   extra?: Module[];
@@ -50,13 +50,13 @@ export function create(opts: CreateOptions = {}): World {
     reverie: () => new Reverie(cfg.reverie as any),
     fellowship: () => new Fellowship(cfg.fellowship as any),
     wormtongue: () => new Wormtongue(cfg.wormtongue as any),
-    cityspeak: () => new Cityspeak(),
+    cityspeak: () => new Cityspeak(cfg.cityspeak as any),
     mentat: () => new Mentat(cfg.mentat as any),
     gaff: () => new Gaff(cfg.gaff as any),
-    ceres: () => new Ceres(),
+    ceres: () => new Ceres(cfg.ceres as any),
     cradle: () => new Cradle(cfg.cradle as any),
-    joi: () => new Joi(),
-    athelas: () => new Athelas(),
+    joi: () => new Joi(cfg.joi as any),
+    athelas: () => new Athelas(cfg.athelas as any),
     delos: () => new Delos(cfg.delos as any),
     voice: () => new Voice(cfg.voice as any),
   };
@@ -70,8 +70,14 @@ export function create(opts: CreateOptions = {}): World {
 /** The behavior tests. */
 export const VoightKampff = { run, compare };
 
+/** Every module's default settings, by name (what moduleConfig is merged over): see docs/tuning.md. */
+export const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>> = {
+  reverie: DEFAULT_REVERIE, fellowship: DEFAULT_FELLOWSHIP, wormtongue: DEFAULT_WORMTONGUE, cityspeak: DEFAULT_CITYSPEAK, mentat: DEFAULT_MENTAT,
+  gaff: DEFAULT_GAFF, ceres: DEFAULT_CERES, cradle: DEFAULT_CRADLE, joi: DEFAULT_JOI, athelas: DEFAULT_ATHELAS, delos: DEFAULT_DELOS, voice: DEFAULT_VOICE,
+} as unknown as Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>>;
+
 export {
-  World, DEFAULT_CONFIG, MIGRATIONS, SCHEMA,
+  World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA,
   Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
@@ -80,13 +86,13 @@ export type * from './core/types';
 export type { FeelingDef, BreakDef, MemoryKindDef, Belief, Memory, PersonFile, Shift, ReverieConfig } from './modules/reverie';
 export type { GroupDef, Sentiment, FellowshipConfig } from './modules/fellowship';
 export type { CrimeDef, Report, Secret, WormtongueConfig } from './modules/wormtongue';
-export type { LineDef, PracticeDef, SocialActDef, Said, ChooseOpts } from './modules/cityspeak';
+export type { LineDef, PracticeDef, SocialActDef, Said, ChooseOpts, CityspeakConfig } from './modules/cityspeak';
 export type { MentatConfig } from './modules/mentat';
 export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
-export type { GoodDef, ChainDef, GoodReport, ProductionReport } from './modules/ceres';
+export type { GoodDef, ChainDef, GoodReport, ProductionReport, CeresConfig } from './modules/ceres';
 export type { CradleConfig } from './modules/cradle';
-export type { JoiRequest, JoiReply, JoiProvider, Spoken } from './modules/joi';
-export type { CourseDef, CoursePhase } from './modules/athelas';
+export type { JoiRequest, JoiReply, JoiProvider, Spoken, JoiConfig } from './modules/joi';
+export type { CourseDef, CoursePhase, AthelasConfig } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
 export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
 export type { StrangerDef, StrangerErrand } from './core/strangers';

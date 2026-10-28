@@ -12,12 +12,13 @@ The ideas come from Merryfolk's body chemistry and illnesses (and Creatures' bio
 - [State](#state)
 - [API](#api)
 - [Terms, effects, events and log](#terms-effects-events-and-log)
+- [Config](#config)
 - [With other modules](#with-other-modules)
 - [Example](#example)
 
 ## Courses and phases
 
-A course is a list of phases. Afflicting someone starts the first; each phase lasts its `minutes` (a range is drawn from the person's stream, and `scale` considerations on the person stretch or shorten it), then the next starts; after the last, the course passes. Each change is a queued event, so it happens on time whether or not anyone is watching, and rewinds with everything else.
+A course is a list of phases. Afflicting someone starts the first; each phase lasts its `minutes` (a range is drawn from the person's stream, `scale` considerations on the person stretch or shorten it, and so does the headline knob `duration`), then the next starts; after the last, the course passes. Each change is a queued event, so it happens on time whether or not anyone is watching, and rewinds with everything else.
 
 ```js
 world.athelas.course({
@@ -46,7 +47,7 @@ While a phase lasts:
 
 ## Catching it
 
-A course with `contagion` spreads by company: whenever two people spend time together (Tyrell's `met`: one starts something where the other is doing something, for a few minutes or more), each course one of them has in a catching phase may pass to the other, with chance `1 - (1 - chance) ^ hours together`, times the `resist` considerations (the catcher is the person, the carrier their target). A phase with `spreads: false` doesn't spread (a cold coming on). Someone who already has it, or is immune, doesn't catch it. The draw is from the catcher's stream. `afflicted` carries `from`, and `athelas.of(id)` keeps who they caught it from.
+A course with `contagion` spreads by company: whenever two people spend time together (Tyrell's `met`: one starts something where the other is doing something, for a few minutes or more), each course one of them has in a catching phase may pass to the other, with chance `1 - (1 - chance × contagion) ^ hours together` (`contagion` is the headline knob: the world's times the catcher's own), times the `resist` considerations (the catcher is the person, the carrier their target). A phase with `spreads: false` doesn't spread (a cold coming on). Someone who already has it, or is immune, doesn't catch it. The draw is from the catcher's stream. `afflicted` carries `from`, and `athelas.of(id)` keeps who they caught it from.
 
 ## Again, and cures
 
@@ -129,6 +130,17 @@ Terms: `under:<course>` (the phase's id while it runs, else `false`), `under:tag
 | `recovered` | `{ id, course, cured, label }` |
 
 Log entries: `afflicted`, `course`, `recovered`.
+
+## Config
+
+`Tyrell.create({ moduleConfig: { athelas: { ... } } })`:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `contagion` | 1 | Headline knob: how catching courses are (every course's chance an hour together, times it); 0: nothing spreads |
+| `duration` | 1 | Headline knob: how long courses last (every phase's minutes, times it, as the phase starts) |
+
+A person's own `tune: { athelas: { contagion, duration } }` multiplies them for them: how easily they catch things, how long things last with them. See [Tuning](../tuning.md#athelas); during play, `world.tune('athelas', { ... })` (a phase already running keeps its end).
 
 ## With other modules
 

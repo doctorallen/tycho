@@ -1,6 +1,6 @@
 # Tyrell for AI agents
 
-You've been asked to integrate Tyrell into a game. This page is the compact, exact version: invariants, a procedure, the contracts of every callback, a skeleton that runs, and the pitfalls with their fixes. For details, follow the links into [api.md](api.md), [integration.md](integration.md), [conditions.md](conditions.md) and the module pages for the modules the game uses.
+You've been asked to integrate Tyrell into a game. This page is the compact, exact version: invariants, a procedure, the contracts of every callback, a skeleton that runs, and the pitfalls with their fixes. For details, follow the links into [api.md](api.md), [integration.md](integration.md), [conditions.md](conditions.md), [tuning.md](tuning.md) (every setting, and the headline knobs) and the module pages for the modules the game uses.
 
 This describes Tyrell 2.0.0 (save schema 2).
 
@@ -28,15 +28,15 @@ This describes Tyrell 2.0.0 (save schema 2).
 2. **State is the engine's.** All state is plain JSON in `world.s`. Game code never writes to it, to a `PersonState`, or to module state, and never calls engine-side methods (`world.mind.setLevel`, `world.lang.apply`, the modules' `apply...` methods such as `reverie.applyFeel`, `fellowship.applyRegard` or `ceres.applyPay`, `world.ring.claim`/`release`). Every change from the game is an input: a public API mutator (list below) or a custom input (`world.defineInput` + `world.input`).
 3. **Definitions every start.** Needs, places, links, actions, tasks, deeds, module content, custom terms, effects and inputs, listeners, the shell and config are not saved. Declare them on every start, identically, before or after `world.load`.
 4. **People are state.** `world.person(id, def)` adds a person or returns the existing (saved) one, ignoring `def`. Their `PersonDef` (routine, job, traits...) is saved with them.
-5. **Constant definitions.** Don't change definitions or decision config during a run; Esper replays with whatever is current. `config.minutesPerSecond` and `config.budgetMs` are safe to change.
+5. **Constant definitions.** Don't change definitions or config by hand during a run; Esper replays with whatever is current. To change settings during play (a slider, a difficulty), use `world.tune(module, values)`, an input kept in the state ([tuning.md](tuning.md#during-play)). `config.minutesPerSecond` and `config.budgetMs` are safe to change directly.
 6. **Stable order.** Custom module code iterates in a stable order.
 
-Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `train`, `setSkill`, `wishFor`, `grant`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`; `athelas.afflict`, `cure`, `hasten`; `delos.set`; `voice.start`, `answer`, `end`.
+Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `train`, `setSkill`, `wishFor`, `grant`, `tune`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`; `athelas.afflict`, `cure`, `hasten`; `delos.set`; `voice.start`, `answer`, `end`.
 
 ## Procedure
 
 1. **Decide who owns the clock.** If the game has its own clock (a day length, sleep that jumps time), call `world.advanceTo(gameMinutes)` every frame. Otherwise call `world.tick(dtSeconds)` and read `world.hour`.
-2. **Create the world**: `Tyrell.create({ seed, start, modules, shell, config, esper, moduleConfig })`. Pick only the modules the game uses. Lower `config.logSize` (300) and size `esper` to what the game needs; `esper: { on: false }` if it never rewinds.
+2. **Create the world**: `Tyrell.create({ seed, start, modules, shell, config, esper, moduleConfig })`. Pick only the modules the game uses. Lower `config.logSize` (300) and size `esper` to what the game needs; `esper: { on: false }` if it never rewinds. To change how people behave as a whole (friendships faster, fewer breaks, more gossip), set the headline knobs in `config` and `moduleConfig` (`{ fellowship: { friendship: 1.5 } }`), each 1 by default: [tuning.md](tuning.md#the-headline-knobs). A person's own pace goes in their definition: `tune: { reverie: { breaks: 2 } }`.
 3. **Declare needs.** Vital needs (hunger, energy) with `urgent` at most 1 (default 0.85); soft needs (fun, company, hygiene) with `urgent: 1.1` so they never break a routine.
 4. **Declare places**, each with a `region` (one per loaded level; omit for a single map), tags, `hours`, `slots`, `owner`, and the game's coordinates in `data`. Then travel: `world.link(a, b, minutes)` between outermost places (links on nested places are ignored; nested places are reached for free), or `shell.travel` from the game's pathfinder (cached, in minutes matching walking speed).
 5. **Declare actions** (and tasks). Free-choice actions need `relieves` or `base`. Work actions get `job` and `rank: -1`. Sleep gets a night consideration and `rates`. Give actions `label` and `pose`.
@@ -142,7 +142,9 @@ console.log(world.describe('mo'));
 
 ## Contracts
 
-**`Tyrell.create(opts)`**: `{ seed?, start?, modules?, shell?, config?, esper?, moduleConfig?, extra? }`. Unknown module names throw. Defaults: [api.md](api.md#options).
+**`Tyrell.create(opts)`**: `{ seed?, start?, modules?, shell?, config?, esper?, moduleConfig?, extra? }`. Unknown module names throw. Defaults: [api.md](api.md#options); every setting: [tuning.md](tuning.md#every-setting).
+
+**`world.tune(module, values | null, person?)`**: an input. `module` is a switched-on module's name or `'core'`; `values` are fields of its settings (the setting must exist; the value plain data of the same kind as the default), `null` for a field puts it back, `null` for `values` the whole module. With `person`, only that module's per-person headline knobs, numbers 0 or more (written to the person's `tune`). Throws, recording nothing, on anything else. `world.tuning(module, person?)` reads what's in force.
 
 **`shell.travel(from, to, person?) => number`**: minutes. `0` when no walk is needed, `Infinity` when unreachable. Deterministic and pure given Tyrell's state (it may read facts, not game state that doesn't rewind). Called for any two different place ids (including a place and one nested inside it), very often, and during replays; not cached by Tyrell. Must agree with how fast sprites walk.
 
@@ -190,6 +192,8 @@ console.log(world.describe('mo'));
 | Shell travel times that don't match walking speed | Sprites arrive before or after Tyrell's timetable; near and far disagree | Return the route length divided by walking speed, or place walkers by `travel.f` |
 | Setup inputs (`ceres.pay`, `income`, `rent`, `setPartner`, `secret`) on every start | Repeated on top of a loaded save | Guard with `world.kept('setup')` and `world.keep('setup', true)` |
 | Changing a person's routine in code | Saved people keep their saved definition | A custom input that patches `world.get(id).def`, run once per content version ([saving.md](saving.md#changing-content-under-existing-saves)) |
+| Changing `world.config` or a module's `config` from an options screen | Lost on load, missing after a rewind, and replays differ | `world.tune(module, values)`: recorded, kept in the state |
+| Expecting `world.reverie.config` (or `world.config`) to show a tuned value | They're what was declared | `world.tuning(module)` (or `world.cfg` for the core) |
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |
 | An action that `buys` and `uses` the same good | Ruled out: `uses` is checked before buying | Price plus `relieves` for on-the-spot eating, or two actions |
 | The default near rule with several small levels | A walker shows in both the origin and destination levels for the whole walk | `shell.near` from the route: which level they're in at `travel.f` |

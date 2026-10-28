@@ -2,6 +2,16 @@ import type { Candidate, Doing, Id, PersonState, QueueItem, Stimulus, Value } fr
 import type { World } from './world';
 export interface Module {
     readonly name: string;
+    /**
+     * The module's settings as declared (moduleConfig): what world.tune
+     * overrides during play. Read the ones in force with world.tuned(name, config).
+     */
+    readonly config?: object;
+    /**
+     * Its headline knobs (fields of its config): plain multipliers, 1 changing
+     * nothing. 'person' ones a person's own `tune` multiplies for them alone.
+     */
+    readonly knobs?: Readonly<Record<string, 'person' | 'world'>>;
     /** Called once, when the world is created: register terms, effects and inputs here. */
     attach(w: World): void;
     /** The module's fresh state. */

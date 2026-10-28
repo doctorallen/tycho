@@ -88,7 +88,8 @@ export class Bicameral {
     const hooks = (this.rateHooks ??= this.w.hooks.filter((m) => m.rate));
     let m = 1;
     for (const h of hooks) m *= (h.rate as NonNullable<Module['rate']>)(p, need);
-    return m;
+    // the headline knob: the world's pace, times the person's own
+    return m * this.w.cfg.needs * this.w.own(p, 'core', 'needs');
   }
 
   // -------------------------------------------------------------------------
@@ -170,14 +171,14 @@ export class Bicameral {
 
   /** Makes sure a person has every declared need. */
   ensureNeeds(p: PersonState): void {
-    for (const [id, def] of this.w.needs) if (!p.needs[id]) p.needs[id] = { v: def.start ?? 0.2, t: this.w.s.now };
+    for (const [id, def] of this.w.needs) if (!p.needs[id]) p.needs[id] = { v: def.start ?? this.w.cfg.needStart, t: this.w.s.now };
   }
 
   private quality(place: Id | null | undefined): number { return this.w.ring.get(place)?.quality ?? 1; }
 
   /** The urgency of a need: its level through its curve. */
   urgency(p: PersonState, need: Id, t = this.w.s.now): number {
-    return curveAt(this.w.needs.get(need)?.curve ?? 'pow1.5', this.level(p, need, t));
+    return curveAt(this.w.needs.get(need)?.curve ?? this.w.cfg.needCurve, this.level(p, need, t));
   }
 
   /**
@@ -188,13 +189,14 @@ export class Bicameral {
     let best = Infinity;
     const a = p.doing?.kind === 'act' ? this.w.actions.get(p.doing.action) : undefined;
     const relieving = a?.relieves;
+    const cfg = this.w.cfg;
     for (const [id, def] of this.w.needs) {
       if (relieving && relieving[id] !== undefined) continue;
-      const u = def.urgent ?? this.w.config.urgent;
+      const u = def.urgent ?? cfg.urgent;
       const rise = def.rise * this.riseMul(p, id) * (a?.rates?.[id] ?? 1);
       if (u > 1 || rise <= 0) continue;
       const v = this.level(p, id);
-      for (const line of [u, Math.max(u, 0.97), 1]) {
+      for (const line of [u, Math.max(u, cfg.desperate), 1]) {
         if (v >= line - 1e-9) continue;
         const t = this.w.s.now + ((line - v) / rise) * HOUR;
         if (t < best) best = t;
@@ -233,7 +235,7 @@ export class Bicameral {
     return clamp(ns.v + (def.rise * this.riseMul(p, need) * (this.w.s.now - ns.t)) / HOUR);
   }
 
-  private urgencyAt(need: Id, v: number): number { return curveAt(this.w.needs.get(need)?.curve ?? 'pow1.5', v); }
+  private urgencyAt(need: Id, v: number): number { return curveAt(this.w.needs.get(need)?.curve ?? this.w.cfg.needCurve, v); }
 
   // -------------------------------------------------------------------------
   // Habits
@@ -246,23 +248,25 @@ export class Bicameral {
 
   /** Learns from how an action went: realized relief against what was expected. */
   learn(p: PersonState, id: Id, got: number, expected: number, bonus = 0): void {
-    const c = this.w.config;
+    const c = this.w.cfg;
+    // the headline knob: how fast habits form and fade, the world's times the person's own
+    const k = c.habits * this.w.own(p, 'core', 'habits');
     const h = p.habits[id] || [1, 1];
     let fast = h[0], slow = h[1];
-    const ratio = expected > 1e-6 ? clamp(got / expected, 0, 2) : 1;
-    fast += c.habitFast * (ratio - 1) + bonus;
-    fast += c.habitDrift * (1 - fast); // a slow pull back toward neutral
+    const ratio = expected > 1e-6 ? clamp(got / expected, 0, c.habitBest) : 1;
+    fast += c.habitFast * k * (ratio - 1) + bonus;
+    fast += c.habitDrift * k * (1 - fast); // a slow pull back toward neutral
     fast = clamp(fast, c.habitMin, c.habitMax);
-    slow = clamp(slow + c.habitSlow * (fast - slow), c.habitMin, c.habitMax);
+    slow = clamp(slow + c.habitSlow * k * (fast - slow), c.habitMin, c.habitMax);
     p.habits[id] = [round(fast, 5), round(slow, 5)];
   }
 
   /** A reward or a telling-off: nudges the habit directly. */
   nudge(p: PersonState, id: Id, amount: number): void {
-    const c = this.w.config;
+    const c = this.w.cfg;
     const h = p.habits[id] || [1, 1];
     const fast = clamp(h[0] + amount, c.habitMin, c.habitMax);
-    p.habits[id] = [round(fast, 5), round(clamp(h[1] + amount * 0.25, c.habitMin, c.habitMax), 5)];
+    p.habits[id] = [round(fast, 5), round(clamp(h[1] + amount * c.nudgeSlow, c.habitMin, c.habitMax), 5)];
   }
 
   // -------------------------------------------------------------------------
@@ -275,7 +279,7 @@ export class Bicameral {
     if (!r || !r.length) return null;
     if (Array.isArray(r[0])) return r as RoutineEntry[];
     const day = dayOf(t);
-    const weekday = day % this.w.config.week;
+    const weekday = day % this.w.cfg.week;
     for (const v of r as RoutineVariant[]) {
       if (v.days && !v.days.includes(weekday)) continue;
       if (v.when && !this.w.lang.all(v.when, this.w.ctx(p))) continue;
@@ -310,7 +314,7 @@ export class Bicameral {
       // which day did this shift start on?
       const startedToday = a <= b || h >= a;
       const startDay = startedToday ? dayOf(t) : dayOf(t) - 1;
-      if (job.days && !job.days.includes(startDay % this.w.config.week)) continue;
+      if (job.days && !job.days.includes(startDay % this.w.cfg.week)) continue;
       let end = dayStart + b * HOUR;
       if (end <= t) end += DAY;
       return { until: end };
@@ -322,18 +326,19 @@ export class Bicameral {
   required(p: PersonState): Requirement[] {
     const out: Requirement[] = [];
     const now = this.w.s.now;
+    const cfg = this.w.cfg;
     const d = p.directive;
     if (d && !(d.done && !d.repeat) && !(d.until !== undefined && d.until <= now)) {
-      out.push({ do: d.do, at: d.at, rank: d.rank ?? 3, layer: 'story', until: d.until ?? Infinity, target: d.target });
+      out.push({ do: d.do, at: d.at, rank: d.rank ?? cfg.storyRank, layer: 'story', until: d.until ?? Infinity, target: d.target });
     }
     const shift = this.shiftAt(p);
-    if (shift && p.def.job) out.push({ do: p.def.job.action, at: p.def.job.place, rank: 2, layer: 'job', until: shift.until });
+    if (shift && p.def.job) out.push({ do: p.def.job.action, at: p.def.job.place, rank: cfg.jobRank, layer: 'job', until: shift.until });
     const r = this.routineAt(p);
     if (r) {
       const [, at, act, extra] = r.entry;
       // '*' with no place is free time: nothing required
       const free = (act === '*' || act === 'free') && (at === null || at === undefined || at === 'here');
-      if (!free) out.push({ do: act, at, rank: extra?.rank ?? 1, layer: 'routine', until: r.until, with: extra?.with, any: act === '*' });
+      if (!free) out.push({ do: act, at, rank: extra?.rank ?? cfg.routineRank, layer: 'routine', until: r.until, with: extra?.with, any: act === '*' });
     }
     return out;
   }
@@ -388,7 +393,7 @@ export class Bicameral {
       const at = r.at !== undefined ? r.at : (def as ActionDef | TaskDef).at;
       const places = this.w.ring.resolve(at, p, r.target);
       const target = r.target;
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         this.addOption(p, out, { id: r.do, kind, place, target, rank: r.rank, layer: r.layer, until: r.until }, true);
         reqIds.add(r.do + '@' + place);
       }
@@ -400,7 +405,7 @@ export class Bicameral {
       if (a.rank !== undefined && a.rank < 0) continue; // only by requirement
       if (!a.relieves && !a.base) continue;
       const places = this.w.ring.resolve(a.at ?? null, p);
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(a.id + '@' + place)) continue;
         if (a.at !== undefined && a.at !== null && !this.offeredAt(a, place, p)) continue;
         if (a.target === 'person') {
@@ -412,7 +417,7 @@ export class Bicameral {
       if (!t.relieves && !t.base) continue;
       if (t.rank !== undefined && t.rank < 0) continue;
       const places = t.at !== undefined ? this.w.ring.resolve(t.at, p) : [null];
-      for (const place of places.slice(0, this.w.config.placesPerAction)) {
+      for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(t.id + '@' + place)) continue;
         this.addOption(p, out, { id: t.id, kind: 'task', place, rank: t.rank ?? 0, layer: 'need' }, false);
       }
@@ -450,7 +455,7 @@ export class Bicameral {
       if (a.targetIf && !this.w.lang.all(a.targetIf, ctx)) continue;
       out.push(id);
     }
-    return out.slice(0, 6);
+    return out.slice(0, this.w.cfg.targets);
   }
 
   private addOption(p: PersonState, out: Candidate[], base: Omit<Candidate, 'weight' | 'parts'>, required: boolean): void {
@@ -497,7 +502,7 @@ export class Bicameral {
 
   /** Weighs one option: fills in weight, parts and rank (or blocked). */
   weigh(p: PersonState, c: Candidate, required: boolean): void {
-    const w = this.w;
+    const w = this.w, cfg = w.cfg;
     c.parts = [];
     const why = this.blockedReason(p, c);
     if (why) { c.blocked = why; c.weight = 0; return; }
@@ -515,13 +520,13 @@ export class Bicameral {
         if (!nd) continue;
         const r = mid(def.relieves[need]) * q;
         const lvl = this.level(p, need, arrive);
-        base += curveAt(nd.curve ?? 'pow1.5', lvl) * Math.min(r, Math.max(lvl, 0.05));
+        base += curveAt(nd.curve ?? cfg.needCurve, lvl) * Math.min(r, Math.max(lvl, cfg.reliefFloor));
         // an urgent need breaks through routines, but only for something that really meets it
-        if (r >= 0.3) {
-          const u = nd.urgent ?? w.config.urgent;
+        if (r >= cfg.liftRelief) {
+          const u = nd.urgent ?? cfg.urgent;
           // desperate: above work; the worse it gets, the higher (so starving wakes the exhausted)
-          if (lvl >= Math.max(u, 0.97)) lift = Math.max(lift, w.config.desperateRank + (lvl - 0.97) * 10);
-          else if (lvl >= u) lift = Math.max(lift, w.config.urgentRank);
+          if (lvl >= Math.max(u, cfg.desperate)) lift = Math.max(lift, cfg.desperateRank + (lvl - cfg.desperate) * cfg.desperateSlope);
+          else if (lvl >= u) lift = Math.max(lift, cfg.urgentRank);
         }
       }
     }
@@ -541,7 +546,7 @@ export class Bicameral {
       const n = cons.length;
       for (const k of cons) {
         let v = this.consider(k, ctx, travel);
-        if (w.config.compensate && n > 1 && v < 1 && v > 0) v = v + (1 - v) * (1 - 1 / n) * v;
+        if (cfg.compensate && n > 1 && v < 1 && v > 0) v = v + (1 - v) * (1 - 1 / n) * v;
         mul(k.name || (typeof k.input === 'string' ? k.input : 'consideration'), v);
         if (v <= 0) break;
       }
@@ -554,18 +559,18 @@ export class Bicameral {
     const kind = isTask ? null : this.pallKind(def);
     if (kind) {
       const tol = this.tolerance(p, kind);
-      if (tol > 0.05) {
+      if (tol > cfg.pallFrom) {
         const pd = w.pastimes.get(kind);
-        mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? w.config.pallPenalty) * tol, 4));
+        mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? cfg.pallPenalty) * tol, 4));
       }
     }
     // a wish (and a dream) leans them toward what would grant it
     if (p.wishes?.length) for (const [name, f] of this.wishPull(p, c, def.tags)) mul(name, f);
-    if (travel > 0) mul('travel', 1 / (1 + travel / w.config.travelScale));
+    if (travel > 0) mul('travel', 1 / (1 + travel / cfg.travelScale));
     const sleepy = def.tags?.includes('sleep');
     // (a pastime that palls has its own, finer sense of having had enough)
-    if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== undefined && w.s.now - p.lastEnd < 90) mul('did it last', w.config.repeat);
-    if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul('carrying on', w.config.inertia);
+    if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== undefined && w.s.now - p.lastEnd < cfg.repeatWindow) mul('did it last', cfg.repeat);
+    if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul('carrying on', cfg.inertia);
     for (const m of w.hooks) {
       const parts = m.consider?.(p, c);
       if (parts) for (const [name, f] of parts) mul(name, f);
@@ -603,7 +608,7 @@ export class Bicameral {
   tolerance(p: PersonState, kind: string, t = this.w.s.now): number {
     const rec = p.tol?.[kind];
     if (!rec) return 0;
-    const decay = this.w.pastimes.get(kind)?.decay ?? this.w.config.pallDecay;
+    const decay = this.w.pastimes.get(kind)?.decay ?? this.w.cfg.pallDecay;
     return round(Math.max(0, rec[0] - (decay * Math.max(0, t - rec[1])) / HOUR), 4);
   }
 
@@ -613,7 +618,7 @@ export class Bicameral {
     const tol = (p.tol ||= {});
     const before = this.tolerance(p, kind);
     for (const k of Object.keys(tol)) if (this.tolerance(p, k) <= 0) delete tol[k];
-    tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.config.pallGain)), 4), now];
+    tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.cfg.pallGain)), 4), now];
   }
 
   // -------------------------------------------------------------------------
@@ -677,7 +682,7 @@ export class Bicameral {
       if (!def?.toward || !this.matches(def.toward, c.id, tags)) continue;
       // a wish about someone pulls toward them, not toward anyone
       if (this.isPerson(h.x) && c.target && c.target !== h.x) continue;
-      out.push([`${h.dream ? 'dream' : 'wish'}: ${def.label ?? def.id}`, def.pull ?? this.w.config.wishPull]);
+      out.push([`${h.dream ? 'dream' : 'wish'}: ${def.label ?? def.id}`, def.pull ?? this.w.cfg.wishPull]);
       if (h.dream) dream = true; else wish = true;
     }
     return out;
@@ -697,7 +702,7 @@ export class Bicameral {
     }
     const now = w.s.now;
     const h: HeldWish = { id, t: now };
-    const minutes = def.dream ? 0 : def.minutes ?? w.config.wishMinutes;
+    const minutes = def.dream ? 0 : def.minutes ?? w.cfg.wishMinutes;
     if (minutes > 0) h.until = now + minutes;
     if (x !== undefined) h.x = x;
     if (def.dream) h.dream = true;
@@ -774,14 +779,16 @@ export class Bicameral {
 
   /** Now and then, a new wish (and a dream, for someone without one). */
   private rollWishes(p: PersonState): void {
-    const w = this.w, c = w.config;
+    const w = this.w, c = w.cfg;
+    // the headline knob: how often wishes come, the world's times the person's own
+    const k = c.wishes * w.own(p, 'core', 'wishes');
     const held = p.wishes || [];
     for (const dream of [false, true]) {
       if (dream ? held.some((h) => h.dream) : held.filter((h) => !h.dream).length >= c.wishMax) continue;
       const pool = this.wishable(p, dream);
       if (!pool.length) continue;
       const r = w.stream(p);
-      if (!r.chance(c.wishChance)) continue;
+      if (!r.chance(c.wishChance * k)) continue;
       const pick = r.weighted(pool, (o) => o.w);
       if (pick) this.applyWish(p, pick.id, pick.x === undefined ? undefined : pick.x);
     }
@@ -790,7 +797,7 @@ export class Bicameral {
   /** An action ended (Entmoot calls this): a pastime palls, and wishes it grants come true. */
   finished(p: PersonState, d: Doing, frac: number, interrupted: boolean): void {
     const kind = this.pallKind(this.w.actions.get(d.action));
-    if (kind && frac > 0.2) this.applyPall(p, kind);
+    if (kind && frac > this.w.cfg.pallDone) this.applyPall(p, kind);
     if (!interrupted && p.wishes?.length) this.checkWishes(p, d, false);
   }
 
@@ -799,7 +806,7 @@ export class Bicameral {
     const w = this.w;
     if (!w.wishes.size) return;
     const h = hourOf(t);
-    const rolling = w.config.wishHours.some((x) => Math.abs(x - h) < 1e-6);
+    const rolling = w.cfg.wishHours.some((x) => Math.abs(x - h) < 1e-6);
     for (const id in w.s.people) {
       const p = w.s.people[id];
       if (p.status !== 'active') continue;
@@ -839,7 +846,7 @@ export class Bicameral {
     for (const c of valid) top = Math.max(top, c.rank);
     let pool = valid.filter((c) => c.rank === top);
     const best = Math.max(...pool.map((c) => c.weight));
-    const cfg = this.w.config;
+    const cfg = this.w.cfg;
     pool = pool.filter((c) => c.weight >= best * cfg.cut).sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1)).slice(0, cfg.top);
     const r = this.w.stream(p);
     const picked = r.weighted(pool, (c) => Math.pow(c.weight, cfg.power)) || pool[0];

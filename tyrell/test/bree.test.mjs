@@ -274,6 +274,59 @@ test('an action that interacts begins its exchange with its target, and the turn
   assert.equal(w.bree.exchange('a'), null, 'over');
 });
 
+test('two sitting together talk on and off with again; without it, only when they meet', () => {
+  const run = (again) => {
+    const w = table({ bree: { strike: 1, again } });
+    w.bree.kind({ id: 'chat', turns: 2 });
+    const ends = [];
+    w.on('bree:end', (e) => ends.push(e));
+    w.advance(100); // (they sit down together at eight)
+    return { w, ends };
+  };
+  const once = run(0), often = run(15);
+  assert.equal(once.ends.length, 1, 'met once: one exchange');
+  assert.ok(often.ends.length >= 4, 'again: more while they sit (' + often.ends.length + ')');
+  assert.ok(often.ends.every((e) => e.why === 'done' && e.who.includes('a') && e.who.includes('b')));
+  for (let i = 1; i < often.ends.length; i++) assert.ok(often.ends[i].t - often.ends[i - 1].end >= 15 - 1e-6, 'each a while after the last');
+  // one walks off: nothing more between them
+  const w = often.w, n = often.ends.length;
+  w.direct('b', { do: 'wait_about' });
+  w.advance(45);
+  assert.equal(often.ends.length, n);
+  // the same world, played again
+  assert.equal(run(15).w.hash(), run(15).w.hash());
+});
+
+test('an action with no target interacts with whoever there its interactWith finds, who breaks off to; without it, nobody', () => {
+  const w = table({ people: ['a', 'b', 'clerk', 'zed'] });
+  w.bree.kind({ id: 'till', turns: 2, weight: 0 });
+  w.action({ id: 'tend', at: 'cafe', minutes: 240, rank: -1 });
+  w.action({ id: 'pay', at: 'cafe', minutes: 8, rank: -1, interact: 'till', interactWith: ['target.doing:tend'] });
+  w.action({ id: 'browse', at: 'cafe', minutes: 8, rank: -1, interact: 'till' });
+  w.advance(10);
+  w.direct('clerk', { do: 'tend' });
+  w.direct('zed', { do: 'tend' });
+  w.advance(5);
+  w.direct('a', { do: 'pay' });
+  const ex = w.bree.exchange('a');
+  assert.ok(ex, 'begun at the till');
+  assert.deepEqual(ex.who, ['a', 'clerk'], 'with the first one there it holds for, by id');
+  assert.equal(ex.why, 'action');
+  w.direct('b', { do: 'pay' });
+  assert.deepEqual(w.bree.exchange('b').who, ['b', 'zed'], 'the clerk is busy: the next one');
+  w.advance(20);
+  // nobody free to serve: whoever's talking breaks off for it
+  w.bree.start('till', 'zed', 'clerk', { turns: 9 });
+  const ends = [];
+  w.on('bree:end', (e) => ends.push(e));
+  w.direct('b', { do: 'pay' });
+  assert.deepEqual(w.bree.exchange('b').who, ['b', 'clerk']);
+  assert.equal(ends.find((e) => e.who.includes('zed')).why, 'interrupted');
+  w.advance(20);
+  w.direct('a', { do: 'browse' });
+  assert.equal(w.bree.exchange('a'), null, 'no target and no interactWith: nothing, as before');
+});
+
 test('an exchange needs people: one aimed at the player (or nobody) begins nothing; old pairs are let go', () => {
   const w = table();
   w.bree.kind({ id: 'chat', turns: 2 });

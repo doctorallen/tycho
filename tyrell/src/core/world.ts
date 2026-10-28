@@ -31,6 +31,7 @@ import type { Athelas } from '../modules/athelas';
 import type { Delos } from '../modules/delos';
 import type { Voice } from '../modules/voice';
 import type { Bree } from '../modules/bree';
+import type { Morgul } from '../modules/morgul';
 import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState,
   PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState,
@@ -353,6 +354,8 @@ export class World {
   get voice(): Voice | undefined { return this.modules.get('voice') as Voice | undefined; }
   /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
   get bree(): Bree | undefined { return this.modules.get('bree') as Bree | undefined; }
+  /** Harm between people: wounds, down and dead, grudges and fear, traps, poison, suspicion, fights by numbers. */
+  get morgul(): Morgul | undefined { return this.modules.get('morgul') as Morgul | undefined; }
 
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
@@ -942,7 +945,7 @@ function plain(v: unknown): boolean {
 const kindOf = (v: unknown): string => (Array.isArray(v) ? 'list' : v === null ? 'null' : typeof v);
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
-const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer', 'bree.start']);
+const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer', 'bree.start', 'morgul.harm']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
 export const MIGRATIONS: Record<number, (s: any) => any> = {

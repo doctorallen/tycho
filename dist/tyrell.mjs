@@ -882,6 +882,7 @@ var Bicameral = class {
     for (const t of this.w.tasks.values()) {
       if (!t.relieves && !t.base) continue;
       if (t.rank !== void 0 && t.rank < 0) continue;
+      if (t.target) continue;
       const places = t.at !== void 0 ? this.w.ring.resolve(t.at, p) : [null];
       for (const place of places.slice(0, this.w.cfg.placesPerAction)) {
         if (reqIds.has(t.id + "@" + place)) continue;
@@ -2380,8 +2381,11 @@ var Palantir = class {
     if (wishes) lines.push(`wishes: ${wishes}`);
     const tol = Object.keys(p.tol || {}).sort().map((k) => [k, w.mind.tolerance(p, k)]).filter(([, v]) => v > 0.05).map(([k, v]) => `${w.pastimes.get(k)?.label ?? k} ${round(v, 2)}`).join(", ");
     if (tol) lines.push(`had enough of: ${tol}`);
-    const under = w.athelas?.of(id).map((c) => `${c.label} (${c.phaseLabel || c.phase}, until ${clock(c.until)})`).join(", ");
+    const under = w.athelas?.of(id).map((c) => `${c.label} (${c.phaseLabel || c.phase}${c.quiet ? ", unnoticed" : ""}, until ${clock(c.until)})`).join(", ");
     if (under) lines.push(`under: ${under}`);
+    const mg = w.morgul;
+    const hurt = mg ? mg.hurt(id) : 0;
+    if (mg && (hurt > 0 || mg.isDown(id))) lines.push(`hurt: ${round(hurt, 2)}${mg.isDown(id) ? ", down" : ""}`);
     const rv = w.reverie;
     if (rv) {
       lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);
@@ -3001,6 +3005,10 @@ var World = class {
   /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
   get bree() {
     return this.modules.get("bree");
+  }
+  /** Harm between people: wounds, down and dead, grudges and fear, traps, poison, suspicion, fights by numbers. */
+  get morgul() {
+    return this.modules.get("morgul");
   }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
@@ -3661,7 +3669,7 @@ function plain(v) {
   return false;
 }
 var kindOf = (v) => Array.isArray(v) ? "list" : v === null ? "null" : typeof v;
-var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer", "bree.start"]);
+var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer", "bree.start", "morgul.harm"]);
 var MIGRATIONS = {
   // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
   // old records are kept apart (it takes the line definitions to read them).
@@ -4711,6 +4719,7 @@ var Wormtongue = class {
     const w = this.w, rv = w.reverie, c = this.c;
     const crime = this.crimes.get(stim.kind);
     const strength = clamp(stim.strength ?? 1);
+    const severity = stim.severity !== void 0 ? clamp(stim.severity) : crime?.severity ?? 0;
     for (const wid of stim.seenBy || []) {
       const p = w.s.people[wid];
       if (!p || p.status !== "active" || wid === stim.actor) continue;
@@ -4721,7 +4730,7 @@ var Wormtongue = class {
       const actor = recognized ? stim.actor : "someone";
       const key2 = `did:${actor}:${stim.kind}`;
       rv?.applyBelieve(wid, key2, stim.what ?? true, "saw", null, Math.max(c.sawStrength, strength));
-      rv?.applyRemember(wid, { k: "saw:" + stim.kind, about: recognized ? stim.actor : void 0, place: stim.place ?? void 0, imp: crime ? c.crimeMemory + crime.severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? " " + stim.what : ""}` });
+      rv?.applyRemember(wid, { k: "saw:" + stim.kind, about: recognized ? stim.actor : void 0, place: stim.place ?? void 0, imp: crime ? c.crimeMemory + severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? " " + stim.what : ""}` });
       if (crime && rv) rv.applyFeel(wid, crime.feeling ?? "witnessed", key2);
       w.log("witnessed", wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized });
       w.emit("witnessed", { id: wid, actor, kind: stim.kind, recognized });
@@ -4733,7 +4742,7 @@ var Wormtongue = class {
         const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * this.knob("reporting", wid));
         if (r.chance(pReport)) {
           const [a, b] = c.reportDelay;
-          w.clock.schedule({ t: w.s.now + r.range(a, b), k: "module", ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null } });
+          w.clock.schedule({ t: w.s.now + r.range(a, b), k: "module", ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null, ...stim.severity !== void 0 ? { sev: severity } : {} } });
         }
       }
     }
@@ -4747,12 +4756,13 @@ var Wormtongue = class {
     if (!p || p.status !== "active") return;
     const b = w.reverie?.beliefRecord(wid, `did:${actor}:${kind}`);
     if (!b || b.silenced) return;
-    this.report(wid, actor, kind, item.data?.what);
+    this.report(wid, actor, kind, item.data?.what, typeof item.data?.sev === "number" ? item.data.sev : void 0);
   }
-  report(wid, actor, kind, what) {
+  report(wid, actor, kind, what, sev) {
     const w = this.w, c = this.c;
     const crime = this.crimes.get(kind);
     if (!crime) return;
+    const severity = sev ?? crime.severity;
     let to = crime.reportTo;
     if (!to && w.fellowship) {
       for (const g of w.fellowship.groups.values()) if (g.kind === "authority") {
@@ -4765,10 +4775,10 @@ var Wormtongue = class {
     if (to) rep.to = to;
     this.st.reports.push(rep);
     if (this.st.reports.length > 200) this.st.reports.shift();
-    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? crime.severity * c.heatPerSeverity) * this.knob("heat", actor), 4);
+    this.st.heat[actor] = round((this.st.heat[actor] || 0) + (crime.heat ?? severity * c.heatPerSeverity) * this.knob("heat", actor), 4);
     if (w.fellowship) {
-      if (to) w.fellowship.applyStanding(to, actor, 0, crime.severity * c.infamyAuthority);
-      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, crime.severity * c.infamyGroups);
+      if (to) w.fellowship.applyStanding(to, actor, 0, severity * c.infamyAuthority);
+      for (const g of w.fellowship.groupsOf(wid)) w.fellowship.applyStanding(g, actor, 0, severity * c.infamyGroups);
     }
     if (to && w.fellowship && w.reverie) for (const m of w.fellowship.members(to)) w.reverie.applyBelieve(m, `did:${actor}:${kind}`, what ?? true, "told", wid, c.toldAuthority, 1);
     w.log("report", wid, { actor, kind, to: to ?? null });
@@ -4974,6 +4984,8 @@ var Cityspeak = class {
     this.acts = /* @__PURE__ */ new Map();
     /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
     this.barkSaid = /* @__PURE__ */ new Map();
+    /** The lines by topic (indices, in the order declared), so choosing looks only at those that could fit; made again when lines are added. */
+    this.index = null;
     this.config = { ...DEFAULT_CITYSPEAK, ...cfg };
   }
   /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
@@ -5057,6 +5069,30 @@ var Cityspeak = class {
   choose(who, opts = {}) {
     return this.pick(who, opts)?.said ?? null;
   }
+  /** The indices of the lines that could answer a topic, in the order declared: its own, and (unless exact) those with no topic. */
+  linesFor(topic, exact) {
+    let ix = this.index;
+    if (!ix || ix.n !== this.lines.length) {
+      const by = /* @__PURE__ */ new Map(), none = [];
+      this.lines.forEach((l, i) => {
+        if (l.topic === void 0) {
+          none.push(i);
+          return;
+        }
+        const list = by.get(l.topic);
+        if (list) list.push(i);
+        else by.set(l.topic, [i]);
+      });
+      ix = this.index = { n: this.lines.length, by, none };
+    }
+    if (topic === void 0) return ix.none;
+    const own = ix.by.get(topic) ?? [];
+    if (exact || !ix.none.length) return own;
+    if (!own.length) return ix.none;
+    const out = [];
+    for (let a = 0, b = 0; a < own.length || b < ix.none.length; ) out.push(b >= ix.none.length || a < own.length && own[a] < ix.none[b] ? own[a++] : ix.none[b++]);
+    return out;
+  }
   /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
   pick(who, opts) {
     return this.w.peek(() => this.pickNow(who, opts));
@@ -5070,7 +5106,8 @@ var Cityspeak = class {
     let best = [];
     let bestSpec = -1;
     const all = opts.avoid ? [] : null;
-    this.lines.forEach((l, i) => {
+    const lines = this.lines;
+    const fits = (l, i) => {
       if (opts.topic !== void 0 && l.topic !== void 0 && l.topic !== opts.topic) return;
       if (opts.topic === void 0 && l.topic !== void 0) return;
       if (opts.exact && l.topic === void 0) return;
@@ -5104,7 +5141,8 @@ var Cityspeak = class {
         bestSpec = spec;
         best = [{ l, i }];
       } else if (spec === bestSpec) best.push({ l, i });
-    });
+    };
+    for (const i of this.linesFor(opts.topic, opts.exact)) fits(lines[i], i);
     if (!best.length) return null;
     if (all && opts.avoid) {
       const avoid = opts.avoid;
@@ -5369,6 +5407,7 @@ var Mentat = class {
     const task = this.w.tasks.get(c.id);
     if (!task) return null;
     p.plan = { task: task.id, stack: [], failed: {}, tries: 0, started: this.w.s.now, rank: c.rank, layer: c.layer };
+    if (task.target === "person" && c.target) p.plan.target = c.target;
     if (!this.push(p, task.id)) {
       this.w.log("no-plan", p.id, { task: task.id });
       p.plan = null;
@@ -5387,7 +5426,7 @@ var Mentat = class {
     const def = this.w.tasks.get(taskId);
     if (!def) return false;
     const failed = plan.failed[taskId] || [];
-    const ctx = this.w.ctx(p, { action: taskId });
+    const ctx = this.w.ctx(p, { action: taskId, ...plan.target !== void 0 ? { target: plan.target } : {} });
     for (let i = 0; i < def.methods.length; i++) {
       if (failed.includes(i)) continue;
       const m = def.methods[i];
@@ -5431,13 +5470,13 @@ var Mentat = class {
           continue;
         }
         if (w.actions.has(step)) {
-          const c2 = this.actionStep(p, { action: step });
+          const c2 = this.actionStep(p, plan.target !== void 0 && w.actions.get(step)?.target === "person" ? { action: step, target: plan.target } : { action: step });
           if (!c2) return this.fail(p, `can't ${step} now`);
           return c2;
         }
         return this.fail(p, `unknown step ${step}`);
       }
-      const c = this.actionStep(p, step);
+      const c = this.actionStep(p, step.target === "target" ? { ...step, target: plan.target } : step.target === void 0 && plan.target !== void 0 && w.actions.get(step.action)?.target === "person" ? { ...step, target: plan.target } : step);
       if (!c) return this.fail(p, `can't ${step.action} now`);
       if (step.minutes !== void 0) c.minutes = step.minutes;
       return c;
@@ -5451,7 +5490,7 @@ var Mentat = class {
   /** Where a go: step walks to: the nearest declared place its spec names that they can get to. */
   destination(p, spec) {
     const w = this.w;
-    for (const id of w.ring.resolve(spec, p)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
+    for (const id of w.ring.resolve(spec, p, p.plan?.target)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
     return null;
   }
   /** An action step: the nearest place where it can be done now. */
@@ -6406,6 +6445,7 @@ var Cradle = class {
   depart(id, why = "left") {
     this.w.input("depart", [id, why]);
   }
+  /** Someone leaves for good, inside the simulation (a course that ends in death, a killing). */
   applyDepart(id, why) {
     const w = this.w;
     const p = w.s.people[id];
@@ -6592,7 +6632,7 @@ var Joi = class {
 };
 
 // tyrell/src/modules/athelas.ts
-var DEFAULT_ATHELAS = { contagion: 1, duration: 1 };
+var DEFAULT_ATHELAS = { contagion: 1, duration: 1, sevAt: 0.5, sevStretch: 2, sevDepth: 1, tendBase: 0.5, tendSkill: null, tendHasten: 0.25 };
 var Athelas = class {
   constructor(cfg = {}) {
     this.name = "athelas";
@@ -6600,9 +6640,13 @@ var Athelas = class {
     this.courses = /* @__PURE__ */ new Map();
     this.config = { ...DEFAULT_ATHELAS, ...cfg };
   }
+  /** The config in force: as declared, under any world.tune. */
+  get c() {
+    return this.w.tuned(this.name, this.config);
+  }
   /** A headline knob for someone: the world's (as tuned), times their own. */
   knob(name, p) {
-    return this.w.tuned(this.name, this.config)[name] * this.w.own(p, this.name, name);
+    return this.c[name] * this.w.own(p, this.name, name);
   }
   /** The state for reading: undefined until someone is first afflicted. */
   get st() {
@@ -6619,14 +6663,34 @@ var Athelas = class {
     L.term("under", (c, a) => {
       if (!c.person) return a ? false : 0;
       const on = this.st?.on[c.person.id];
-      if (!a) return on ? Object.keys(on).length : 0;
-      if (a.startsWith("tag:")) return !!on && Object.keys(on).some((id) => this.courses.get(id)?.tags?.includes(a.slice(4)));
+      const shows = (id) => !this.quiet(id, on?.[id]);
+      if (!a) return on ? Object.keys(on).filter(shows).length : 0;
+      if (a.startsWith("tag:")) return !!on && Object.keys(on).some((id) => shows(id) && this.courses.get(id)?.tags?.includes(a.slice(4)));
       const r = on?.[a];
-      return r ? this.courses.get(a)?.phases[r.p]?.id ?? true : false;
+      return r && shows(a) ? this.courses.get(a)?.phases[r.p]?.id ?? true : false;
     });
     L.term("immune", (c, a) => c.person ? this.immune(c.person.id, a) : false);
-    L.effect("afflict", (c, a) => {
-      if (c.person) this.applyAfflict(c.person.id, a, c.target ?? void 0);
+    L.term("sev", (c, a) => {
+      if (!c.person) return 0;
+      const on = this.st?.on[c.person.id];
+      if (!on) return 0;
+      if (a.startsWith("tag:")) {
+        let best = 0;
+        for (const id of Object.keys(on)) if (this.courses.get(id)?.tags?.includes(a.slice(4))) best = Math.max(best, this.severity(id, on[id]));
+        return best;
+      }
+      return on[a] ? this.severity(a, on[a]) : 0;
+    });
+    L.term("tended", (c, a) => {
+      const on = c.person ? this.st?.on[c.person.id] : void 0;
+      if (!on) return 0;
+      if (a) return on[a]?.tend ?? 0;
+      let best = 0;
+      for (const id of Object.keys(on)) best = Math.max(best, on[id].tend ?? 0);
+      return best;
+    });
+    L.effect("afflict", (c, a, op, v) => {
+      if (c.person) this.applyAfflict(c.person.id, a, c.target ?? void 0, op && typeof v === "number" ? v : void 0);
     });
     L.effect("cure", (c, a) => {
       if (c.person) this.applyCure(c.person.id, a || void 0);
@@ -6634,9 +6698,13 @@ var Athelas = class {
     L.effect("hasten", (c, a, _op, v) => {
       if (c.person) this.applyHasten(c.person.id, a, Number(v ?? 0));
     });
-    w.defineInput("afflict", (id, course, from) => this.applyAfflict(id, course, from ?? void 0));
+    L.effect("tend", (c, a) => {
+      if (c.person) this.applyTend(c.target ?? c.person.id, a || void 0, c.person.id);
+    });
+    w.defineInput("afflict", (id, course, from, sev) => this.applyAfflict(id, course, from ?? void 0, sev ?? void 0));
     w.defineInput("cure", (id, course) => this.applyCure(id, course ?? void 0));
     w.defineInput("hasten", (id, course, minutes) => this.applyHasten(id, course, minutes));
+    w.defineInput("tend", (id, course, by) => this.applyTend(id, course ?? void 0, by ?? void 0));
   }
   // -------------------------------------------------------------------------
   // Declaring and asking
@@ -6645,7 +6713,7 @@ var Athelas = class {
     this.courses.set(def.id, def);
     return this;
   }
-  /** The courses running for someone: which phase, since and until when. */
+  /** The courses running for someone: which phase, since and until when, and how bad, tended and noticed. */
   of(id) {
     const on = this.st?.on[id];
     if (!on) return [];
@@ -6660,6 +6728,9 @@ var Athelas = class {
         until: r.until
       };
       if (r.from) out.from = r.from;
+      if (r.sev !== void 0) out.severity = r.sev;
+      if (r.tend !== void 0) out.tended = r.tend;
+      if (ph?.quiet) out.quiet = true;
       return out;
     });
   }
@@ -6667,9 +6738,22 @@ var Athelas = class {
   immune(id, course) {
     return (this.st?.immune[id]?.[course] ?? -Infinity) > this.w.s.now;
   }
-  /** Afflicts someone with a course (from the game: recorded). Returns whether it took. */
-  afflict(id, course, from) {
-    return this.w.input("afflict", [id, course, from ?? null]) === true;
+  /** A course's severity for someone: its own, or the severity its numbers are written for; undefined if it isn't running. */
+  severityOf(id, course) {
+    const r = this.st?.on[id]?.[course];
+    return r ? this.severity(course, r) : void 0;
+  }
+  /** The phase a course is in for someone, if it's running (the truth: quiet or not). */
+  phaseOf(id, course) {
+    const r = this.st?.on[id]?.[course];
+    return r ? this.courses.get(course)?.phases[r.p] : void 0;
+  }
+  /**
+   * Afflicts someone with a course (from the game: recorded), at a severity
+   * (0..1) if it's given one. Returns whether it took.
+   */
+  afflict(id, course, from, severity) {
+    return this.w.input("afflict", severity === void 0 ? [id, course, from ?? null] : [id, course, from ?? null, severity]) === true;
   }
   /** Cures someone of a course, or of every course (from the game: recorded). */
   cure(id, course) {
@@ -6679,16 +6763,50 @@ var Athelas = class {
   hasten(id, course, minutes) {
     this.w.input("hasten", [id, course, minutes]);
   }
+  /** Someone tends someone's course (or every course they have), by someone if given (their skill counts): recorded. */
+  tend(id, course, by) {
+    this.w.input("tend", [id, course ?? null, by ?? null]);
+  }
+  // -------------------------------------------------------------------------
+  // Severity
+  // -------------------------------------------------------------------------
+  /** The severity a course's numbers are written for, how much severity stretches it, and how much it deepens it. */
+  sevOf(def) {
+    const c = this.c, s = def?.severity;
+    return { at: s?.at ?? c.sevAt, stretch: s?.stretch ?? c.sevStretch, depth: s?.depth ?? c.sevDepth };
+  }
+  severity(course, r) {
+    return r.sev ?? this.sevOf(this.courses.get(course)).at;
+  }
+  /** How much longer a phase runs at a severity: stretch^((severity - at) × 2). */
+  stretch(def, sev) {
+    if (sev === void 0) return 1;
+    const s = this.sevOf(def);
+    return Math.pow(Math.max(0, s.stretch), (sev - s.at) * 2);
+  }
+  /** How much deeper what a phase does goes at a severity: rates and weights are raised to this power. */
+  depth(def, sev) {
+    if (sev === void 0) return 1;
+    const s = this.sevOf(def);
+    return Math.max(0, 1 + s.depth * (s.at > 0 ? (sev - s.at) / s.at : sev));
+  }
+  /** Is a course in a quiet phase (nobody notices it)? */
+  quiet(course, r) {
+    return !!r && !!this.courses.get(course)?.phases[r.p]?.quiet;
+  }
   // -------------------------------------------------------------------------
   // Running a course
   // -------------------------------------------------------------------------
-  phaseMinutes(p, ph) {
+  phaseMinutes(p, course, ph, r) {
     let m = Array.isArray(ph.minutes) ? this.w.stream(p).range(ph.minutes[0], ph.minutes[1]) : ph.minutes;
     if (ph.scale?.length) {
       const ctx = this.w.ctx(p);
       for (const k of ph.scale) m *= this.w.mind.consider(k, ctx);
     }
     m *= this.knob("duration", p);
+    if (r.sev !== void 0) m *= this.stretch(this.courses.get(course), r.sev);
+    const morgul = this.w.morgul;
+    if (morgul) m *= morgul.paceOf(p, course);
     return round(Math.max(1, m), 4);
   }
   schedule(id, course, r) {
@@ -6698,27 +6816,43 @@ var Athelas = class {
   label(def, ph) {
     return (def.label ?? def.id) + (ph?.label ? `: ${ph.label}` : "");
   }
-  /** Afflicts someone, inside the simulation. */
-  applyAfflict(id, course, from) {
+  /** Afflicts someone, inside the simulation (at a severity, 0..1, if given). */
+  applyAfflict(id, course, from, sev) {
     var _a;
     const w = this.w;
     const p = w.s.people[id];
     const def = this.courses.get(course);
     if (!p || p.status === "gone" || !def || !def.phases.length) return false;
     const now2 = w.s.now;
+    const given = sev === void 0 || !isFinite(sev) ? void 0 : round(Math.min(1, Math.max(0, sev)), 4);
     const cur = this.st?.on[id]?.[course];
     if (cur) {
       const again = def.again ?? "ignore";
       if (again === "ignore") return false;
       if (again === "extend") {
-        cur.until = round(cur.until + this.phaseMinutes(p, def.phases[cur.p]), 4);
+        if (given !== void 0) {
+          w.mind.settleRise(p);
+          cur.sev = Math.max(cur.sev ?? 0, given);
+        }
+        cur.until = round(cur.until + this.phaseMinutes(p, course, def.phases[cur.p], cur), 4);
         this.schedule(id, course, cur);
+      } else if (again === "worsen") {
+        w.mind.settleRise(p);
+        const at = this.sevOf(def).at;
+        const before = cur.sev ?? at;
+        const next = round(Math.min(1, before + (given ?? at)), 4);
+        const f0 = this.stretch(def, before), f1 = this.stretch(def, next);
+        cur.sev = next;
+        if (f0 > 0) cur.until = round(Math.max(now2, cur.since + (cur.until - cur.since) * (f1 / f0)), 4);
+        this.schedule(id, course, cur);
+        if (p.doing) w.clock.scheduleChecks(p);
       } else {
         w.mind.settleRise(p);
+        if (given !== void 0) cur.sev = given;
         this.enter(p, course, 0);
       }
-      w.log("afflicted", id, { course, again });
-      w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course, again });
+      w.log("afflicted", id, { course, again, ...cur.sev !== void 0 ? { severity: cur.sev } : {} });
+      w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course, again, ...cur.sev !== void 0 ? { severity: cur.sev } : {} });
       return true;
     }
     if (this.immune(id, course)) return false;
@@ -6730,9 +6864,10 @@ var Athelas = class {
     w.mind.settleRise(p);
     const r = { p: 0, since: now2, until: now2, k: 0 };
     if (from) r.from = from;
+    if (given !== void 0) r.sev = given;
     ((_a = st.on)[id] || (_a[id] = {}))[course] = r;
-    w.log("afflicted", id, { course, ...from ? { from } : {} });
-    w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course });
+    w.log("afflicted", id, { course, ...from ? { from } : {}, ...given !== void 0 ? { severity: given } : {} });
+    w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course, ...given !== void 0 ? { severity: given } : {}, ...def.phases[0].quiet ? { quiet: true } : {} });
     this.enter(p, course, 0);
     return true;
   }
@@ -6744,12 +6879,17 @@ var Athelas = class {
     const ph = def.phases[i];
     r.p = i;
     r.since = w.s.now;
-    r.until = round(w.s.now + this.phaseMinutes(p, ph), 4);
+    r.until = round(w.s.now + this.phaseMinutes(p, course, ph, r), 4);
     this.schedule(p.id, course, r);
-    w.log("course", p.id, { course, phase: ph.id });
-    w.emit("course", { id: p.id, course, phase: ph.id, label: this.label(def, ph) });
-    if (ph.feel && w.reverie) w.reverie.applyFeel(p.id, ph.feel, def.label ?? course);
+    w.log("course", p.id, { course, phase: ph.id, ...ph.quiet ? { quiet: true } : {} });
+    w.emit("course", { id: p.id, course, phase: ph.id, label: this.label(def, ph), ...ph.quiet ? { quiet: true } : {} });
+    if (ph.feel && !ph.quiet && w.reverie) w.reverie.applyFeel(p.id, ph.feel, def.label ?? course);
     if (ph.then) w.lang.applyAll(ph.then, w.ctx(p));
+    if (ph.tells) {
+      w.log("shows", p.id, { course, phase: ph.id });
+      w.emit("shows", { id: p.id, course, phase: ph.id, label: this.label(def, ph) });
+      w.morgul?.showed(p, course);
+    }
     if (p.doing) w.clock.scheduleChecks(p);
     if (ph.stop) w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { c: course, stop: true } });
   }
@@ -6764,8 +6904,28 @@ var Athelas = class {
     if (def?.immunity) ((_a = st.immune)[_b = p.id] || (_a[_b] = {}))[course] = w.s.now + def.immunity;
     w.log("recovered", p.id, { course, ...cured ? { cured } : {} });
     w.emit("recovered", { id: p.id, course, cured, label: def?.label ?? course });
+    w.morgul?.healed(p, course);
     if (def?.then && !cured) w.lang.applyAll(def.then, w.ctx(p));
     if (p.doing) w.clock.scheduleChecks(p);
+  }
+  /** Where a course goes from a phase that ran out: a phase's index, or -1 to pass. */
+  nextOf(p, def, i) {
+    const ph = def.phases[i];
+    const index = (to) => to === null ? -1 : def.phases.findIndex((x) => x.id === to);
+    const n = ph.next;
+    if (n === null) return -1;
+    if (typeof n === "string") return index(n);
+    if (Array.isArray(n)) {
+      const ctx = this.w.ctx(p, { data: { course: def.id } });
+      for (const b of n) if (this.w.lang.all(b.if, ctx)) return index(b.to);
+    }
+    return i + 1 < def.phases.length ? i + 1 : -1;
+  }
+  /** Does a phase that ends in death take them? Only through Cradle, and (a wound) only as often as Morgul's lethality says. */
+  dies(p, course) {
+    const w = this.w;
+    if (!w.cradle) return false;
+    return !(w.morgul?.spares(p, course) ?? false);
   }
   /** Brings a phase's end sooner (or, with a negative number, later), inside the simulation. */
   applyHasten(id, course, minutes) {
@@ -6784,6 +6944,33 @@ var Athelas = class {
     this.w.mind.settleRise(p);
     for (const c of which) this.end(p, c, true);
   }
+  /**
+   * Someone's course is tended (or every course they have), inside the
+   * simulation: a mark of how well (tendBase, the rest by the tender's skill
+   * in tendSkill), which the branches read, and the phase they're in ends
+   * sooner by tendHasten of what's left, times that. Returns how well, or 0
+   * if there was nothing to tend.
+   */
+  applyTend(id, course, by) {
+    const w = this.w, c = this.c;
+    const on = this.st?.on[id];
+    if (!w.s.people[id] || !on) return 0;
+    const which = course ? on[course] ? [course] : [] : Object.keys(on);
+    if (!which.length) return 0;
+    let share = 0;
+    const tender = by !== void 0 ? w.s.people[by] : void 0;
+    if (c.tendSkill && tender) share = Math.min(1, Math.max(0, w.skills.level(tender, c.tendSkill) / (w.skills.def(c.tendSkill).max ?? 1)));
+    const q = round(Math.min(1, Math.max(0, c.tendBase + (1 - c.tendBase) * share)), 4);
+    for (const k of which) {
+      const r = on[k];
+      r.tend = Math.max(r.tend ?? 0, q);
+      const left = r.until - w.s.now;
+      if (c.tendHasten > 0 && left > 0) this.applyHasten(id, k, round(left * c.tendHasten * q, 4));
+    }
+    w.log("tended", id, { by: by ?? null, courses: which, quality: q });
+    w.emit("tended", { id, by: by ?? null, courses: which, quality: q });
+    return q;
+  }
   timer(item) {
     const w = this.w;
     const p = item.who ? w.s.people[item.who] : void 0;
@@ -6800,7 +6987,19 @@ var Athelas = class {
     if (!r || r.k !== item.data?.k) return;
     w.mind.settleRise(p);
     const def = this.courses.get(course);
-    if (def && r.p + 1 < def.phases.length) this.enter(p, course, r.p + 1);
+    if (!def) {
+      this.end(p, course, false);
+      return;
+    }
+    const ph = def.phases[r.p];
+    if (ph?.dies && this.dies(p, course)) {
+      const why = typeof ph.dies === "string" ? ph.dies : "died";
+      w.log("fatal", p.id, { course, phase: ph.id });
+      w.cradle.applyDepart(p.id, why);
+      return;
+    }
+    const next = this.nextOf(p, def, r.p);
+    if (next >= 0) this.enter(p, course, next);
     else this.end(p, course, false);
   }
   // -------------------------------------------------------------------------
@@ -6811,8 +7010,9 @@ var Athelas = class {
     if (!on) return 1;
     let m = 1;
     for (const course in on) {
-      const r = this.courses.get(course)?.phases[on[course].p]?.rates?.[need];
-      if (r !== void 0) m *= r;
+      const def = this.courses.get(course);
+      const r = def?.phases[on[course].p]?.rates?.[need];
+      if (r !== void 0) m *= on[course].sev === void 0 ? r : Math.pow(r, this.depth(def, on[course].sev));
     }
     return m;
   }
@@ -6831,8 +7031,10 @@ var Athelas = class {
       const def = this.courses.get(course);
       const ph = def?.phases[on[course].p];
       if (!def || !ph?.weigh) continue;
-      const f = this.weighFor(ph.weigh, c);
-      if (f !== void 0) out.push([this.label(def, ph), f]);
+      let f = this.weighFor(ph.weigh, c);
+      if (f === void 0) continue;
+      if (on[course].sev !== void 0) f = round(Math.pow(f, this.depth(def, on[course].sev)), 6);
+      out.push([this.label(def, ph), f]);
     }
     return out;
   }
@@ -7781,6 +7983,7 @@ var DEFAULT_BREE = {
   forgiveness: 1,
   talk: 1,
   strike: 0.3,
+  again: 0,
   quiet: ["sleep"],
   needPull: 2,
   traits: { temper: "trait.temper", warmth: "trait.warmth", humor: "trait.humor", patience: "trait.patience", courage: "trait.courage", forgiveness: "trait.forgiveness", talkative: "trait.talkative" },
@@ -7891,6 +8094,10 @@ var BREE_FEELINGS = [
   { id: "comforted", label: "Someone was kind", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
 ];
 var pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+var hasKeys = (o) => {
+  for (const _ in o) return true;
+  return false;
+};
 function breeStarter(opts = {}) {
   const co = opts.company ?? "company", fun = opts.fun ?? "fun";
   const nature = (role, lo, hi) => ({ name: role, input: "nature." + role, out: [lo, hi] });
@@ -8434,6 +8641,7 @@ var Bree = class {
   /** Is someone free to talk: about, not walking, not doing something quiet (asleep)? */
   free(p) {
     if (!p || p.status !== "active" || !p.place || p.doing?.kind === "travel") return false;
+    if (this.w.morgul?.isDown(p.id)) return false;
     const d = p.doing;
     if (d && d.kind === "act") {
       const tags = this.w.actions.get(d.action)?.tags;
@@ -8511,10 +8719,16 @@ var Bree = class {
       if (m) ex.manners[id] = m;
     }
     ex.turns = turns !== void 0 ? Math.max(1, Math.round(turns)) : this.plan(def, ex.who, r, minutes);
+    const brawl = !!w.morgul?.fights(kind);
+    if (brawl) {
+      if (turns === void 0) ex.turns = w.morgul.blows;
+      delete ex.until;
+    }
     st.ex[ex.id] = ex;
     for (const id of ex.who) st.of[id] = ex.id;
     w.log("exchange", who[0], { id: ex.id, kind, with: ex.who.slice(1), why });
     w.emit("bree:start", this.view(ex));
+    if (brawl) w.morgul?.brawl(ex.who, kind);
     if (def.crime) this.breaksOut(ex, def);
     this.turn(ex);
     return ex;
@@ -8830,7 +9044,7 @@ var Bree = class {
     const row = this.st?.pairs[pairKey(l.id, s.id)]?.row;
     if (row !== void 0) add("row", -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
     const cs = w.cityspeak;
-    if (cs && place) add("room", c.roomWeight * (cs.room(place) - 0.5) * 2);
+    if (cs && place && c.roomWeight) add("room", c.roomWeight * (cs.room(place) - 0.5) * 2);
     const t = topic ? this.topics.get(topic) : void 0;
     if (t) add("topic", c.topicWeight * this.fitOf(t, l, s, subject));
     const m = manner ? this.manners.get(manner) : void 0;
@@ -8933,16 +9147,27 @@ var Bree = class {
     else ex.i = (ex.i ?? 0) + 1;
     ex.n++;
     if (topic && step === "open" && typeof subject === "string") this.opened(ex, topic, s, subject, landed, r);
+    const mg = w.morgul;
+    const blow = mg && mg.fights(ex.kind) ? mg.applyBlow(ex.id, ex.by ?? ex.who[0], s, l, ex.place, this.seers(ex)) : null;
     let act = { act: "none" };
+    let leaver = to;
     if (this.bad(landed)) {
       ex.sour++;
       ex.sourBy = who;
-      act = this.react(ex, def, s, l, r);
     }
+    if (blow) {
+      if (blow.end === "left") {
+        act = { act: "leave" };
+        leaver = blow.to;
+      } else if (!blow.end) {
+        const by = this.stepper(ex, s, l, r);
+        if (by) act = { act: "step_in", by };
+      }
+    } else if (this.bad(landed)) act = this.react(ex, def, s, l, r);
     const ends = act.act === "leave" || act.act === "step_in";
     const kd = this.kinds.get(ex.kind);
-    const over = ends || act.act !== "escalate" && !(kd && this.talks(kd)) && ex.n >= ex.turns;
-    this.tell(ex, { who, to, step, landed, end: over && !ends });
+    const over = ends || blow?.end === "down" || blow?.end === "yielded" || act.act !== "escalate" && !(kd && this.talks(kd)) && ex.n >= ex.turns;
+    this.tell(ex, { who, to, step, landed, end: over && !ends, ...blow ? { harm: blow } : {} });
     if (act.act === "calm") {
       ex.n++;
       ex.lastWho = who;
@@ -8953,10 +9178,10 @@ var Bree = class {
       this.tell(ex, { who: act.by, to, step: "step_in", landed: null, end: true });
     } else if (act.act === "leave") {
       ex.n++;
-      this.tell(ex, { who: to, to: who, step: "leave", landed: null, end: true });
+      this.tell(ex, { who: leaver, to: leaver === to ? who : to, step: "leave", landed: null, end: true });
     } else if (act.act === "escalate") this.escalate(ex, def, l, s, r);
     if (over) {
-      this.finish(ex, act.act === "leave" ? "left" : act.act === "step_in" ? "stepped in" : "done", act.act === "leave" ? to : void 0);
+      this.finish(ex, act.act === "leave" ? "left" : act.act === "step_in" ? "stepped in" : blow?.end ?? "done", act.act === "leave" ? leaver : void 0);
       return;
     }
     this.schedule(ex, r);
@@ -8995,19 +9220,8 @@ var Bree = class {
       const p = clamp(c.escalateBase + c.escalateTemper * (this.nature(l, "temper") - 0.5) * 2 + c.escalateStress * (rv ? rv.stress(l.id) : 0) + c.escalateGrudge * this.animosity(l.id, s.id) - c.escalateRegard * Math.max(0, regard(l.id, s.id))) * this.knob("escalation", l.id);
       if (r.chance(p)) {
         if (r.chance(clamp(c.calmBase + c.calmPatience * this.nature(s, "patience") + c.calmRegard * Math.max(0, regard(s.id, l.id))))) return { act: "calm" };
-        let best = null;
-        for (const id of this.seers(ex)) {
-          const m = w.s.people[id];
-          const like = Math.max(regard(id, s.id), regard(id, l.id));
-          if (!m || like < c.stepInFrom) continue;
-          const v = like + (this.nature(m, "courage") - 0.5) * 2 * c.stepInCourage;
-          if (!best || v > best.v) best = { id, v };
-        }
-        if (best) {
-          const m = w.s.people[best.id];
-          const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
-          if (r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, "courage") - 0.5) * 2))) return { act: "step_in", by: best.id };
-        }
+        const by = this.stepper(ex, s, l, r);
+        if (by) return { act: "step_in", by };
         return { act: "escalate" };
       }
     }
@@ -9016,6 +9230,23 @@ var Bree = class {
       if (r.chance(p)) return { act: "leave" };
     }
     return { act: "none" };
+  }
+  /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
+  stepper(ex, s, l, r) {
+    const w = this.w, c = this.c, fs = w.fellowship;
+    const regard = (x, y) => fs ? fs.regard(x, y) : 0;
+    let best = null;
+    for (const id of this.seers(ex)) {
+      const m2 = w.s.people[id];
+      const like2 = Math.max(regard(id, s.id), regard(id, l.id));
+      if (!m2 || like2 < c.stepInFrom) continue;
+      const v = like2 + (this.nature(m2, "courage") - 0.5) * 2 * c.stepInCourage;
+      if (!best || v > best.v) best = { id, v };
+    }
+    if (!best) return null;
+    const m = w.s.people[best.id];
+    const like = Math.max(regard(best.id, s.id), regard(best.id, l.id));
+    return r.chance(clamp(c.stepInBase + c.stepInRegard * like + c.stepInCourage * (this.nature(m, "courage") - 0.5) * 2)) ? best.id : null;
   }
   /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
   escalate(ex, def, angry, other, r) {
@@ -9033,9 +9264,12 @@ var Bree = class {
     delete ex.topic;
     delete ex.opener;
     const left = ex.until !== void 0 ? ex.until - w.s.now : void 0;
-    ex.turns = ex.n + this.plan(next, ex.who, r, left);
+    const brawl = !!w.morgul?.fights(next.id);
+    ex.turns = ex.n + (brawl ? w.morgul.blows : this.plan(next, ex.who, r, left));
+    if (brawl) delete ex.until;
     w.log("escalated", angry.id, { id: ex.id, from, to: next.id, against: other.id });
     w.emit("bree:escalated", { id: ex.id, from, to: next.id, by: angry.id, against: other.id });
+    if (brawl) w.morgul?.brawl(ex.who, next.id);
     this.breaksOut(ex, next);
   }
   /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */
@@ -9135,6 +9369,7 @@ var Bree = class {
     };
     if (tp && tp.subject !== void 0) turn.subject = tp.subject;
     if (ex.manners[t.who]) turn.manner = ex.manners[t.who];
+    if (t.harm) turn.harm = t.harm;
     const cs = w.cityspeak;
     if (cs && w.s.people[t.who]) {
       for (const topic of tries) {
@@ -9219,8 +9454,10 @@ var Bree = class {
     if (ex.mediator) done.mediator = ex.mediator;
     st.recent.push(done);
     while (st.recent.length > Math.max(0, c.recent)) st.recent.shift();
+    if (c.again > 0 && why === "done" && ex.who.length === 2 && ex.place) this.later(a, b, w.ring.root(ex.place));
     w.log("exchanged", a, { id: ex.id, kind: ex.kind, with: ex.who.slice(1), outcome, turns: ex.n, why });
     w.emit("bree:end", { ...done, who: done.who.slice(), outcomes: { ...outcomes } });
+    if (w.morgul?.fights(ex.kind)) w.morgul.parted(ex.who);
   }
   /** What an exchange leaves each of them: regard, attraction, feelings, memories, sentiments, relief, and what the kind does. */
   leave(ex, def, outcomes, left) {
@@ -9313,9 +9550,8 @@ var Bree = class {
   /** The people someone has something against (a grudge or a feud), strongest first; worked out once a moment. */
   foes(p) {
     const st = this.st, w = this.w;
-    const key2 = `${p.id}@${w.s.now}@${w.s.seq}@${st.v}`;
     const hit = this.foeCache;
-    if (hit && hit.st === st && hit.key === key2) return hit.list;
+    if (hit && hit.st === st && hit.id === p.id && hit.now === w.s.now && hit.seq === w.s.seq && hit.v === st.v) return hit.list;
     const ids = new Set(Object.keys(st.g[p.id] || {}));
     const fs = w.fellowship;
     for (const k of Object.keys(st.feuds)) {
@@ -9334,7 +9570,7 @@ var Bree = class {
       if (a >= from) list.push({ id, a });
     }
     list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
-    this.foeCache = { st, key: key2, list };
+    this.foeCache = { st, id: p.id, now: w.s.now, seq: w.s.seq, v: st.v, list };
     return list;
   }
   /**
@@ -9344,7 +9580,7 @@ var Bree = class {
    */
   consider(p, cand) {
     const st = this.st;
-    if (!st || !st.g[p.id] && !Object.keys(st.feuds).length) return;
+    if (!st || !st.g[p.id] && !hasKeys(st.feuds)) return;
     const foes = this.foes(p);
     if (!foes.length) return;
     const w = this.w, c = this.c;
@@ -9394,17 +9630,62 @@ var Bree = class {
     const pick = r.weighted(this.choices(s, o), (x) => x.weight);
     if (pick) this.begin(pick.def.id, [s.id, o.id], "meet", minutes);
   }
-  /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+  /**
+   * An action that interacts (its `interact`) begins its exchange with its
+   * target, over its length; with no target, with whoever there its
+   * `interactWith` finds (who leaves any exchange they're in for it).
+   */
   started(p, d) {
-    if (d.kind !== "act" || !d.target) return;
-    const kind = this.w.actions.get(d.action)?.interact;
-    if (!kind || !this.kinds.has(kind) || this.exOf(p.id) || this.exOf(d.target)) return;
-    const o = this.w.s.people[d.target];
+    if (d.kind !== "act") return;
+    const a = this.w.actions.get(d.action);
+    const found = !d.target && a?.interactWith && a.interact ? this.partner(p, a) : void 0;
+    const target = d.target ?? found;
+    if (!target) return;
+    const kind = a?.interact;
+    if (!kind || !this.kinds.has(kind) || this.exOf(p.id)) return;
+    const busy = this.exOf(target);
+    if (busy && !found) return;
+    const o = this.w.s.people[target];
     if (!this.free(o) || !p.place || this.w.ring.root(o.place) !== this.w.ring.root(p.place)) return;
+    if (busy) this.finish(busy, "interrupted");
     this.begin(kind, [p.id, o.id], "action", d.end - this.w.s.now);
   }
-  /** The next turn of an exchange comes due. */
+  /** Who an action with no target interacts with: the first one at the place (by id) who is free and for whom its interactWith holds, someone not in an exchange before someone in one. */
+  partner(p, a) {
+    const w = this.w;
+    if (!p.place || !this.kinds.has(a.interact)) return void 0;
+    const root = w.ring.root(p.place);
+    const fit = w.peek(() => w.ring.present(root).filter((id) => id !== p.id).sort().filter((id) => this.free(w.s.people[id]) && w.lang.all(a.interactWith, w.ctx(p, { target: id, place: p.place, action: a.id }))));
+    return fit.find((id) => !this.exOf(id)) ?? fit[0];
+  }
+  /** Two people who've talked may strike up again in config.again minutes, if they're still together then. */
+  later(a, b, place) {
+    const pair = this.mut().pairs[pairKey(a, b)];
+    if (!pair) return;
+    const t = pair.again = round(this.w.s.now + Math.max(0.5, this.c.again), 4);
+    this.w.clock.schedule({ t, k: "module", ref: this.name, data: { again: [a, b], place, t } });
+  }
+  /** Still together (free, at the same place, neither in an exchange) for a few minutes more: a meeting of Bree's own, or another wait. */
+  again(a, b, place, t) {
+    const w = this.w, pa = w.s.people[a], pb = w.s.people[b];
+    const pair = this.st?.pairs[pairKey(a, b)];
+    if (!pair || pair.again !== t) return;
+    delete pair.again;
+    if (!this.free(pa) || !this.free(pb) || this.exOf(a) || this.exOf(b)) return;
+    if (w.ring.root(pa.place) !== place || w.ring.root(pb.place) !== place) return;
+    const minutes = Math.min(pa.doing?.end ?? Infinity, pb.doing?.end ?? Infinity) - w.s.now;
+    if (!(minutes >= w.cfg.meetMinutes)) return;
+    const before = this.mut().ids;
+    this.met(pa, pb, place, minutes);
+    if (this.mut().ids === before) this.later(a, b, place);
+  }
+  /** The next turn of an exchange comes due, or two who talked may talk again. */
   timer(item) {
+    const again = item.data?.again;
+    if (Array.isArray(again)) {
+      this.again(String(again[0]), String(again[1]), String(item.data?.place), Number(item.data?.t));
+      return;
+    }
     const id = Number(item.data?.ex);
     const ex = this.st?.ex[id];
     if (!ex || ex.n !== Number(item.data?.n)) return;
@@ -9438,8 +9719,1468 @@ var Bree = class {
   }
 };
 
+// tyrell/src/modules/morgul.ts
+var DEFAULT_MORGUL = {
+  violence: 1,
+  lethality: 0,
+  vengeance: 1,
+  caution: 1,
+  healing: 1,
+  suspicion: 1,
+  downAt: 0.8,
+  downMinutes: [20, 60],
+  downRank: 5,
+  down: "down",
+  fighting: "fighting",
+  fightRank: 4.5,
+  killAt: 1,
+  deathChance: 0.5,
+  direct: ["blow", "throw", "shoot", "cast"],
+  intents: { meant: 1, careless: 0.4, accident: 0.1, defense: 0 },
+  grudge: 1.5,
+  regard: 0.6,
+  fear: 1,
+  fearCourage: 0.5,
+  wary: 1,
+  fade: 0.05,
+  angerAt: 0.5,
+  shakenAt: 0.15,
+  memory: 3,
+  memorySeverity: 6,
+  feud: 0,
+  sated: 2,
+  witnessStrength: 0.8,
+  witnessMemory: 2,
+  witnessRegard: 0.3,
+  crimes: {},
+  catch: 0.3,
+  careful: 0.5,
+  seenCatch: 0.3,
+  warnAt: 0.2,
+  eats: ["food"],
+  dose: 0.5,
+  suspect: 0.8,
+  suspectTold: 2,
+  suspectServed: 0.6,
+  suspectGrudge: 1.5,
+  suspectAbout: 0.3,
+  suspectSpite: 1,
+  suspectLoyal: 0.6,
+  suspectStrength: 0.5,
+  suspectMax: 0.9,
+  suspectFloor: 0.1,
+  fights: ["fight"],
+  blows: 12,
+  might: [],
+  fist: 0.1,
+  fistKind: "blunt",
+  meansBlow: 0.5,
+  meansMight: 1,
+  hurtMight: 0.6,
+  blowSpread: 0.5,
+  yieldAt: 0.5,
+  yieldCourage: 1,
+  walkOff: 0.4,
+  playerMight: "might:player",
+  respond: { fight: 1, flee: 1, yield: 1, help: 1 },
+  helpFrom: 0.2,
+  fightGap: 30,
+  fleeMinutes: 30,
+  harmTag: "harm",
+  fleeTag: "flee",
+  careTag: "care",
+  avenge: "avenge",
+  vengeAt: 0.3,
+  vengeTemper: 0.5,
+  vengePull: 0.5,
+  fleeAt: 0.25,
+  fleePlace: 0.8,
+  fleePull: 2,
+  cautionPlace: 0.7,
+  carePull: 2,
+  cared: 0.03,
+  floor: 0.1,
+  recent: 50,
+  traits: {}
+};
+var MORGUL_FEELINGS = [
+  { id: "in_pain", label: "In pain", weight: -0.15, minutes: 12 * 60, stack: 2, emotion: "sad" },
+  { id: "furious", label: "Furious", weight: -0.1, minutes: DAY, stack: 2, emotion: "angry" },
+  { id: "shaken", label: "Shaken", weight: -0.08, minutes: 2 * DAY, stack: 2, emotion: "tense" },
+  { id: "saw_harm", label: "Saw someone hurt", weight: -0.06, minutes: 6 * 60, stack: 2, emotion: "tense" },
+  { id: "cared_for", label: "Someone looked after me", weight: 0.1, minutes: DAY, emotion: "happy" }
+];
+var ARMS = ["strike", "throw", "shoot", "cast"];
+var hasKeys2 = (o) => {
+  if (o) for (const _ in o) return true;
+  return false;
+};
+var Morgul = class {
+  constructor(cfg = {}) {
+    this.name = "morgul";
+    this.knobs = { violence: "person", lethality: "person", vengeance: "person", caution: "person", healing: "person", suspicion: "person" };
+    this.meansDefs = /* @__PURE__ */ new Map();
+    this.woundDefs = /* @__PURE__ */ new Map();
+    this.trapDefs = /* @__PURE__ */ new Map();
+    /** Where someone knows of danger, as of a moment (worked out again from the state). */
+    this.dangerCache = null;
+    this.config = { ...DEFAULT_MORGUL, ...cfg };
+  }
+  get st() {
+    return this.w.s.mod.morgul;
+  }
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).morgul || (_a.morgul = { n: 0, ids: 0, harms: [], wounds: {}, held: {}, fear: {}, wary: {}, down: {}, traps: {}, taints: {}, flee: {}, pf: {} });
+  }
+  /** The config in force: as declared, under any world.tune. */
+  get c() {
+    return this.w.tuned(this.name, this.config);
+  }
+  /** A headline knob for someone: the world's, times their own. */
+  knob(name, id) {
+    return this.c[name] * this.w.own(id ? this.w.s.people[id] : void 0, this.name, name);
+  }
+  /** Has the game declared anything (a means, a wound, a trap)? Until then Morgul weighs nothing. */
+  get used() {
+    return this.woundDefs.size > 0 || this.trapDefs.size > 0 || this.meansDefs.size > 0;
+  }
+  attach(w) {
+    this.w = w;
+    const L = w.lang;
+    const other = (c, a) => a && a !== "target" ? a : c.target ?? null;
+    L.term("hurt", (c) => c.person ? this.hurt(c.person.id) : 0);
+    L.term("wounded", (c, a) => c.person ? this.wounded(c.person.id, a || void 0) : 0);
+    L.term("hurt_by", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.held(c.person.id, o) : 0;
+    });
+    L.term("afraid_of", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.fearOf(c.person.id, o) : 0;
+    });
+    L.term("danger", (c, a) => c.person ? this.danger(c.person.id, a || c.place || c.person.place) : 0);
+    L.term("armed", (c) => c.person ? this.armed(c.person) : 0);
+    L.term("odds", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.odds(c.person.id, o) : 0.5;
+    });
+    L.term("suspects", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.suspicionOf(c.person.id, o) : 0;
+    });
+    L.term("down", (c) => c.person ? this.isDown(c.person.id) : false);
+    L.term("vengeance", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.vengeance(c.person.id, o) : 0;
+    });
+    L.term("fleeing", (c) => c.person ? this.fleeing(c.person) : 0);
+    L.effect("harm", (c, a, _op, v) => {
+      if (!c.person || !c.target) return;
+      const what = this.bestMeans(c.person, a);
+      this.applyHarm({ to: c.target, by: c.person.id, kind: a || void 0, severity: Number(v ?? this.c.fist) || 0, via: "blow", intent: "meant", what: what?.id, place: c.place ?? c.person.place });
+    });
+    L.effect("set", (c, a) => {
+      if (c.person) this.applySet(a, { by: c.person.id, place: c.place ?? c.person.place, for: c.target ?? void 0 });
+    });
+    L.effect("taint", (c, a, op, v) => {
+      if (!c.person) return;
+      const [course, item] = a.split(".");
+      this.applyTaint({ course, item: item || void 0, n: op && typeof v === "number" ? v : 1, by: c.person.id, for: c.target ?? void 0, place: c.place ?? c.person.place ?? void 0 });
+    });
+    L.effect("disarm", (c, a) => {
+      if (c.person) this.disarmHere(c.person, a || void 0);
+    });
+    L.effect("tend", (c, a) => {
+      if (c.person) this.applyTend(c.target ?? c.person.id, c.person.id, a || void 0);
+    });
+    w.defineInput("morgul.harm", (h) => this.applyHarm(h));
+    w.defineInput("morgul.spring", (trap, id, seenBy) => this.applySpring(trap, id, seenBy ?? void 0));
+    w.defineInput("morgul.disarm", (trap, by) => this.applyDisarm(trap, by ?? void 0));
+    w.defineInput("morgul.set", (kind, o) => this.applySet(kind, { by: o.by ?? null, place: o.place, for: o.for ?? void 0, seenBy: o.seenBy ?? void 0 }));
+    w.defineInput("morgul.taint", (def) => this.applyTaint(def));
+    w.defineInput("morgul.tend", (id, by) => this.applyTend(id, by ?? void 0));
+    w.defineInput("morgul.near", (regions) => this.applyNear(regions));
+    const rv = w.reverie;
+    if (rv) {
+      for (const f of MORGUL_FEELINGS) if (!rv.feelingDefs.has(f.id)) rv.feelingDefs.set(f.id, f);
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+  /** What harm is done with (shared with the game's own: the off-screen fields are read here). */
+  means(def) {
+    this.meansDefs.set(def.id, def);
+    return this;
+  }
+  /** What a harm leaves on the body: by kind, how severe, with what; the first that fits. */
+  wound(def) {
+    this.woundDefs.set(def.id, def);
+    this.declareDown();
+    return this;
+  }
+  /** A kind of trap. */
+  trap(def) {
+    this.trapDefs.set(def.id, def);
+    return this;
+  }
+  /** The actions lying down and fighting are: declared once a wound is, unless the game has its own. */
+  declareDown() {
+    const w = this.w, c = this.config;
+    if (!w.actions.has(c.down)) w.action({ id: c.down, label: "down", at: "here", minutes: 30, rank: -1, pose: "down", tags: ["down"], if: [(ctx) => !!ctx.person && this.isDown(ctx.person.id)] });
+    if (!w.actions.has(c.fighting)) w.action({ id: c.fighting, label: "fighting", at: "here", minutes: 60, rank: -1, pose: "fight", tags: ["fight"], if: [(ctx) => !!ctx.person && this.inFight(ctx.person.id)] });
+  }
+  /** Is someone in a fight by numbers (a Bree exchange of a kind that fights)? */
+  inFight(id) {
+    if (!this.woundDefs.size) return false;
+    const ex = this.w.bree?.exchange(id);
+    return !!ex && this.fights(ex.kind);
+  }
+  /**
+   * A fight by numbers breaks out (Bree calls this): both fighters stop what
+   * they're doing and fight, just after (whoever started it with an action of
+   * their own keeps at it).
+   */
+  brawl(who, kind) {
+    const w = this.w;
+    for (const id of who) {
+      const p = w.s.people[id];
+      if (!p || p.status !== "active") continue;
+      const a = p.doing?.kind === "act" ? w.actions.get(p.doing.action) : void 0;
+      if (a && (a.id === this.c.fighting || a.interact === kind)) continue;
+      w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: id, data: { act: "fight" } });
+    }
+  }
+  /** A fight by numbers is over (Bree calls this): whoever was fighting thinks again, just after. */
+  parted(who) {
+    const w = this.w;
+    for (const id of who) {
+      const p = w.s.people[id];
+      if (p?.status === "active" && p.doing?.action === this.c.fighting) w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: id, data: { act: "fought" } });
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Reading people
+  // -------------------------------------------------------------------------
+  /** Someone's nature in a role (temper, courage, careful, forgiveness): Morgul's mapping, else Bree's, else trait.<role>. */
+  nature(p, role) {
+    const w = this.w, term = this.c.traits[role];
+    let v;
+    if (term) v = w.lang.value(term, w.ctx(p));
+    else if (w.bree && w.bree.config.traits[role]) return w.bree.nature(p, role);
+    else v = w.lang.value("trait." + role, w.ctx(p));
+    return typeof v === "number" && isFinite(v) ? v : w.cfg.traitDefault;
+  }
+  /** How hurt someone is: the severities of their open wounds, each by how much its phase still hurts. */
+  hurt(id) {
+    const wounds = this.st?.wounds[id];
+    const ath = this.w.athelas;
+    if (!wounds || !ath) return 0;
+    let h = 0;
+    for (const course of Object.keys(wounds)) {
+      const sev = ath.severityOf(id, course);
+      if (sev === void 0) continue;
+      const ph = ath.phaseOf(id, course);
+      h += sev * (ph?.hurts ?? (ph?.quiet ? 0 : 1));
+    }
+    return round(h, 4);
+  }
+  /** How bad someone's open wounds of a kind are (any kind, with none). */
+  wounded(id, kind) {
+    const wounds = this.st?.wounds[id];
+    const ath = this.w.athelas;
+    if (!wounds || !ath) return 0;
+    let h = 0;
+    for (const course of Object.keys(wounds)) {
+      const def = this.woundDefs.get(wounds[course].w);
+      if (kind && !(def?.kinds?.includes(kind) || wounds[course].w === kind || course === kind)) continue;
+      h += ath.severityOf(id, course) ?? 0;
+    }
+    return round(h, 4);
+  }
+  /** Someone's open wounds: which, the course and phase, how bad, how much it still hurts, who gave it, tended or not. */
+  wounds(id) {
+    const wounds = this.st?.wounds[id];
+    const ath = this.w.athelas;
+    if (!wounds || !ath) return [];
+    const out = [];
+    for (const course of Object.keys(wounds)) {
+      const v = ath.of(id).find((x) => x.course === course);
+      if (!v) continue;
+      const ph = ath.phaseOf(id, course);
+      out.push({ wound: wounds[course].w, course, phase: v.phase, severity: v.severity ?? ath.severityOf(id, course) ?? 0, hurts: ph?.hurts ?? (ph?.quiet ? 0 : 1), by: wounds[course].by.slice(), tended: v.tended ?? 0, quiet: !!v.quiet });
+    }
+    return out;
+  }
+  /** Is someone down? */
+  isDown(id) {
+    return !!this.st?.down[id];
+  }
+  /** A faded strength: what's left of [strength, since] at this pace a day. */
+  faded(x, perDay) {
+    if (!x) return 0;
+    return round(Math.max(0, x[0] - perDay * (this.w.s.now - x[1]) / DAY), 4);
+  }
+  forgiving(id) {
+    const p = this.w.s.people[id];
+    return 0.5 + (p ? this.nature(p, "forgiveness") : this.w.cfg.traitDefault);
+  }
+  brave(id) {
+    const p = this.w.s.people[id];
+    return 0.5 + (p ? this.nature(p, "courage") : this.w.cfg.traitDefault);
+  }
+  /** What a holds against b from harm b did them (as a believes), 0..1, fading. */
+  held(a, b) {
+    return this.faded(this.st?.held[a]?.[b], this.c.fade * this.forgiving(a));
+  }
+  /** a's fear of b, 0..1, fading. */
+  fearOf(a, b) {
+    return this.faded(this.st?.fear[a]?.[b], this.c.fade * this.brave(a));
+  }
+  /** a's fear of a place (where they were hurt), 0..1, fading. */
+  waryOf(a, place) {
+    return this.faded(this.st?.wary[a]?.[place], this.c.fade);
+  }
+  /** How much a wants revenge on b: what they hold against them, times vengeance and their temper. */
+  vengeance(a, b) {
+    const h = this.held(a, b);
+    if (!h) return 0;
+    const p = this.w.s.people[a];
+    const temper = p ? this.nature(p, "temper") : this.w.cfg.traitDefault;
+    return round(clamp(h * this.knob("vengeance", a) * Math.max(0, 1 + (temper - 0.5) * 2 * this.c.vengeTemper)), 4);
+  }
+  /** How strongly a believes b did harm (to anyone): their belief that b did it, as harm or as one of the crimes harm is. */
+  suspicionOf(a, b) {
+    const rv = this.w.reverie;
+    if (!rv) return 0;
+    let best = 0;
+    for (const k of ["harm", ...Object.values(this.c.crimes)]) {
+      const r = rv.beliefRecord(a, `did:${b}:${k}`);
+      if (r && r.str >= rv.config.beliefFloor && r.v !== false && r.v !== null) best = Math.max(best, r.str);
+    }
+    return round(best, 4);
+  }
+  /** Who someone suspects (or knows) of harm: the people they believe did it, strongest first. */
+  suspects(id) {
+    const rv = this.w.reverie;
+    if (!rv) return [];
+    const kinds = /* @__PURE__ */ new Set(["harm", ...Object.values(this.c.crimes)]);
+    const out = [];
+    for (const b of rv.beliefs(id)) {
+      const [d, who, k] = b.key.split(":");
+      if (d !== "did" || !kinds.has(k) || who === "someone") continue;
+      out.push({ id: who, strength: b.str, to: b.v, src: b.src });
+    }
+    return out;
+  }
+  // -------------------------------------------------------------------------
+  // Might and odds
+  // -------------------------------------------------------------------------
+  /** The means someone holds (as goods of the same id) that arm them, best first; with a kind, of that kind. */
+  arms(p, kind) {
+    const out = [];
+    for (const m of this.meansDefs.values()) {
+      if (!ARMS.includes(m.use ?? "") || this.w.have(p, m.id) <= 0) continue;
+      if (kind && !(m.kinds || []).includes(kind)) continue;
+      out.push(m);
+    }
+    return out.sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0) || (a.id < b.id ? -1 : 1));
+  }
+  bestMeans(p, kind) {
+    return this.arms(p, kind || void 0)[0];
+  }
+  /** How many means that arm them someone holds. */
+  armed(p) {
+    return this.arms(p).length;
+  }
+  /** Someone's might in a fight: the game's considerations, what they hold, less what they've been hurt. The player's is the game's fact. */
+  might(id) {
+    const w = this.w, c = this.c;
+    const p = w.s.people[id];
+    if (!p) {
+      const v = w.s.facts[c.playerMight];
+      return typeof v === "number" && v > 0 ? v : 1;
+    }
+    let m = 1;
+    if (c.might.length) {
+      const ctx = w.ctx(p);
+      w.peek(() => {
+        for (const k of c.might) m *= w.mind.consider(k, ctx);
+      });
+    }
+    const arm = this.bestMeans(p);
+    if (arm) m *= 1 + (arm.severity ?? 0) * c.meansMight;
+    m *= Math.max(0.05, 1 - this.hurt(id) * c.hurtMight);
+    return round(Math.max(0.01, m), 4);
+  }
+  /** a's odds against b: the chance a blow between them is a's, 0..1. */
+  odds(a, b) {
+    const ma = this.might(a), mb = this.might(b);
+    return round(ma / (ma + mb), 4);
+  }
+  /** The hurt at which someone yields: yieldAt, sooner for the timid. */
+  yieldAt(p) {
+    const c = this.c;
+    return c.yieldAt * Math.max(0.1, 1 + (this.nature(p, "courage") - 0.5) * c.yieldCourage);
+  }
+  // -------------------------------------------------------------------------
+  // Harm
+  // -------------------------------------------------------------------------
+  /** A stream of Morgul's own: its draws leave people's own streams as they were. */
+  stream() {
+    const st = this.mut();
+    return new Stream(this.w.s.seed, "morgul", st.n++);
+  }
+  /** Who's at a place (its outermost), but these. */
+  present(place, but) {
+    if (!place) return [];
+    const w = this.w;
+    return w.ring.present(w.ring.root(place)).filter((id) => !but.includes(id)).sort();
+  }
+  /** The wound a harm leaves: the first declared that fits. */
+  woundFor(kind, sev, what, via) {
+    for (const d of this.woundDefs.values()) {
+      if (d.kinds && !d.kinds.includes(kind)) continue;
+      if (d.at && (sev < d.at[0] - 1e-9 || sev > d.at[1] + 1e-9)) continue;
+      if (d.via && !d.via.includes(via)) continue;
+      if (d.what !== void 0 && !(what !== void 0 && (Array.isArray(d.what) ? d.what.includes(what) : d.what === what))) continue;
+      return d;
+    }
+    return void 0;
+  }
+  /** A harm (from the game, on screen: recorded, and it applies at once). Returns it as it stands, or null if nobody was struck. */
+  harm(h) {
+    return this.w.input("morgul.harm", [h]) ?? null;
+  }
+  /** Records a harm inside the simulation: the body now, the mind now or when it shows. */
+  applyHarm(h) {
+    var _a, _b, _c;
+    const w = this.w, c = this.c;
+    const p = w.s.people[h.to];
+    if (!p && h.to !== "player") return null;
+    if (p && p.status !== "active") return null;
+    const st = this.mut();
+    const by = h.by ?? null;
+    const sev = round(clamp(Number(h.severity ?? 0) || 0), 4);
+    const kind = h.kind ?? (h.what ? this.meansDefs.get(h.what)?.kinds?.[0] : void 0) ?? "harm";
+    const via = h.via ?? "blow";
+    const intent = h.intent ?? (by ? "meant" : "accident");
+    const place = h.place !== void 0 ? h.place : p?.place ?? null;
+    const seen = (h.seenBy ?? this.present(place, [h.to, by])).filter((id) => id !== h.to && id !== by && w.s.people[id]?.status === "active");
+    const rec = { id: ++st.ids, t: w.s.now, to: h.to, by, kind, sev, via, intent, place, seen, shown: true };
+    if (h.cause) rec.cause = h.cause;
+    if (h.what) rec.what = h.what;
+    if (h.ex !== void 0) rec.ex = h.ex;
+    if (!c.direct.includes(via)) rec.about = h.about ?? this.present(place, [h.to]);
+    if (h.served?.length) rec.served = h.served;
+    const ath = w.athelas;
+    if (p && ath) {
+      const wd = h.course ? void 0 : this.woundFor(kind, sev, h.what, via);
+      const course = h.course ?? wd?.course;
+      if (course && ath.courses.has(course)) {
+        const mine = (_c = (_a = st.wounds)[_b = p.id] || (_a[_b] = {}))[course] || (_c[course] = { w: wd?.id ?? course, by: [], h: rec.id });
+        mine.h = rec.id;
+        if (wd) mine.w = wd.id;
+        if (by && !mine.by.includes(by)) mine.by.push(by);
+        if (ath.applyAfflict(p.id, course, by ?? void 0, sev)) {
+          rec.course = course;
+          if (wd) rec.wound = wd.id;
+          if (ath.phaseOf(p.id, course)?.quiet) rec.shown = false;
+        } else if (!ath.of(p.id).some((x) => x.course === course)) {
+          delete st.wounds[p.id][course];
+          if (!hasKeys2(st.wounds[p.id])) delete st.wounds[p.id];
+        }
+      }
+    }
+    st.harms.push(rec);
+    this.prune(st);
+    if (by && p && st.held[by]?.[p.id] && c.sated > 0) this.hold(by, p.id, -sev * c.sated);
+    w.log("harm", h.to, { id: rec.id, by, kind, severity: sev, via, intent, ...rec.course ? { course: rec.course } : {}, ...rec.shown ? {} : { quiet: true } });
+    if (rec.shown) this.notice(rec);
+    const view = this.view(rec);
+    w.emit("morgul:harm", view);
+    if (p) this.check(p, rec);
+    if (by === "player" && p) this.respondTo(p, "player", rec);
+    else if (h.to === "player" && by && w.s.people[by]) this.respondTo(w.s.people[by], "player", rec);
+    return { ...view, hurt: p ? this.hurt(p.id) : 0 };
+  }
+  view(rec) {
+    const v = {
+      id: rec.id,
+      t: rec.t,
+      to: rec.to,
+      by: rec.by,
+      kind: rec.kind,
+      severity: rec.sev,
+      via: rec.via,
+      intent: rec.intent,
+      place: rec.place,
+      seenBy: rec.seen.slice(),
+      shown: rec.shown,
+      hurt: this.w.s.people[rec.to] ? this.hurt(rec.to) : 0
+    };
+    if (rec.cause) v.cause = rec.cause;
+    if (rec.what) v.what = rec.what;
+    if (rec.wound) v.wound = rec.wound;
+    if (rec.course) v.course = rec.course;
+    if (rec.ex !== void 0) v.exchange = rec.ex;
+    return v;
+  }
+  /** Harms kept (the last config.recent, and every one not noticed yet), newest last: someone's (as victim or doer), with an id. */
+  harms(id) {
+    return (this.st?.harms || []).filter((r) => !id || r.to === id || r.by === id).map((r) => this.view(r));
+  }
+  prune(st) {
+    const most = Math.max(0, this.c.recent);
+    while (st.harms.length > most) {
+      const i = st.harms.findIndex((r) => r.shown);
+      if (i < 0 || st.harms.length - most <= 0) break;
+      st.harms.splice(i, 1);
+    }
+  }
+  /** Changes what a holds against b (negative eases it). */
+  hold(a, b, by) {
+    var _a;
+    const st = this.mut();
+    const s = round(clamp(this.held(a, b) + by), 4);
+    const map = (_a = st.held)[a] || (_a[a] = {});
+    if (s <= 0) {
+      delete map[b];
+      if (!hasKeys2(map)) delete st.held[a];
+    } else map[b] = [s, this.w.s.now];
+  }
+  frighten(a, b, by) {
+    var _a;
+    if (!(by > 0)) return;
+    const st = this.mut();
+    ((_a = st.fear)[a] || (_a[a] = {}))[b] = [round(clamp(this.fearOf(a, b) + by), 4), this.w.s.now];
+  }
+  warn(a, place, by) {
+    var _a;
+    if (!(by > 0)) return;
+    const st = this.mut();
+    ((_a = st.wary)[a] || (_a[a] = {}))[place] = [round(clamp(this.waryOf(a, place) + by), 4), this.w.s.now];
+  }
+  /**
+   * The mind's part of a harm, once it's noticed: the victim's feelings,
+   * memory and belief; for a harm they saw done, a grudge, fear and regard;
+   * onlookers' beliefs, memories and regard, and a crime; and for harm
+   * nobody saw done, suspicion.
+   */
+  notice(rec) {
+    const w = this.w, c = this.c, rv = w.reverie;
+    const victim = w.s.people[rec.to];
+    const share = c.intents[rec.intent] ?? 1;
+    const by = rec.by;
+    const known = by !== null && c.direct.includes(rec.via);
+    const root = rec.place ? w.ring.root(rec.place) : null;
+    if (victim) {
+      if (rv) {
+        rv.applyFeel(victim.id, "in_pain", rec.kind);
+        if (rec.sev >= c.shakenAt) rv.applyFeel(victim.id, "shaken", rec.kind);
+        if (by && share > 0) rv.applyFeel(victim.id, this.nature(victim, "temper") * 0.6 + this.nature(victim, "courage") * 0.4 >= c.angerAt ? "furious" : "scared", by);
+        const again = rec.ex !== void 0 && this.st.harms.some((h) => h.ex === rec.ex && h.to === rec.to && h.id < rec.id);
+        if (!again) rv.applyRemember(victim.id, { k: "harmed", about: known ? by : void 0, place: root ?? void 0, imp: c.memory + rec.sev * c.memorySeverity, text: `was hurt${known ? " by " + (w.s.people[by]?.name ?? by) : ""}: ${rec.kind}` });
+      }
+      if (root) this.warn(victim.id, root, rec.sev * c.wary);
+      if (known) this.blame(victim.id, by, rec, 1, "saw", "felt it");
+    }
+    if (rec.ex === void 0) {
+      const crime = known && share > 0 ? c.crimes[rec.intent] : void 0;
+      const wt = w.wormtongue;
+      if (known && crime && wt?.crimes.has(crime)) {
+        wt.sensed({ kind: crime, actor: by, what: rec.to, place: rec.place, seenBy: [...victim ? [victim.id] : [], ...rec.seen], severity: rec.sev });
+      }
+      for (const id of rec.seen) {
+        if (rv && !(known && crime && wt?.crimes.has(crime))) {
+          if (known) rv.applyBelieve(id, `did:${by}:harm`, rec.to, "saw", null, c.witnessStrength);
+          rv.applyRemember(id, { k: "saw:harm", about: known ? by : rec.to, place: root ?? void 0, imp: c.witnessMemory + rec.sev * c.memorySeverity / 2, text: `saw ${w.s.people[rec.to]?.name ?? rec.to} hurt${known ? " by " + (w.s.people[by]?.name ?? by) : ""}` });
+          rv.applyFeel(id, "saw_harm", rec.to);
+        }
+        if (known && w.fellowship && share > 0) w.fellowship.applyRegard(id, by, round(-rec.sev * c.witnessRegard * share, 4));
+      }
+    }
+    if (by !== null && !known) {
+      if (victim) this.suspect(victim.id, rec);
+      for (const id of rec.seen) this.suspect(id, rec);
+    }
+  }
+  /**
+   * Someone comes to believe `doer` hurt `victim` (as strongly as `str`):
+   * the belief; and for the victim, what they hold against them, a grudge
+   * (Bree) by the severity and the intent, fear, less regard, a note in
+   * their file. A scapegoat is blamed the same way.
+   */
+  blame(holder, doer, rec, str, src, why) {
+    const w = this.w, c = this.c, rv = w.reverie;
+    const p = w.s.people[holder];
+    if (!p || holder === doer) return;
+    rv?.applyBelieve(holder, `did:${doer}:harm`, rec.to, src, null, round(clamp(str), 4));
+    const share = c.intents[rec.intent] ?? 1;
+    if (holder !== rec.to) {
+      if (w.fellowship && share > 0) w.fellowship.applyRegard(holder, doer, round(-rec.sev * c.witnessRegard * share * str, 4));
+      return;
+    }
+    const s = rec.sev * share * str;
+    if (s <= 0) return;
+    this.hold(holder, doer, s);
+    const br = w.bree;
+    if (br) br.applyGrudge(holder, doer, round(s * c.grudge * br.knob("grudges", holder), 4), "harm");
+    this.frighten(holder, doer, round(s * c.fear * Math.max(0, 1 + (0.5 - this.nature(p, "courage")) * 2 * c.fearCourage), 4));
+    if (w.fellowship) w.fellowship.applyRegard(holder, doer, round(-s * c.regard, 4));
+    rv?.applyNote(holder, doer, "harmed", rec.kind);
+    if (br && c.feud > 0 && rec.intent === "meant" && w.fellowship) {
+      const ha = w.fellowship.household(holder), hb = w.fellowship.household(doer);
+      if (ha && hb && ha !== hb) br.applyFeud(ha, hb, br.feudBetween(holder, doer) + rec.sev * c.feud, "harm");
+    }
+    w.log("blamed", holder, { by: doer, harm: rec.id, strength: round(str, 4), why });
+  }
+  /**
+   * Someone learns of a harm they didn't see done: whoever they saw set or
+   * serve it, they know; otherwise, by chance, they suspect someone, by the
+   * evidence (believing they set or served it, having served it, a grudge
+   * against the victim, being about), their dislike of them and their
+   * liking. It can be wrong.
+   */
+  suspect(former, rec) {
+    const w = this.w, c = this.c, rv = w.reverie, fs = w.fellowship;
+    const f = w.s.people[former];
+    if (!f || f.status !== "active" || former === rec.by) return;
+    const victim = rec.to;
+    const act = rec.cause && rv ? rv.beliefRecord(former, this.actKey(rec.cause)) : void 0;
+    const heard = act && typeof act.v === "string" && act.v !== former && act.v !== victim && act.str >= rv.config.beliefFloor ? act : void 0;
+    if (heard && heard.src === "saw") {
+      this.blame(former, heard.v, rec, heard.str, "saw", "saw it done");
+      this.told(former, heard.v, rec, heard.str, "saw it done");
+      return;
+    }
+    const r = this.stream();
+    const k = this.knob("suspicion", former);
+    if (!(k > 0) || !r.chance(clamp(c.suspect * k))) return;
+    const cands = /* @__PURE__ */ new Map();
+    const add = (id, v, why) => {
+      if (id === former || id === victim || !(v > 0) || w.s.people[id]?.status !== "active") return;
+      const cur = cands.get(id);
+      if (!cur) cands.set(id, { w: v, why });
+      else {
+        cur.w += v;
+        if (v > 0.2) cur.why = why;
+      }
+    };
+    if (heard) add(heard.v, heard.str * c.suspectTold, "was told");
+    for (const id of rec.served || []) add(id, c.suspectServed, "served it");
+    const br = w.bree;
+    if (br) for (const id of Object.keys(w.s.people).sort()) {
+      const a = br.animosity(id, victim);
+      if (a >= 0.05) add(id, a * c.suspectGrudge, "bore a grudge");
+    }
+    for (const id of rec.about || []) add(id, c.suspectAbout, "was about");
+    const list = [];
+    for (const [id, v] of cands) {
+      const regard = fs ? fs.regard(former, id) : 0;
+      const wgt = v.w * (1 + Math.max(0, -regard) * c.suspectSpite) * Math.max(0.1, 1 - Math.max(0, regard) * c.suspectLoyal);
+      list.push({ id, w: round(wgt, 6), why: v.why });
+    }
+    list.sort((a, b) => a.id < b.id ? -1 : 1);
+    const pick = r.weighted(list, (x) => x.w);
+    if (!pick || !(pick.w > 0)) return;
+    const str = round(Math.min(c.suspectMax, pick.w * c.suspectStrength * k), 4);
+    if (str < c.suspectFloor) return;
+    this.blame(former, pick.id, rec, str, "assumed", pick.why);
+    this.told(former, pick.id, rec, str, pick.why);
+  }
+  told(former, suspect, rec, strength, why) {
+    this.w.log("suspect", former, { suspect, harm: rec.id, strength, why });
+    this.w.emit("morgul:suspect", { id: former, suspect, harm: rec.id, to: rec.to, strength, why, right: suspect === rec.by });
+  }
+  /** The belief that says who set a trap or dosed a taint. */
+  actKey(cause) {
+    return cause.startsWith("t") ? `set:${cause}` : `dosed:${cause}`;
+  }
+  /** After a harm: down past downAt, and at the worst, maybe dead. */
+  check(p, rec) {
+    const w = this.w, c = this.c, st = this.mut();
+    const hurt = this.hurt(p.id);
+    if (hurt >= c.killAt - 1e-9 && w.cradle) {
+      const chance = clamp(this.knob("lethality", p.id) * c.deathChance);
+      if (chance > 0 && this.stream().chance(chance)) {
+        w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { act: "kill", harm: rec.id } });
+        this.goDown(p, rec, hurt);
+        return;
+      }
+    }
+    if (hurt >= c.downAt - 1e-9) {
+      if (st.down[p.id]) {
+        const [lo, hi] = c.downMinutes;
+        st.down[p.id].until = round(Math.max(st.down[p.id].until, w.s.now + this.stream().range(lo, hi ?? lo)), 4);
+      } else this.goDown(p, rec, hurt);
+    }
+  }
+  goDown(p, rec, hurt) {
+    const w = this.w, c = this.c, st = this.mut();
+    if (st.down[p.id]) return;
+    const [lo, hi] = c.downMinutes;
+    st.down[p.id] = { t: w.s.now, until: round(w.s.now + this.stream().range(lo, hi ?? lo), 4) };
+    w.log("down", p.id, { harm: rec.id, hurt });
+    w.emit("morgul:down", { id: p.id, harm: rec.id, hurt });
+    w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { act: "down" } });
+  }
+  /** Someone gets up: they came round, or someone helped them. */
+  applyUp(p, why, by) {
+    const w = this.w, st = this.st;
+    if (!st?.down[p.id]) return;
+    delete st.down[p.id];
+    w.log("up", p.id, { why, ...by ? { by } : {} });
+    w.emit("morgul:up", { id: p.id, why, by: by ?? null });
+    if (p.doing?.action === this.c.down) w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { act: "up" } });
+  }
+  // -------------------------------------------------------------------------
+  // Tending
+  // -------------------------------------------------------------------------
+  /** Someone tends someone (from the game: recorded): their wounds' tended mark (Athelas), and up if they're down. */
+  tend(id, by) {
+    this.w.input("morgul.tend", [id, by ?? null]);
+  }
+  /** Tends inside the simulation: Athelas's mark on their courses (or one), and, from Morgul, up if down, a feeling and a little regard. */
+  applyTend(id, by, course) {
+    const w = this.w;
+    const q = w.athelas ? w.athelas.applyTend(id, course, by) : 0;
+    const p = w.s.people[id];
+    if (!p || !this.st) return;
+    const down = this.isDown(id);
+    if (down) this.applyUp(p, "helped up", by);
+    if (by && by !== id && (q > 0 || down)) {
+      w.reverie?.applyFeel(id, "cared_for", by);
+      if (w.fellowship && this.c.cared) w.fellowship.applyRegard(id, by, this.c.cared);
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Traps
+  // -------------------------------------------------------------------------
+  /** A trap's kind: its own definition, or a means that's set. */
+  trapDef(kind) {
+    const t = this.trapDefs.get(kind), m = this.meansDefs.get(kind);
+    if (!t && m?.use !== "set") return void 0;
+    return { id: kind, ...t || {}, kind: t?.kind ?? m?.kinds?.[0] ?? "trap", severity: t?.severity ?? m?.severity ?? 0.2 };
+  }
+  /** Sets a trap (from the game: recorded): a kind, at a place, by someone (or nobody), for someone, seen by whoever (default everyone there). Returns its id. */
+  set(kind, o) {
+    return this.w.input("morgul.set", [kind, { by: o.by ?? null, place: o.place, for: o.for ?? null, seenBy: o.seenBy ?? null }]) ?? null;
+  }
+  /** Sets a trap inside the simulation. */
+  applySet(kind, o) {
+    const w = this.w;
+    const def = this.trapDef(kind);
+    if (!def || !o.place || !w.ring.get(o.place)) return null;
+    const st = this.mut();
+    const id = "t" + ++st.ids;
+    const seen = (o.seenBy ?? this.present(o.place, [o.by])).filter((x) => x !== o.by && w.s.people[x]);
+    const rec = { id, kind, place: o.place, by: o.by, t: w.s.now, uses: Math.max(1, Math.round(def.uses ?? 1)), known: [] };
+    if (o.for && o.for !== o.by) rec.for = o.for;
+    if (o.by && w.s.people[o.by]) rec.known.push(o.by);
+    st.traps[id] = rec;
+    for (const x of seen) this.learnTrap(x, rec, "saw", 1);
+    w.log("set", o.by ?? void 0, { trap: id, kind, place: o.place, ...rec.for ? { for: rec.for } : {} });
+    w.emit("morgul:set", { trap: id, kind, place: o.place, by: o.by, for: rec.for ?? null, seenBy: seen });
+    return id;
+  }
+  /** Someone learns a trap is there (and who set it, if they saw it set). */
+  learnTrap(id, rec, src, str) {
+    if (!rec.known.includes(id)) rec.known.push(id);
+    const rv = this.w.reverie;
+    if (!rv) return;
+    rv.applyBelieve(id, `trap:${rec.id}`, rec.place, src, null, str);
+    if (src === "saw" && rec.by) rv.applyBelieve(id, `set:${rec.id}`, rec.by, "saw", null, str);
+  }
+  /** Does someone know a trap is there? */
+  knowsTrap(id, rec) {
+    if (rec.known.includes(id)) return true;
+    const rv = this.w.reverie;
+    return !!rv && rv.belief(id, `trap:${rec.id}`) !== void 0;
+  }
+  /** The traps set (at a place, or everywhere): id, kind, place, who set it, for whom, uses left, who knows. */
+  traps(place) {
+    const traps = this.st?.traps || {};
+    const root = place ? this.w.ring.root(place) : null;
+    return Object.keys(traps).sort().map((k) => traps[k]).filter((t) => !root || this.w.ring.root(t.place) === root).map((t) => ({ id: t.id, kind: t.kind, place: t.place, by: t.by, ...t.for ? { for: t.for } : {}, uses: t.uses, t: t.t, known: t.known.slice() }));
+  }
+  /** A trap caught someone on screen (from the game: recorded). */
+  spring(trap, id, seenBy) {
+    this.w.input("morgul.spring", [trap, id, seenBy ?? null]);
+  }
+  /** A trap catches someone, inside the simulation: the harm, and it's spent a use. */
+  applySpring(trap, id, seenBy) {
+    const w = this.w, st = this.st;
+    const rec = st?.traps[trap];
+    const p = w.s.people[id];
+    if (!rec || !p || p.status !== "active") return null;
+    const def = this.trapDef(rec.kind);
+    rec.uses--;
+    if (rec.uses <= 0) delete st.traps[trap];
+    const seen = seenBy ?? this.present(rec.place, [id]);
+    if (rec.uses > 0) for (const x of seen) this.learnTrap(x, rec, "saw", 1);
+    else if (w.reverie) for (const x of [...rec.known, ...seen]) w.reverie.applyBelieve(x, `trap:${rec.id}`, false, "saw");
+    w.log("sprung", id, { trap, kind: rec.kind, place: rec.place });
+    const view = this.applyHarm({ to: id, by: rec.by, kind: def?.kind ?? "trap", severity: def?.severity ?? 0.2, via: "trap", intent: rec.by ? "meant" : "accident", cause: trap, what: rec.kind, place: rec.place, seenBy: seen });
+    w.emit("morgul:sprung", { trap, kind: rec.kind, place: rec.place, id, by: rec.by, harm: view?.id ?? null });
+    return view;
+  }
+  /** A trap is disarmed (from the game: recorded), by someone if given. */
+  disarm(trap, by) {
+    this.w.input("morgul.disarm", [trap, by ?? null]);
+  }
+  /** Disarms a trap inside the simulation. */
+  applyDisarm(trap, by) {
+    const w = this.w, st = this.st;
+    const rec = st?.traps[trap];
+    if (!rec) return;
+    delete st.traps[trap];
+    if (by) w.reverie?.applyBelieve(by, `trap:${rec.id}`, false, "saw");
+    w.log("disarmed", by, { trap, kind: rec.kind, place: rec.place });
+    w.emit("morgul:disarmed", { trap, kind: rec.kind, place: rec.place, by: by ?? null });
+  }
+  /** Someone disarms the traps they know of where they are (of a kind, if given). */
+  disarmHere(p, kind) {
+    const st = this.st;
+    if (!st || !p.place) return;
+    const root = this.w.ring.root(p.place);
+    for (const k of Object.keys(st.traps).sort()) {
+      const t = st.traps[k];
+      if (this.w.ring.root(t.place) !== root || kind && t.kind !== kind || !this.knowsTrap(p.id, t)) continue;
+      this.applyDisarm(k, p.id);
+    }
+  }
+  /** The regions whose traps the game springs itself, on screen (from the game: recorded). Default: the regions in focus now. */
+  near(regions) {
+    this.w.input("morgul.near", [(regions ?? this.w.clock.regionsInFocus()).slice().sort()]);
+  }
+  applyNear(regions) {
+    if (!this.trapDefs.size && ![...this.meansDefs.values()].some((m) => m.use === "set") && !this.st) return;
+    const st = this.mut();
+    const next = [...new Set(regions)].sort();
+    if (next.length) st.near = next;
+    else delete st.near;
+  }
+  /** Is a place near the player: its traps the game's to spring? (As the game last said with near().) */
+  nearPlace(place) {
+    const near = this.st?.near;
+    return !!near && near.includes(this.w.ring.region(place));
+  }
+  /** A trap may catch someone who does something at its place, off screen (none for someone who knows). */
+  snare(p, place) {
+    const st = this.st;
+    if (!st || !hasKeys2(st.traps)) return;
+    const w = this.w, c = this.c;
+    const root = w.ring.root(place);
+    for (const k of Object.keys(st.traps).sort()) {
+      const t = st.traps[k];
+      if (!t || w.ring.root(t.place) !== root) continue;
+      if (this.nearPlace(t.place)) continue;
+      if (t.for && t.for !== p.id) continue;
+      if (t.by === p.id || this.knowsTrap(p.id, t)) continue;
+      const def = this.trapDef(t.kind);
+      const hidden = def?.hidden !== false;
+      const careful = Math.max(0, 1 - (this.nature(p, "careful") - 0.5) * 2 * c.careful);
+      const chance = clamp((def?.catch ?? c.catch) * careful * (hidden ? 1 : c.seenCatch));
+      if (chance > 0 && this.stream().chance(chance)) {
+        this.applySpring(k, p.id);
+        return;
+      }
+      if (!hidden) this.learnTrap(p.id, t, "saw", 1);
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Poison
+  // -------------------------------------------------------------------------
+  /** Taints food or drink (from the game: recorded): a place's stock of an item, a place's pot (no item), or someone's goods. Returns its id. */
+  taint(def) {
+    return this.w.input("morgul.taint", [def]) ?? null;
+  }
+  /** The holder of a person's goods: their household, if it shares a pantry (Ceres), else themselves. */
+  holderOf(id) {
+    const ce = this.w.ceres;
+    const purse = ce?.purseOf(id);
+    return purse && purse.kind === "household" ? purse.id : id;
+  }
+  /** Taints inside the simulation. */
+  applyTaint(def) {
+    const w = this.w, ath = w.athelas;
+    if (!ath?.courses.has(def.course)) return null;
+    if (!def.place && !def.person && !def.owner) return null;
+    const st = this.mut();
+    const id = "x" + ++st.ids;
+    const rec = { id, course: def.course, n: Math.max(1, Math.round(def.n ?? 1)), t: w.s.now, known: [] };
+    if (def.place) rec.place = def.place;
+    else rec.owner = def.owner ?? this.holderOf(def.person);
+    if (def.item) rec.item = def.item;
+    if (def.by) {
+      rec.by = def.by;
+      if (w.s.people[def.by]) rec.known.push(def.by);
+    }
+    if (def.for) rec.for = def.for;
+    if (def.severity !== void 0) rec.sev = round(clamp(def.severity), 4);
+    if (def.what) rec.what = def.what;
+    if (def.place) {
+      const about2 = this.present(def.place, []);
+      if (def.by && w.s.people[def.by] && !about2.includes(def.by)) about2.push(def.by);
+      if (about2.length) rec.about = about2.sort();
+    }
+    st.taints[id] = rec;
+    const seen = (def.seenBy ?? (def.place ? this.present(def.place, [def.by]) : [])).filter((x) => x !== def.by && w.s.people[x]);
+    const rv = w.reverie;
+    for (const x of seen) {
+      rec.known.push(x);
+      if (!rv) continue;
+      if (def.by) rv.applyBelieve(x, `dosed:${id}`, def.by, "saw", null, 1);
+      if (def.place) rv.applyBelieve(x, `tainted:${w.ring.root(def.place)}`, true, "saw", null, 1);
+    }
+    w.log("tainted", def.by, { taint: id, course: def.course, ...def.place ? { place: def.place } : { owner: rec.owner }, ...def.item ? { item: def.item } : {}, n: rec.n });
+    w.emit("morgul:tainted", { taint: id, course: def.course, place: rec.place ?? null, owner: rec.owner ?? null, item: rec.item ?? null, n: rec.n, by: rec.by ?? null, for: rec.for ?? null, seenBy: seen });
+    return id;
+  }
+  /** The taints (at a place, or everywhere): where, what, how many servings, by whom, for whom. */
+  taints(place) {
+    const taints = this.st?.taints || {};
+    const root = place ? this.w.ring.root(place) : null;
+    return Object.keys(taints).sort().map((k) => taints[k]).filter((x) => !root || x.place && this.w.ring.root(x.place) === root).map((x) => ({ id: x.id, course: x.course, n: x.n, t: x.t, ...x.place ? { place: x.place } : {}, ...x.owner ? { owner: x.owner } : {}, ...x.item ? { item: x.item } : {}, ...x.by ? { by: x.by } : {}, ...x.for ? { for: x.for } : {} }));
+  }
+  /** The poison's severity: the taint's own, else its means', else config.dose. */
+  doseOf(rec) {
+    let means;
+    for (const m of this.meansDefs.values()) if (m.course === rec.course) {
+      means = m;
+      break;
+    }
+    return { sev: rec.sev ?? means?.severity ?? this.c.dose, kind: means?.kinds?.[0] ?? "poison", what: rec.what ?? means?.id ?? rec.item };
+  }
+  /** Tainted servings move with the goods, and afflict whoever eats them: an action just started. */
+  eat(p, d) {
+    const st = this.st;
+    if (!st || !hasKeys2(st.taints) || !d.place) return;
+    const w = this.w, c = this.c, ce = w.ceres;
+    const a = w.actions.get(d.action);
+    if (!a) return;
+    const root = w.ring.root(d.place);
+    const ids = Object.keys(st.taints).sort();
+    const r = () => this.stream();
+    if (a.buys && ce) for (const item of Object.keys(a.buys)) {
+      const n = a.buys[item];
+      for (const k of ids) {
+        const t = st.taints[k];
+        if (!t || t.item !== item || !t.place || w.ring.root(t.place) !== root || t.for && t.for !== p.id) continue;
+        const before = ce.stock(t.place, item) + n;
+        const moved = this.draw(t, n, before, p.id, r);
+        if (moved > 0) this.move(t, moved, this.holderOf(p.id));
+      }
+    }
+    const eaten = [];
+    if (a.uses) for (const item of Object.keys(a.uses)) {
+      const n = a.uses[item];
+      const store = a.store && ce ? ce.storeOf(a, d.place) : null;
+      for (const k of ids) {
+        const t = st.taints[k];
+        if (!t || t.item !== item || t.for && t.for !== p.id) continue;
+        let before;
+        if (store) {
+          if (!t.place || t.place !== store) continue;
+          before = ce.stock(store, item) + n;
+        } else {
+          if (!t.owner || t.owner !== this.holderOf(p.id)) continue;
+          before = w.have(p, item) + n;
+        }
+        const hits = this.draw(t, n, before, p.id, r);
+        if (hits > 0) eaten.push({ t, hits });
+      }
+    }
+    if (a.tags?.some((tag) => c.eats.includes(tag))) for (const k of ids) {
+      const t = st.taints[k];
+      if (!t || t.item || !t.place || w.ring.root(t.place) !== root || t.for && t.for !== p.id) continue;
+      t.n--;
+      eaten.push({ t, hits: 1 });
+    }
+    for (const { t, hits } of eaten) {
+      if (t.n <= 0) delete st.taints[t.id];
+      const dose = this.doseOf(t);
+      const place = d.place;
+      const served = [];
+      const owner = w.ring.get(place)?.owner;
+      if (owner && w.s.people[owner] && owner !== p.id) served.push(owner);
+      for (const id of this.present(place, [p.id])) {
+        const q = w.s.people[id];
+        if (q.doing?.layer === "job" && !served.includes(id)) served.push(id);
+      }
+      const about2 = [.../* @__PURE__ */ new Set([...t.about || [], ...this.present(place, [p.id])])].filter((id) => id !== p.id).sort();
+      this.applyHarm({ to: p.id, by: t.by ?? null, kind: dose.kind, severity: Math.min(1, dose.sev * hits), via: "dose", intent: t.by ? "meant" : "accident", cause: t.id, what: dose.what, place, seenBy: [], course: t.course, served: served.sort(), about: about2 });
+    }
+  }
+  /** How many of n servings taken from `before` are tainted: drawn one at a time (all of them for whoever it's for). Takes them off the taint. */
+  draw(t, n, before, who, r) {
+    let hits = 0, left = Math.max(n, before);
+    for (let i = 0; i < n && t.n > 0; i++) {
+      if (t.for === who || r().chance(t.n / Math.max(1, left))) {
+        hits++;
+        t.n--;
+      }
+      left--;
+    }
+    return hits;
+  }
+  /** Tainted servings move into someone's goods: a taint of their own, carried on. */
+  move(t, n, owner) {
+    const st = this.mut();
+    const same = Object.keys(st.taints).sort().map((k) => st.taints[k]).find((x) => x.owner === owner && x.item === t.item && x.course === t.course && x.by === t.by && x.for === t.for && x.sev === t.sev);
+    if (same) {
+      same.n += n;
+      return;
+    }
+    const id = "x" + ++st.ids;
+    const rec = { ...t, id, owner, n, t: this.w.s.now, known: t.by && this.w.s.people[t.by] ? [t.by] : [] };
+    delete rec.place;
+    st.taints[id] = rec;
+    const rv = this.w.reverie;
+    if (rv && t.by) {
+      for (const x of t.known) if (x !== t.by && rv.belief(x, `dosed:${t.id}`) !== void 0) rv.applyBelieve(x, `dosed:${id}`, t.by, "saw", null, 1);
+    }
+    if (t.n <= 0) delete st.taints[t.id];
+  }
+  // -------------------------------------------------------------------------
+  // Fights by numbers
+  // -------------------------------------------------------------------------
+  /** Is a Bree kind a fight by numbers? (Only once Morgul has been given a wound.) */
+  fights(kind) {
+    if (!this.woundDefs.size) return false;
+    const def = this.w.bree?.kinds.get(kind);
+    return this.c.fights.some((f) => f === kind || f.startsWith("tag:") && !!def?.tags?.includes(f.slice(4)));
+  }
+  /** The most blows a fight runs to. */
+  get blows() {
+    return Math.max(1, Math.round(this.c.blows));
+  }
+  /**
+   * A turn of a fight by numbers (Bree calls this): a blow lands one way or
+   * the other, by the odds; the harm follows; the fight ends if the one
+   * struck goes down or yields.
+   */
+  applyBlow(ex, starter, a, b, place, seenBy) {
+    const w = this.w, c = this.c;
+    if (!this.woundDefs.size) return null;
+    const r = this.stream();
+    const [by, to] = r.chance(this.odds(a.id, b.id)) ? [a, b] : [b, a];
+    const arm = this.bestMeans(by);
+    const base = c.fist + (arm?.severity ?? 0) * c.meansBlow;
+    const sev = round(clamp(base * (1 + (r.next() * 2 - 1) * c.blowSpread)), 4);
+    const kind = arm?.kinds?.[0] ?? c.fistKind;
+    const view = this.applyHarm({ to: to.id, by: by.id, kind, severity: sev, via: "blow", intent: by.id === starter ? "meant" : "defense", what: arm?.id, place, seenBy, ex });
+    if (!view) return null;
+    const blow = { id: view.id, by: by.id, to: to.id, kind, severity: sev, hurt: view.hurt };
+    if (arm) blow.what = arm.id;
+    const give = this.yieldAt(to);
+    if (this.isDown(to.id)) blow.end = "down";
+    else if (view.hurt >= give) {
+      blow.end = "yielded";
+      w.log("yielded", to.id, { to: by.id, hurt: view.hurt });
+    } else if (r.chance(clamp(c.walkOff * view.hurt / Math.max(0.01, give)))) blow.end = "left";
+    return blow;
+  }
+  // -------------------------------------------------------------------------
+  // Fights with the player
+  // -------------------------------------------------------------------------
+  /** How someone would answer a fight with someone (the player, by default) now: fight back, flee, yield or call for help. A look. */
+  respond(id, against = "player") {
+    const p = this.w.s.people[id];
+    if (!p) return null;
+    const st = this.st;
+    const start = !st || st.pf[id] === void 0 || this.w.s.now - st.pf[id] > this.c.fightGap;
+    return this.w.peek(() => this.answer(p, against, this.w.worldStreamPeek("respond", id, this.w.s.now), start));
+  }
+  answer(p, against, r, start) {
+    const w = this.w, c = this.c, fs = w.fellowship;
+    const odds = this.odds(p.id, against), hurt = this.hurt(p.id);
+    const courage = this.nature(p, "courage"), temper = this.nature(p, "temper");
+    const give = this.yieldAt(p);
+    const help = this.present(p.place, [p.id, against]).filter((id) => (fs ? fs.regard(id, p.id) : 0) >= c.helpFrom && !this.isDown(id));
+    const m = (k) => c.respond[k] ?? 1;
+    const weights = {
+      fight: round(m("fight") * (0.25 + courage) * (0.5 + temper) * odds * 2 * Math.max(0, 1 - hurt / Math.max(0.05, give)), 4),
+      flee: round(m("flee") * (1.25 - courage) * (1 - odds) * (0.5 + hurt), 4),
+      yield: round(m("yield") * (hurt >= give ? 2 * (1.25 - courage) : 0.2 * (1 - courage)), 4),
+      help: round(m("help") * (help.length ? (1 - odds) * (0.5 + Math.min(1, help.length / 2)) : 0), 4)
+    };
+    const acts = ["fight", "flee", "yield", "help"];
+    const act = r.weighted(acts.slice(), (k) => weights[k]) ?? "fight";
+    const out = { id: p.id, to: against, act, odds, hurt, start, weights };
+    if (act === "help") out.help = help;
+    return out;
+  }
+  /** A character in a fight with the player answers (after each harm between them): emitted, and fleeing makes them want to get away. */
+  respondTo(p, against, _rec) {
+    const w = this.w, c = this.c, st = this.mut();
+    const start = st.pf[p.id] === void 0 || w.s.now - st.pf[p.id] > c.fightGap;
+    st.pf[p.id] = w.s.now;
+    if (p.status !== "active") return;
+    const res = this.answer(p, against, this.stream(), start);
+    w.log("respond", p.id, { to: against, act: res.act, odds: res.odds });
+    w.emit("morgul:respond", res);
+    if (res.act === "flee" && !this.isDown(p.id)) {
+      st.flee[p.id] = round(w.s.now + c.fleeMinutes, 4);
+      w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { act: "flee" } });
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Danger
+  // -------------------------------------------------------------------------
+  /** How dangerous someone believes a place is: a trap or a taint they know of there, or a place they were hurt. */
+  danger(id, place) {
+    if (!place || !this.st) return 0;
+    const root = this.w.ring.root(place);
+    const map = this.dangers(id);
+    return round(Math.max(map.get(root) ?? 0, this.waryOf(id, root)), 4);
+  }
+  /** The places someone knows of a trap or a taint at, worked out once a moment. */
+  dangers(id) {
+    const w = this.w, st = this.st;
+    const hit = this.dangerCache;
+    if (hit && hit.id === id && hit.now === w.s.now && hit.seq === w.s.seq && hit.n === st.n + st.ids) return hit.map;
+    const map = /* @__PURE__ */ new Map();
+    const put = (place, v) => {
+      const root = w.ring.root(place);
+      map.set(root, Math.max(map.get(root) ?? 0, v));
+    };
+    for (const k of Object.keys(st.traps)) {
+      const t = st.traps[k];
+      if (t.known.includes(id)) put(t.place, 1);
+    }
+    for (const k of Object.keys(st.taints)) {
+      const t = st.taints[k];
+      if (t.place && t.known.includes(id) && t.by !== id) put(t.place, 1);
+    }
+    const rv = w.reverie;
+    if (rv) for (const b of rv.beliefs(id)) {
+      if (b.key.startsWith("trap:") && typeof b.v === "string") put(b.v, b.str);
+      else if (b.key.startsWith("tainted:") && b.v === true) put(b.key.slice(8), b.str);
+    }
+    this.dangerCache = { id, now: w.s.now, seq: w.s.seq, n: st.n + st.ids, map };
+    return map;
+  }
+  // -------------------------------------------------------------------------
+  // Hooks
+  // -------------------------------------------------------------------------
+  /** Athelas asks: how fast a course runs for someone (a wound heals at the healing knob's pace). */
+  paceOf(p, course) {
+    if (!this.st?.wounds[p.id]?.[course]) return 1;
+    return 1 / Math.max(0.01, this.knob("healing", p.id));
+  }
+  /** Athelas asks, as a phase that ends in death runs out: are they spared? A wound kills only as often as lethality says. */
+  spares(p, course) {
+    const wound = this.st?.wounds[p.id]?.[course];
+    if (!wound) return false;
+    const chance = clamp(this.knob("lethality", p.id));
+    const dies = chance > 0 && (chance >= 1 || this.stream().chance(chance));
+    if (!dies) {
+      this.w.log("spared", p.id, { course });
+      return true;
+    }
+    this.w.emit("morgul:killed", { id: p.id, by: wound.by[wound.by.length - 1] ?? null, harm: wound.h });
+    return false;
+  }
+  /** Athelas tells: a course's phase that tells has started, so whatever harm it was is noticed now. */
+  showed(p, course) {
+    const st = this.st;
+    if (!st) return;
+    for (const rec of st.harms) {
+      if (rec.shown || rec.to !== p.id || rec.course !== course) continue;
+      rec.shown = true;
+      rec.seen = this.present(p.place, [p.id, rec.by]).filter((id) => this.w.s.people[id]?.status === "active");
+      this.w.log("noticed", p.id, { harm: rec.id, course });
+      this.notice(rec);
+    }
+    this.prune(st);
+  }
+  /** Athelas tells: a course passed or was cured; a wound it was is healed. */
+  healed(p, course) {
+    const st = this.st;
+    const mine = st?.wounds[p.id];
+    if (!mine?.[course]) return;
+    delete mine[course];
+    if (!hasKeys2(mine)) delete st.wounds[p.id];
+    this.w.log("healed", p.id, { course });
+  }
+  candidates(p, out) {
+    const st = this.st;
+    if (!st) return;
+    const w = this.w, c = this.c;
+    const down = st.down[p.id];
+    if (down) {
+      if (w.actions.has(c.down)) out.push({ id: c.down, kind: "action", place: p.place, rank: c.downRank, layer: "down", weight: 0, parts: [], minutes: round(Math.max(1, down.until - w.s.now), 4) });
+      return;
+    }
+    if (w.actions.has(c.fighting) && this.inFight(p.id)) out.push({ id: c.fighting, kind: "action", place: p.place, rank: c.fightRank, layer: "fight", weight: 0, parts: [] });
+    const held = st.held[p.id];
+    if (held && w.tasks.get(c.avenge)?.target === "person") {
+      const list = Object.keys(held).sort().map((id) => ({ id, v: this.vengeance(p.id, id) })).filter((x) => x.v >= c.vengeAt && w.s.people[x.id]?.status === "active");
+      list.sort((x, y) => y.v - x.v || (x.id < y.id ? -1 : 1));
+      for (const x of list.slice(0, 2)) out.push({ id: c.avenge, kind: "task", place: null, target: x.id, rank: 0, layer: "need", weight: 0, parts: [] });
+    }
+  }
+  block(p, cand) {
+    const st = this.st;
+    if (!st?.down[p.id]) return null;
+    return cand.id === this.c.down ? null : "down";
+  }
+  consider(p, cand) {
+    if (!this.used) return;
+    const w = this.w, c = this.c, st = this.st;
+    const def = cand.kind === "task" ? w.tasks.get(cand.id) : w.actions.get(cand.id);
+    const tags = def?.tags;
+    const out = [];
+    const name = (id) => w.s.people[id]?.name ?? id;
+    const harmful = !!tags?.includes(c.harmTag);
+    if (harmful) {
+      const v = this.knob("violence", p.id);
+      if (v !== 1) out.push(["violence", round(v, 4)]);
+    }
+    if (!st) return out;
+    if (cand.target && (harmful || cand.kind === "task" && cand.id === c.avenge)) {
+      const v = this.vengeance(p.id, cand.target);
+      if (cand.kind === "task" && cand.id === c.avenge) out.push([`revenge on ${name(cand.target)}`, round(Math.max(0.01, v * c.vengePull), 4)]);
+      else if (v > 0) out.push([`revenge on ${name(cand.target)}`, round(1 + v * c.vengePull, 4)]);
+    }
+    if (cand.target && tags?.includes(c.careTag)) {
+      const h = this.hurt(cand.target) + (this.isDown(cand.target) ? 0.5 : 0);
+      if (h > 0) {
+        const regard = w.fellowship ? Math.max(0, w.fellowship.regard(p.id, cand.target)) : 0;
+        out.push([`tending ${name(cand.target)}`, round(1 + h * c.carePull * (0.5 + regard), 4)]);
+      }
+    }
+    const place = cand.place ?? p.place;
+    if (place) {
+      const d = this.danger(p.id, place);
+      if (d > 0) {
+        const k = this.knob("caution", p.id);
+        if (k > 0) out.push(["danger", round(Math.max(c.floor, 1 - d * c.cautionPlace * k), 4)]);
+      }
+      const f = this.feared(p.id, place);
+      if (f) out.push([`afraid of ${name(f.id)}`, round(Math.max(c.floor, 1 - f.v * c.fleePlace), 4)]);
+    }
+    if (tags?.includes(c.fleeTag)) {
+      const v = this.fleeing(p);
+      if (v > 0) out.push(["getting away", round(1 + v * c.fleePull, 4)]);
+    }
+    return out;
+  }
+  /** How much someone wants to get away: someone they fear is where they are (fear times poor odds, past fleeAt), or they chose to flee (1). */
+  fleeing(p) {
+    const st = this.st;
+    if (!st) return 0;
+    if ((st.flee[p.id] ?? -Infinity) > this.w.s.now) return 1;
+    return p.place ? this.feared(p.id, p.place)?.v ?? 0 : 0;
+  }
+  /** The one someone fears most at a place (fear times poor odds), if it's enough to want to leave. */
+  feared(id, place) {
+    const st = this.st;
+    const fears = st?.fear[id];
+    if (!fears) return null;
+    const w = this.w, root = w.ring.root(place);
+    let best = null;
+    for (const o of Object.keys(fears).sort()) {
+      const q = w.s.people[o];
+      if (!q || q.status !== "active" || !q.place || q.doing?.kind === "travel" || w.ring.root(q.place) !== root) continue;
+      const v = this.fearOf(id, o) * (1 - this.odds(id, o));
+      if (v >= this.c.fleeAt && (!best || v > best.v)) best = { id: o, v: round(v, 4) };
+    }
+    return best;
+  }
+  /** Someone starts something: a trap there may catch them, and what they eat may be tainted. */
+  started(p, d) {
+    if (d.kind !== "act" || !d.place || !this.st) return;
+    if (d.action === this.c.down || d.action === this.c.fighting) return;
+    this.eat(p, d);
+    if (p.status === "active" && p.doing === d) this.snare(p, d.place);
+  }
+  /** Lying down ran its course: they come round. */
+  ended(p, d, _frac, interrupted) {
+    if (d.kind !== "act" || d.action !== this.c.down || interrupted) return;
+    const st = this.st;
+    if (st?.down[p.id] && st.down[p.id].until <= this.w.s.now + 1e-6) this.applyUp(p, "came round");
+  }
+  /** People meet: fear may send someone away; someone who knows of a trap or a taint set for the other warns them. */
+  met(a, b) {
+    const st = this.st;
+    if (!st) return;
+    const now2 = this.w.s.now;
+    for (const [x, y] of [[a, b], [b, a]]) {
+      if (st.fear[x.id]?.[y.id] && !st.down[x.id] && x.place && !((st.flee[x.id] ?? -Infinity) > now2)) {
+        const f = this.feared(x.id, x.place);
+        if (f && f.id === y.id) {
+          st.flee[x.id] = round(now2 + this.c.fleeMinutes, 4);
+          this.w.clock.schedule({ t: now2, k: "module", ref: this.name, who: x.id, data: { act: "afraid" } });
+        }
+      }
+      this.warnOf(x, y);
+    }
+  }
+  /** x warns y of a trap or taint set for y that x knows of, if fond enough of them. */
+  warnOf(x, y) {
+    const st = this.st, w = this.w, rv = w.reverie;
+    if (!rv || !w.fellowship) return;
+    const fond = w.fellowship.regard(x.id, y.id) >= this.c.warnAt;
+    if (!fond) return;
+    for (const k of Object.keys(st.traps).sort()) {
+      const t = st.traps[k];
+      if (t.for !== y.id || t.by === x.id || !this.knowsTrap(x.id, t) || this.knowsTrap(y.id, t)) continue;
+      this.learnTrap(y.id, t, "told", 0.9);
+      w.log("warned", x.id, { to: y.id, trap: t.id });
+    }
+    for (const k of Object.keys(st.taints).sort()) {
+      const t = st.taints[k];
+      if (t.for !== y.id || !t.place || t.by === x.id || !t.known.includes(x.id) || t.known.includes(y.id)) continue;
+      t.known.push(y.id);
+      rv.applyBelieve(y.id, `tainted:${w.ring.root(t.place)}`, true, "told", x.id, 0.9);
+      w.log("warned", x.id, { to: y.id, taint: t.id });
+    }
+  }
+  timer(item) {
+    const w = this.w;
+    const p = item.who ? w.s.people[item.who] : void 0;
+    if (!p || p.status !== "active") return;
+    const act = String(item.data?.act ?? "");
+    if (act === "kill") {
+      const cr = w.cradle;
+      if (!cr) return;
+      const rec = this.st?.harms.find((h) => h.id === Number(item.data?.harm));
+      const by = rec?.by ?? null;
+      w.emit("morgul:killed", { id: p.id, by, harm: rec?.id ?? null });
+      w.log("killed", p.id, { by, harm: rec?.id ?? null });
+      const crime = this.c.crimes.killed;
+      const wt = w.wormtongue;
+      if (rec && by && crime && wt?.crimes.has(crime) && this.c.direct.includes(rec.via)) wt.sensed({ kind: crime, actor: by, what: p.id, place: rec.place, seenBy: rec.seen, severity: 1 });
+      const rv = w.reverie, fs = w.fellowship;
+      if (rec && by && rv) for (const o of w.people()) {
+        if (o.id === p.id || o.id === by) continue;
+        const saw = rec.seen.includes(o.id) && this.c.direct.includes(rec.via);
+        if (!saw && !(fs?.knows(o.id, p.id) && this.suspicionOf(o.id, by) > 0)) continue;
+        rv.applyRemember(o.id, { k: "killed", about: by, imp: 9, text: `${w.s.people[by]?.name ?? by} killed ${p.name}` });
+      }
+      cr.applyDepart(p.id, "killed");
+      return;
+    }
+    if (act === "down") {
+      if (!this.isDown(p.id)) return;
+      w.bree?.applyEnd(p.id);
+      w.clock.rethink(p, "down");
+      return;
+    }
+    if (act === "fight") {
+      if (this.isDown(p.id) || !this.inFight(p.id) || p.doing?.action === this.c.fighting) return;
+      w.clock.rethink(p, "a fight");
+      return;
+    }
+    if (act === "up" || act === "flee" || act === "afraid" || act === "fought") {
+      if (act === "up" && p.doing?.action !== this.c.down) return;
+      if (act === "fought" && (p.doing?.action !== this.c.fighting || this.inFight(p.id))) return;
+      if (this.isDown(p.id)) return;
+      w.clock.rethink(p, act === "up" ? "got up" : act === "flee" ? "getting away" : act === "fought" ? "the fight is over" : "afraid");
+    }
+  }
+  day() {
+    const st = this.st;
+    if (!st) return;
+    const w = this.w, floor = 0.02;
+    for (const [map, read] of [[st.held, (a, b) => this.held(a, b)], [st.fear, (a, b) => this.fearOf(a, b)], [st.wary, (a, b) => this.waryOf(a, b)]]) {
+      for (const a of Object.keys(map)) {
+        for (const b of Object.keys(map[a])) if (read(a, b) < floor) delete map[a][b];
+        if (!hasKeys2(map[a])) delete map[a];
+      }
+    }
+    const ath = w.athelas;
+    for (const id of Object.keys(st.wounds)) {
+      for (const course of Object.keys(st.wounds[id])) if (!ath || ath.severityOf(id, course) === void 0) delete st.wounds[id][course];
+      if (!hasKeys2(st.wounds[id])) delete st.wounds[id];
+    }
+    for (const id of Object.keys(st.flee)) if (st.flee[id] <= w.s.now) delete st.flee[id];
+    for (const id of Object.keys(st.pf)) if (w.s.now - st.pf[id] > DAY) delete st.pf[id];
+  }
+  removed(p) {
+    const st = this.st;
+    if (!st) return;
+    delete st.wounds[p.id];
+    delete st.down[p.id];
+    delete st.flee[p.id];
+    delete st.pf[p.id];
+    for (const map of [st.held, st.fear]) {
+      delete map[p.id];
+      for (const a of Object.keys(map)) {
+        delete map[a][p.id];
+        if (!hasKeys2(map[a])) delete map[a];
+      }
+    }
+    delete st.wary[p.id];
+    for (const k of Object.keys(st.taints)) if (st.taints[k].owner === p.id) delete st.taints[k];
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
+  // asked for by name: harm between people (Morgul) makes sense
+  harm: {
+    name: "harm",
+    start(w, acc, fail) {
+      const mg = w.morgul;
+      if (!mg) return;
+      acc.harmKilled = 0;
+      acc.harmPoison = { right: 0, wrong: 0 };
+      acc.harmVia = {};
+      acc.harmGrudges = { due: 0, held: 0 };
+      w.on("morgul:killed", (e) => {
+        acc.harmKilled++;
+        if (!(Number(w.tuning("morgul", e.id).lethality) > 0)) fail(`${e.id} was killed with lethality 0 (day ${w.day})`);
+      });
+      w.on("morgul:harm", (h) => {
+        acc.harmVia[h.id] = h.via;
+        if (!(h.severity >= 0 && h.severity <= 1)) fail(`harm ${h.id} has severity ${h.severity}`);
+        if (!w.bree || !h.shown || h.intent !== "meant" || !h.by || !w.s.people[h.by] || !w.s.people[h.to] || !w.morgul?.config.direct.includes(h.via) || !(h.severity > 0)) return;
+        acc.harmGrudges.due++;
+        if (w.bree.grudge(h.to, h.by) > 0) acc.harmGrudges.held++;
+        else fail(`${h.to} bears ${h.by} no grudge right after harm ${h.id} (day ${w.day})`);
+      });
+      w.on("morgul:suspect", (e) => {
+        if (acc.harmVia[e.harm] !== "dose") return;
+        if (e.right) acc.harmPoison.right++;
+        else acc.harmPoison.wrong++;
+      });
+    },
+    sample(w, acc, fail) {
+      var _a;
+      const mg = w.morgul;
+      if (!mg) return;
+      const down = acc.harmDown || (acc.harmDown = {});
+      for (const p of w.people()) {
+        const h = mg.hurt(p.id);
+        if (!(h >= 0 && h < 5)) fail(`${p.id}'s hurt is ${h} at ${w.now}`);
+        if (mg.isDown(p.id)) {
+          down[_a = p.id] ?? (down[_a] = w.now);
+          if (w.now - down[p.id] > 6 * HOUR && !acc["harmDownLong:" + p.id]) {
+            acc["harmDownLong:" + p.id] = true;
+            fail(`${p.id} has been down for over 6 hours (day ${w.day})`);
+          }
+        } else delete down[p.id];
+      }
+    },
+    end(w, acc, fail) {
+      if (!w.morgul) return;
+      const lethal = Number(w.tuning("morgul").lethality) > 0;
+      if (!lethal) for (const id of Object.keys(w.s.people)) {
+        const p = w.s.people[id];
+        if (p.status === "gone" && w.cradle?.departed()[id]?.why === "killed") fail(`${id} is gone, killed, with lethality 0`);
+      }
+      const pz = acc.harmPoison;
+      if (pz && pz.right + pz.wrong >= 6) {
+        if (!pz.right) fail(`the poisoner was never suspected (${pz.wrong} suspicions, all of others)`);
+        if (!pz.wrong) fail(`the poisoner was suspected every time (${pz.right} suspicions): suspicion should be able to fall wrong`);
+      }
+    }
+  },
   // asked for by name: exchanges between people (Bree) make sense
   interactions: {
     name: "interactions",
@@ -9557,6 +11298,7 @@ function run(opts) {
   const start = w.now;
   const end = start + days * DAY;
   const acc = {};
+  for (const c of checks) c.start?.(w, acc, fail);
   const moods = [];
   const places = {};
   const needMax = {};
@@ -9577,6 +11319,49 @@ function run(opts) {
   });
   w.on("bree:escalated", () => {
     tally().escalations++;
+  });
+  let harm = null;
+  const hurt = () => harm || (harm = { harms: 0, via: {}, fights: 0, blows: 0, downs: 0, killed: 0, set: 0, sprung: 0, tainted: 0, doses: 0, suspicions: 0, right: 0, wrong: 0, tended: 0, responses: 0, wounds: 0, down: 0 });
+  const fought = /* @__PURE__ */ new Set();
+  w.on("morgul:harm", (h) => {
+    const t = hurt();
+    t.harms++;
+    t.via[h.via] = (t.via[h.via] || 0) + 1;
+    if (h.via === "dose") t.doses++;
+    if (h.exchange !== void 0) {
+      t.blows++;
+      if (!fought.has(h.exchange)) {
+        fought.add(h.exchange);
+        t.fights++;
+      }
+    }
+  });
+  w.on("morgul:down", () => {
+    hurt().downs++;
+  });
+  w.on("morgul:killed", () => {
+    hurt().killed++;
+  });
+  w.on("morgul:set", () => {
+    hurt().set++;
+  });
+  w.on("morgul:sprung", () => {
+    hurt().sprung++;
+  });
+  w.on("morgul:tainted", () => {
+    hurt().tainted++;
+  });
+  w.on("morgul:suspect", (e) => {
+    const t = hurt();
+    t.suspicions++;
+    if (e.right) t.right++;
+    else t.wrong++;
+  });
+  w.on("morgul:respond", () => {
+    hurt().responses++;
+  });
+  w.on("tended", () => {
+    if (harm) harm.tended++;
   });
   for (let t = start + every; t <= end + 1e-6; t += every) {
     w.advanceTo(t);
@@ -9648,6 +11433,15 @@ function run(opts) {
     done.feuds = w.bree.feuds().length;
     stats.interactions = done;
   }
+  const harmed = harm;
+  if (harmed && w.morgul) {
+    const via = {};
+    for (const k of Object.keys(harmed.via).sort()) via[k] = harmed.via[k];
+    harmed.via = via;
+    harmed.wounds = w.people().reduce((n, p) => n + w.morgul.wounds(p.id).length, 0);
+    harmed.down = w.people().filter((p) => w.morgul.isDown(p.id)).length;
+    stats.harm = harmed;
+  }
   return {
     seed,
     days,
@@ -9672,7 +11466,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree", "morgul"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -9689,7 +11483,8 @@ function create(opts = {}) {
     athelas: () => new Athelas(cfg.athelas),
     delos: () => new Delos(cfg.delos),
     voice: () => new Voice(cfg.voice),
-    bree: () => new Bree(cfg.bree)
+    bree: () => new Bree(cfg.bree),
+    morgul: () => new Morgul(cfg.morgul)
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -9711,7 +11506,8 @@ var MODULE_DEFAULTS = {
   athelas: DEFAULT_ATHELAS,
   delos: DEFAULT_DELOS,
   voice: DEFAULT_VOICE,
-  bree: DEFAULT_BREE
+  bree: DEFAULT_BREE,
+  morgul: DEFAULT_MORGUL
 };
 export {
   Athelas,
@@ -9731,6 +11527,7 @@ export {
   MODULES,
   MODULE_DEFAULTS,
   Mentat,
+  Morgul,
   OUTCOMES,
   Reverie,
   SCHEMA,

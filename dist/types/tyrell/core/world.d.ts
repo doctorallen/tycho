@@ -21,6 +21,7 @@ import type { Athelas } from '../modules/athelas';
 import type { Delos } from '../modules/delos';
 import type { Voice } from '../modules/voice';
 import type { Bree } from '../modules/bree';
+import type { Morgul } from '../modules/morgul';
 import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState, PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState } from './types';
 import { DAY, HOUR, Stream } from './util';
 export declare const SCHEMA = 2;
@@ -168,6 +169,8 @@ export declare class World {
     get voice(): Voice | undefined;
     /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
     get bree(): Bree | undefined;
+    /** Harm between people: wounds, down and dead, grudges and fear, traps, poison, suspicion, fights by numbers. */
+    get morgul(): Morgul | undefined;
     /** Sets a fact (the truth of the world), or reads it if no value is given. */
     fact(key: string, value?: Value): Value | undefined;
     /** The places that are loaded and visible: people there get bodies. */

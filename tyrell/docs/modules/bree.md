@@ -123,7 +123,8 @@ The built-in feelings (declared when Reverie is on; declare your own with the sa
 ## Exchanges: when they happen
 
 - **When people meet.** Two people doing something together for a few minutes (Tyrell's meetings, as Fellowship's) strike up an exchange with chance `strike` (0.3) times the `talk` knob (the world's, times both people's own), unless either is in one already or doing something `quiet` (asleep). The chattier is likelier to start; they draw a kind among those whose `who`, `to` and `if` hold, by weight (times `1 + relief × urgency × needPull` for the needs it meets, and `quarrels` for a hostile one). Its turns are what they have time for.
-- **By an action.** An action with `interact: '<kind>'` and a target begins its exchange as it starts, over the action's length.
+- **On and off, while they're together.** With `again` (minutes; 0, the default, never), two people still together when an exchange between them is done (both free, at the same place) may strike up another that many minutes later, by the same chance, and every as many after while they stay together and nothing strikes: two at a bar talk on and off all evening, not only as the second sits down. Each pair waits once (a later wait supersedes it), kept with the pair.
+- **By an action.** An action with `interact: '<kind>'` and a target begins its exchange as it starts, over the action's length. With no target, `interactWith` (conditions, the candidate as the target) finds who it's with: the first one at the place, by id, who is free and for whom they hold, someone not in an exchange before someone in one, who breaks off from it (`interactWith: ['target.doing:work']`: whoever's serving, as someone pays at a till). Without either, it begins nothing.
 - **By the game.** `world.bree.start(kind, a, b, { minutes?, turns? })` (an input that applies at once) starts one, `b` one person or several; anyone in an exchange leaves it. It returns the exchange as it stands after the first turn. `world.bree.end(idOrPerson)` ends one. An effect `exchange:<kind>` starts one between the person and the target.
 
 Each turn is a module timer `turnGap` (2 to 4) minutes after the last, so off screen it all happens the same. They must stay together: whoever leaves the place, starts walking, or falls asleep ends it (`parted`). The first turn of one the game starts is taken as the game says, so a one-turn greeting between two people passing in the street works.
@@ -190,6 +191,8 @@ When a turn lands at `escalateAt` (sour) or worse, the one who heard it reacts:
 3. **Or they let it go.**
 
 A kind that starts hostile (an insult) has its starter as `by`. Every escalation is [seen](#witnesses); a kind with `crime` (the starter's fight) goes to Wormtongue as it breaks out. With `feudSpread` above 0, a fight between people of two households sets the households [feuding](#feuds) by that much.
+
+**Fights by numbers.** With [Morgul](morgul.md) given a wound, a kind in its `fights` (the starter set's `fight`) comes out blow by blow: both fighters are held in it, each turn one of them lands a blow by the odds of their might (a harm, with its wound, grudge and fear), its turn carries the blow (`harm`), someone there may step in, and it ends when one yields (`yielded`), goes down (`down`) or walks off (`left`). Someone down talks to nobody.
 
 ## Witnesses
 
@@ -263,7 +266,7 @@ In `world.s.mod.bree`, made with the first exchange or grudge:
 | `of` | Who's in which exchange |
 | `g` | Grudges: holder → other → `[strength, since, why]` |
 | `feuds` | By `'a|b'`: `{ a, b, s, t, why }` |
-| `pairs` | By `'a|b'`: exchanges between them, the last, the last row and who started it, their last topics, when they last made up (let go `pairDays`, 30, after their last) |
+| `pairs` | By `'a|b'`: exchanges between them, the last, the last row and who started it, their last topics, when they last made up, when they may talk again (`again`) (let go `pairDays`, 30, after their last) |
 | `recent` | The last `recent` (50) finished exchanges |
 
 Turns are module timers in the world's queue. Kinds, topics, manners and `witnesses` are definitions.
@@ -298,7 +301,7 @@ Turns are module timers in the world's queue. Kinds, topics, manners and `witnes
 | `applyStart`, `applyEnd`, `applyGrudge`, `applyFeud`, `applyReconcile`, `applyWitnessed` | | **Engine** versions |
 | `kinds`, `topics`, `manners`, `config` | | Declarations and config |
 
-**ExchangeView**: `{ id, kind, first, who, place, t, why, turn, turns, outcome, score, topic: { id, subject? } | null, manners, by? }`. **Finished**: `{ id, kind, first, who, place, t, end, outcome, outcomes (each one's), n, why, by?, left?, mediator? }`; `why` is `'done'`, `'parted'`, `'left'` (walked off), `'stepped in'`, `'ended'` (the game), `'interrupted'` or `'gone'`.
+**ExchangeView**: `{ id, kind, first, who, place, t, why, turn, turns, outcome, score, topic: { id, subject? } | null, manners, by? }`. **Finished**: `{ id, kind, first, who, place, t, end, outcome, outcomes (each one's), n, why, by?, left?, mediator? }`; `why` is `'done'`, `'parted'`, `'left'` (walked off), `'stepped in'`, `'ended'` (the game), `'interrupted'` or `'gone'`; a fight by numbers (Morgul) also `'yielded'` or `'down'`.
 
 ## Terms, effects, events and log
 
@@ -309,7 +312,7 @@ Effects: `grudge+=n` / `grudge:<id>-=n` / `grudge=n`, `reconcile` / `reconcile:<
 | Event | Payload |
 |---|---|
 | `bree:start` | ExchangeView |
-| `bree:turn` | `{ id, kind, n, who, to, step, topic, subject?, manner?, landed, outcome, line, key?, text?, end }` |
+| `bree:turn` | `{ id, kind, n, who, to, step, topic, subject?, manner?, landed, outcome, line, key?, text?, end, harm? }`; `harm` in a fight by numbers: `{ id, by, to, kind, severity, what?, hurt, end? }` (Morgul) |
 | `bree:joined` | `{ id, who }` |
 | `bree:escalated` | `{ id, from, to, by, against }` |
 | `bree:witnessed` | `{ id, exchange, actor, kind, against }`: `id` is the witness |
@@ -344,12 +347,13 @@ Every other setting is in [Tuning](../tuning.md#bree), with its default and whic
 - **Voice**: a kind can land as a Voice approach does (the same landing, shared), so a game's approaches serve its people as well as the player.
 - **Cradle**: flirting grows attraction, which Cradle's courtship pairs by.
 - **Bicameral**: avoidance is a consideration on every choice; an action can interact.
+- **Morgul**: fights come out blow by blow, by the odds of might; harm leaves grudges and feuds here; grudges are evidence when someone suspects who did a harm nobody saw.
 
 ## Carrying a game's own talk
 
 **Merryfolk's natters** (`js/converse.js`): its tempers are manners (cheerful, ornery, shy, curious, dreamy, witty, proud, gloomy: `fits` from its own function, `temperOf`, as a term), its relationship kinds are bonds (spouse = partner, sweetheart a sentiment, kin, close, friend, acquaintance, stranger, rival, sour: `turns` takes Merryfolk's lengths as they are), its topics are topics (weather, food here with `from: 'doing'`, work, doings with `from: 'events'`, family, hobby with `from: 'likes'`, the party, rifts, ailments, tales, plans, grumbles, compliments, jokes, songs, curious questions, riddles), each with its `when` as `if` and its `w` as `weight`, and its pools of openers, replies by temper, follow-ups and last words as Cityspeak lines on `<topic>.open`, `.reply` (with `manner:<temper>`), `.more` and `.back`. A sour reply is a turn landing sour (an ornery manner's `lands`, its `sour` tempers), and walking off is Bree's `leave` with `leaveBase 0.3, leaveTemper 0.35`; `snubbed`, `long_chat`, `good_chat` and `quarrel` are `on.left`, `on.long`, `on.good` and the argue kind's feelings; table talk is a group kind; court mode is `flirt` with its strands as romantic topics; the quarrel mode is `argue`. The game keeps drawing the bubbles from `bree:turn`, and gatherings stay its own (a spot and a shape), with a group kind for their talk.
 
-**The White Dragon's small talk** (`Town.chatter`, `arrived`): greetings in passing are a one-turn kind the game starts as two neighbors pass (`greet`, `turns: 1`; neighbors is a condition of the game's), or stay barks, which change nothing; small talk between residents settled side by side is a short conversation struck up as they meet (`chat`, with `TOWN_SMALL` and `TOWN_PAIR` as lines on `small_talk.open` and `.reply`, a pair's own by `who` and `to`, so off screen it happens too), the day's news (`townNews`) a topic with `if` on the game's flags, and what's said at the till or the counter on arriving a kind an arrival begins (`interact` on the pay and eat actions). `City.witnesses` becomes `bree.witnesses`, and what residents say on seeing a strip stays `City.react`. The player's own talk stays on Voice, whose approaches (straight, warm, joke, ask, haggle) can land for residents' exchanges too.
+**The White Dragon's small talk** (`js/chat.js`): small talk between residents settled somewhere together is a `chat` kind, struck up as they meet and on and off while they stay (`again`), but in a room you can see only between two side by side (an `if` of the game's, from where each is drawn); each of `TOWN_SMALL`'s pairs of lines, a pair's own (`TOWN_PAIR`: the first of the two raises it) and the news once your work's out in the street (`TOWN_NEWS`, each with `if: ['fact:<name>']` on a fact the game keeps in the world) is a topic of two steps, its opener and its answer Cityspeak lines on `<topic>.open` and `.reply`, with an answer of its own when the turn lands sour or worse (`turn:sour`). Chat escalates to an argument (`argue`), and nothing past it: the block quarrels with words; grudges bring the cold shoulder (`avoid`), apologies and making up. Their natures are a term of the game's (`nat:<role>`, mapped in `traits`). What's said at the till, a bar's counter and a neighbor's door are kinds the pay, drink, eat and visit actions begin with whoever's serving or in (`interactWith: ['target.doing:work']`). `bree.witnesses` is the game's sight, from where people are rather than where they're drawn: in a room or behind a door, everyone there awake; at a spot in the open, whoever's at the spots within shouting distance. Greetings in passing and a word between two walking together stay the game's barks (Tyrell doesn't know who passes whom in the street), their words Cityspeak lines (no greeting from someone with a grudge); what's said to Lin over the counter stays the game's (she isn't a resident); and what residents say on seeing you strip a machine are Cityspeak lines the game says in its own order and beat. The player's own talk stays on Voice.
 
 ## Example
 

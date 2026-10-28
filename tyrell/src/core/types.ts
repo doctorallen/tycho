@@ -223,6 +223,14 @@ export interface ActionDef {
   social?: Id;
   /** An interaction (a Bree kind) begun with the target as it starts: a conversation over its length. */
   interact?: Id;
+  /**
+   * With no target, who an interaction is begun with: the first one at the
+   * place (by id) who is free and for whom these hold (the person, with the
+   * candidate as target), someone not in an exchange before someone in one,
+   * who leaves it: the clerk at a till breaks off to serve. Without it, an
+   * action with no target begins nothing.
+   */
+  interactWith?: Cond[];
   /** Feelings the person gets at the end (Reverie). */
   feels?: Id[];
   /** A deed recorded in the target's file on the person (Reverie, Fellowship): see world.deed(). */
@@ -371,6 +379,14 @@ export interface TaskDef {
   considerations?: Consideration[];
   cooldown?: number;
   tags?: string[];
+  /**
+   * Aimed at someone: chosen only when something names who (a directive's
+   * target, a module's option: Morgul's revenge), never freely. The plan
+   * keeps them: its methods' conditions read them as the target, its steps
+   * whose action is aimed at someone are aimed at them, and 'target' as a
+   * place (or a step's target) is where they are (or who they are).
+   */
+  target?: 'person';
   methods: MethodDef[];
 }
 
@@ -489,6 +505,8 @@ export interface PlanState {
   started: Minutes;
   rank: number;
   layer: string;
+  /** Who it's aimed at (a task with `target: 'person'`). */
+  target?: Id;
 }
 
 export interface NeedState { v: number; t: Minutes }
@@ -828,6 +846,8 @@ export interface Stimulus {
   strength?: number;
   /** 0..1: how well the actor was disguised. Default 0. */
   disguise?: number;
+  /** 0..1: how bad it was, for a crime (Wormtongue): over the crime's own severity, for the witnesses' memories and the heat. */
+  severity?: number;
   data?: Record<string, Value>;
 }
 

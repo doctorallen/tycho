@@ -76,7 +76,7 @@ Conditions are compiled once and cached, so using them is cheap.
 | `SocialActDef.acceptIf`, `accept` | The target of the act as `person`; the asker as `target` |
 | `SocialActDef.onAccept`, `onRefuse` (effects) | The asker as `person`; the target as `target` |
 | `StoryletDef.when` (Gaff) | No person: world terms only |
-| `CoursePhase.scale`, `then` (Athelas) | The person |
+| `CoursePhase.scale`, `then`, `next[].if` (Athelas) | The person (`data.course`, for a branch) |
 | `CourseDef.contagion.resist` (Athelas) | The one who might catch it; `target` is the carrier |
 | `ThreadDef.if`, `weight`, `label`; `AnswerDef.if`, `to[].if`; beats', answers' and threads' `then` (Voice) | The person talked to; `target` is the speaker |
 | `ApproachDef.lands` (Voice) | The listener; `target` is the speaker |
@@ -219,10 +219,12 @@ Each module registers its terms when it's switched on. With a module off, its te
 
 | Term | Value |
 |---|---|
-| `under:<course>` | The phase the course is in (its id), or `false` when it isn't running: `under:ale=sore_head` |
-| `under:tag:<tag>` | Any running course has the tag (`under:tag:illness`) |
-| `under` | How many courses are running |
+| `under:<course>` | The phase the course is in (its id), or `false` when it isn't running (or is in a quiet phase): `under:ale=sore_head` |
+| `under:tag:<tag>` | Any running course has the tag (`under:tag:illness`), quiet phases aside |
+| `under` | How many courses are running, quiet phases aside |
 | `immune:<course>` | Immune to it now |
+| `sev:<course>` | Its severity, 0..1 (the one it's written for, given none); 0 when it isn't running. `sev:tag:<tag>`: the worst with the tag |
+| `tended:<course>` | How well it's been tended, 0..1 (0 if not); `tended` alone, the best of any |
 
 ### Delos
 
@@ -265,6 +267,24 @@ The person, with the target the other.
 | `manner`, `manner:<id>` | Their manner (in their exchange, or now) |
 | `subject` | The subject of the topic they're on |
 
+### Morgul
+
+`<id>` defaults to the context's target.
+
+| Term | Value |
+|---|---|
+| `hurt` | How hurt they are: their open wounds' severities, each by how much its phase still hurts |
+| `wounded`, `wounded:<kind>` | How bad their open wounds are (of a kind: a wound's kind, its id or its course) |
+| `hurt_by:<id>` | What they hold against them from harm they believe they did them, 0..1, fading |
+| `afraid_of:<id>` | Their fear of them, 0..1, fading |
+| `danger`, `danger:<place>` | How dangerous they believe the place is (the context's, else where they are): a trap or taint they know of, a place they were hurt |
+| `armed` | How many means they hold that arm them (strike, throw, shoot, cast) |
+| `odds:<id>` | Their odds in a fight with them: the chance a blow between them is theirs (`odds:player` against the player) |
+| `suspects:<id>` | How strongly they believe them guilty of harm (`did:<id>:harm`, or a crime harm is) |
+| `down` | They're down |
+| `vengeance:<id>` | How much they want revenge on them |
+| `fleeing` | How much they want to get away: someone they fear is here, with poor odds against them, or they chose to flee (1) |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.
@@ -299,9 +319,10 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `fame:<group>.<subject>+=n` | Fellowship | Standing; `-=` lowers it, any other operator adds. Without `.subject`, the person (or `'player'` with no person), as for the term |
 | `infamy:<group>.<subject>+=n` | Fellowship | The same for infamy |
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
-| `afflict:<course>` | Athelas | Afflicts the person (caught from the context's target, if any) |
+| `afflict:<course>`, `afflict:<course>=severity` | Athelas | Afflicts the person (caught from the context's target, if any), at a severity if given |
 | `cure:<course>`, `cure` | Athelas | Ends the course, or every course |
 | `hasten:<course>=minutes` | Athelas | The phase they're in ends that much sooner |
+| `tend`, `tend:<course>` | Athelas | The person tends the target's courses (or their own, with no target): the tended mark, the better for skill. With Morgul, someone down is helped up too |
 | `learn:<key>=v`, `learn:<key>` | Voice | The target (the speaker) learns something about the person (`true` without a value) |
 | `promise:<id>=days`, `promise:<id>` | Voice | A promise to the person, from the target |
 | `sore:<thread>=days`, `sore` | Voice | A subject best left a while (the current one, two days, by default) |
@@ -309,6 +330,10 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `grudge+=n`, `-=`, `=`; `grudge:<id>...` | Bree | The person's grudge against the target (or that person) |
 | `reconcile`, `reconcile:<id>` | Bree | The person and the target make it up: grudges both ways and a feud between them end |
 | `exchange:<kind>` | Bree | Starts an exchange of that kind between the person and the target |
+| `harm:<kind>=severity`, `harm:<kind>` | Morgul | The person harms the target (a blow, meant, with the best means they hold of that kind; `fist` severity with none given) |
+| `set:<trap>` | Morgul | Sets a trap where the person is, for the target if there is one; everyone there sees it set |
+| `taint:<course>`, `taint:<course>.<item>=n` | Morgul | Taints the pot (or the good's stock) where the person is, n servings, for the target if there is one |
+| `disarm`, `disarm:<kind>` | Morgul | Disarms the traps the person knows of where they are |
 
 ## Functions
 

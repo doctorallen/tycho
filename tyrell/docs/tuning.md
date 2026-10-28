@@ -12,7 +12,7 @@ Every setting defaults to what Tyrell always did, and every headline knob to 1, 
 - [An example](#an-example)
 - [Per person](#per-person)
 - [During play](#during-play)
-- [Every setting](#every-setting): [Core](#core), [Reverie](#reverie), [Fellowship](#fellowship), [Wormtongue](#wormtongue), [Cityspeak](#cityspeak), [Voice](#voice), [Bree](#bree), [Mentat](#mentat), [Gaff](#gaff), [Ceres](#ceres), [Cradle](#cradle), [Athelas](#athelas), [Delos](#delos), [Joi](#joi)
+- [Every setting](#every-setting): [Core](#core), [Reverie](#reverie), [Fellowship](#fellowship), [Wormtongue](#wormtongue), [Cityspeak](#cityspeak), [Voice](#voice), [Bree](#bree), [Mentat](#mentat), [Gaff](#gaff), [Ceres](#ceres), [Cradle](#cradle), [Athelas](#athelas), [Delos](#delos), [Morgul](#morgul), [Joi](#joi)
 
 ## The headline knobs
 
@@ -57,6 +57,12 @@ A headline knob is a plain multiplier on a whole behavior, for a game that wants
 | | `duration` | How long courses last (every phase's minutes) | yes (the one who has it) |
 | Delos | `mutation` | How often genomes mutate: trait jumps, gifts and every gene's `mutate` | no |
 | | `variation` | How far children stray from their parents (every blended value's noise); 0: a child is exactly the blend | no |
+| Morgul | `violence` | How readily anyone chooses an action tagged `harm`; 0: nobody ever does | yes |
+| | `lethality` | How often harm at its worst kills (0 by default: nobody dies of harm) | yes (the one who'd die) |
+| | `vengeance` | How strongly harm turns into a wish for revenge | yes (the one who'd want it) |
+| | `caution` | How much people steer clear of danger they know of (a trap, a taint, a place they were hurt) | yes |
+| | `healing` | How fast wounds heal (a wound's phases last 1 / healing as long) | yes (the one hurt) |
+| | `suspicion` | How readily people suspect someone of harm they didn't see done, and how strongly | yes (the one who'd suspect) |
 
 Joi has no headline knob: it never changes the world. `Tyrell.CORE_KNOBS` and each module's `knobs` list them, with `'person'` or `'world'` for whether a person can have their own.
 
@@ -384,6 +390,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `forgiveness` | 1 | **knob** How fast grudges fade, and how much an apology or making up takes off them |
 | `talk` | 1 | **knob** How often people strike up exchanges when they meet, and how many turns they talk for |
 | `strike` | 0.3 | The chance a meeting starts an exchange, before `talk`. Higher: a chattier town |
+| `again` | 0 | Two still together after an exchange between them is done may strike up another this many minutes later (by the same chance), and every as many after while they stay together: people sitting side by side talk on and off. 0: only when they meet |
 | `quiet` | `['sleep']` | Action tags during which nobody strikes up an exchange, joins one or keeps one going |
 | `needPull` | 2 | A kind that relieves a pressing need is more appealing: weight × (1 + relief × urgency × `needPull`) |
 | `traits` | each role's `trait.<role>` | The term each trait role is read from (`temper`, `warmth`, `humor`, `patience`, `courage`, `forgiveness`, `talkative`): map them to the game's own traits |
@@ -561,6 +568,12 @@ Each table lists a part's settings: the name, the default, and what it does and 
 |---|---|---|
 | `contagion` | 1 | **knob** How catching courses are: every course's chance per hour together, times it; 0 nothing spreads |
 | `duration` | 1 | **knob** How long courses last: every phase's minutes, times it, as the phase starts |
+| `sevAt` | 0.5 | The severity a course's numbers are written for: afflicted at it (or with none), its phases run as written. A course's own `severity.at` overrides it |
+| `sevStretch` | 2 | How much severity stretches the phases: each lasts `sevStretch ^ ((severity - sevAt) × 2)` times as long, as it starts (2: twice as long at 1, half at 0); 1 leaves them be |
+| `sevDepth` | 1 | How much severity deepens what a phase does: its `rates` and `weigh` factors are raised to the power `1 + sevDepth × (severity - sevAt) / sevAt` (twice as deep at 1, nothing at 0); 0 leaves them be |
+| `tendBase` | 0.5 | How good a tending is, 0..1, with no skill: the mark `tended:<course>` reads |
+| `tendSkill` | null | The skill that makes tending better: the rest of the way to 1 by the tender's share of it (null: none) |
+| `tendHasten` | 0.25 | A tending brings the end of the phase they're in sooner by this share of what's left, times how good it was; 0 none |
 
 ### Delos
 
@@ -576,6 +589,94 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `talentBlend` | founders `[0.6, 1.4]`, bounds `[0.2, 2]`, cross 0.7, noise 0.08 | The same for talents |
 | `instinctBlend` | founders `[0.8, 1.25]`, bounds `[0.5, 1.5]`, cross 0, noise 0.1 | The same for instincts |
 | `lookBlend` | founders `[0, 1]`, bounds `[0, 1]`, cross 0.65, noise 0.1 | The same for looks |
+
+### Morgul
+
+`moduleConfig: { morgul: { ... } }`. See [Morgul](modules/morgul.md). The knobs and settings are read only once the game declares a means, a wound or a trap.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `violence` | 1 | **knob** How readily anyone chooses an action or task tagged `harmTag`: its weight, times it; 0 never |
+| `lethality` | 0 | **knob** How often harm at its worst kills: hurt at `killAt` kills with `deathChance` times it; a wound's phase that ends in death kills with it. 0: nobody dies of harm |
+| `vengeance` | 1 | **knob** How strongly what someone holds against whoever hurt them becomes a wish for revenge |
+| `caution` | 1 | **knob** How much people steer clear of danger they know of (`cautionPlace`) |
+| `healing` | 1 | **knob** How fast wounds heal: a wound's phases last 1 / healing as long (under 0.01 taken as 0.01) |
+| `suspicion` | 1 | **knob** How readily people suspect someone of harm they didn't see done (`suspect`), and how strongly (`suspectStrength`) |
+| `downAt` | 0.8 | Hurt at which someone goes down |
+| `downMinutes` | `[20, 60]` | Minutes they lie there before they come round, unless helped up |
+| `downRank` | 5 | The rank lying down comes at: above everything (a break is 4) |
+| `down` | `'down'` | The action lying down is (declared by Morgul once a wound is, unless the game has one by this id) |
+| `fighting` | `'fighting'` | The action fighting is: both fighters are held in it while a fight by numbers lasts (declared the same way) |
+| `fightRank` | 4.5 | The rank fighting comes at: above directives and breaks, under lying down |
+| `killAt` | 1 | Hurt at which harm is at its worst, and may kill |
+| `deathChance` | 0.5 | The chance harm at its worst kills, times `lethality` |
+| `direct` | `['blow', 'throw', 'shoot', 'cast']` | The ways of harm whose victim (and onlookers) see who did it; any other way (a trap, a dose, a fall) leaves suspicion |
+| `intents` | meant 1, careless 0.4, accident 0.1, defense 0 | The share of the grudge, regard lost, fear and onlookers' blame each intent brings. 0 for defense: no grudge for a blow they started themselves |
+| `grudge` | 1.5 | A victim's grudge (Bree): severity × this × the intent's share, times Bree's `grudges` knob |
+| `regard` | 0.6 | A victim's regard lost for whoever did it: severity × this × the share |
+| `fear` | 1 | Fear of whoever did it: severity × this × the share × `1 + (0.5 - courage) × 2 × fearCourage` |
+| `fearCourage` | 0.5 | See `fear`: how much more the timid fear |
+| `wary` | 1 | Fear of the place it happened: severity × this |
+| `fade` | 0.05 | Fear (× 0.5 + courage), fear of places, and what they hold against someone from harm (× 0.5 + forgiveness), lost a day |
+| `angerAt` | 0.5 | A victim with `temper × 0.6 + courage × 0.4` at least this is furious, else scared |
+| `shakenAt` | 0.15 | A harm at least this bad leaves them shaken |
+| `memory` | 3 | The importance of the victim's memory: this... |
+| `memorySeverity` | 6 | ...plus this a point of severity (onlookers', half) |
+| `feud` | 0 | Meant harm between people of two households sets the households feuding (Bree) by severity × this; 0 never |
+| `sated` | 2 | Harm done to someone they held harm against eases it by severity × this: revenge sated |
+| `witnessStrength` | 0.8 | How strongly an onlooker believes what they saw (`did:<who>:harm`) |
+| `witnessMemory` | 2 | The importance of an onlooker's memory, plus severity × `memorySeverity` / 2 |
+| `witnessRegard` | 0.3 | An onlooker's regard lost for whoever did it: severity × this × the share (and a suspect's, by the suspicion's strength) |
+| `crimes` | none | The Wormtongue crime each intent is, and a killing: `{ meant: 'assault', careless: 'negligence', killed: 'murder' }`. Declared crimes only; defense never |
+| `catch` | 0.3 | A trap's chance to catch someone who does something at its place off screen, for a trap with no `catch` |
+| `careful` | 0.5 | The careful are caught less: × `1 - (careful - 0.5) × 2 × this` |
+| `seenCatch` | 0.3 | A trap that isn't hidden catches at this share of its chance (and whoever it doesn't catch sees it) |
+| `warnAt` | 0.2 | Someone who knows of a trap or a taint set for someone warns them when they meet, if their regard for them is at least this |
+| `eats` | `['food']` | The action tags that eat from a place's pot (a taint with no item) |
+| `dose` | 0.5 | A dose's severity, for a taint with none whose means says none |
+| `suspect` | 0.8 | The chance someone who learns of a harm they didn't see done suspects someone, times `suspicion` |
+| `suspectTold` | 2 | The evidence: being told who set or dosed it, by the belief's strength (whoever saw it done, knows)... |
+| `suspectServed` | 0.6 | ...having served it (the place's owner, staff on shift there)... |
+| `suspectGrudge` | 1.5 | ...a grudge against the victim (Bree's animosity), by its strength... |
+| `suspectAbout` | 0.3 | ...being about when it was done or struck |
+| `suspectSpite` | 1 | A suspicion weighs `1 + dislike × this` (a scapegoat)... |
+| `suspectLoyal` | 0.6 | ...and `1 - liking × this`, never under 0.1 |
+| `suspectStrength` | 0.5 | A suspicion's strength: its weight × this × `suspicion`... |
+| `suspectMax` | 0.9 | ...at most this... |
+| `suspectFloor` | 0.1 | ...and not held under this |
+| `fights` | `['fight']` | The Bree kinds that are fights by numbers: ids or `'tag:<tag>'` |
+| `blows` | 12 | Most blows in a fight |
+| `might` | none | A fighter's might: considerations on them (strength, size, skill, nerve), multiplied |
+| `fist` | 0.1 | A bare blow's severity (and the `harm:` effect's, with none given) |
+| `fistKind` | `'blunt'` | A bare blow's kind |
+| `meansBlow` | 0.5 | A held means adds its severity times this to a blow |
+| `meansMight` | 1 | ...and to might: × `1 + severity × this` |
+| `hurtMight` | 0.6 | Might lost a point of hurt: × `1 - hurt × this` |
+| `blowSpread` | 0.5 | A blow's severity, give or take this share |
+| `yieldAt` | 0.5 | A fighter yields at this much hurt, at middling nerve... |
+| `yieldCourage` | 1 | ...× `1 + (courage - 0.5) × this` |
+| `walkOff` | 0.4 | After a blow that doesn't end it, the one struck walks off with this chance times their hurt over the hurt they'd yield at |
+| `playerMight` | `'might:player'` | The fact the player's might is read from (1 when it isn't set) |
+| `respond` | fight 1, flee 1, yield 1, help 1 | How appealing each answer to the player's harm is, over its shape (nerve, temper, odds, hurt, friends about) |
+| `helpFrom` | 0.2 | Someone there whose regard for them is at least this can be called on for help |
+| `fightGap` | 30 | Minutes without harm between a character and the player after which the next starts a fight afresh (`start`) |
+| `fleeMinutes` | 30 | Minutes someone who chose to flee, or was frightened off, keeps wanting to get away (and before fear sends them off again) |
+| `harmTag` | `'harm'` | The tag of harmful actions and tasks (`violence`, revenge) |
+| `fleeTag` | `'flee'` | The tag of fleeing (`fleePull`) |
+| `careTag` | `'care'` | The tag of tending the hurt (`carePull`) |
+| `avenge` | `'avenge'` | The task revenge is: offered, aimed at whoever they want it on, past `vengeAt` |
+| `vengeAt` | 0.3 | What they hold against someone, times `vengeance` and their temper, at which revenge is an option |
+| `vengeTemper` | 0.5 | A quick temper wants it more: × `1 + (temper - 0.5) × 2 × this` |
+| `vengePull` | 0.5 | Revenge weighs this times how much they want it; a harmful action aimed at whoever they want it on, `1 +` that |
+| `fleeAt` | 0.25 | Fear of someone there, times poor odds against them, at which someone wants to leave |
+| `fleePlace` | 0.8 | Options where someone they fear is weigh `1 - fear × (1 - odds) × this` |
+| `fleePull` | 2 | Fleeing weighs `1 + fear × this` |
+| `cautionPlace` | 0.7 | Options at a place they know is dangerous weigh `1 - danger × this × caution` |
+| `carePull` | 2 | Tending someone hurt weighs `1 + hurt × this × (0.5 + regard)` |
+| `cared` | 0.03 | Regard the one tended gains for whoever tends them |
+| `floor` | 0.1 | None of these weighs an option under this |
+| `recent` | 50 | Harms kept, for history and suspicion (and every one not noticed yet) |
+| `traits` | none | The terms trait roles are read from (`temper`, `courage`, `careful`, `forgiveness`): over Bree's mapping, else `trait.<role>` |
 
 ### Joi
 

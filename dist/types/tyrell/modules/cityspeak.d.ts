@@ -132,6 +132,8 @@ export declare class Cityspeak implements Module {
     readonly acts: Map<string, SocialActDef>;
     /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
     private barkSaid;
+    /** The lines by topic (indices, in the order declared), so choosing looks only at those that could fit; made again when lines are added. */
+    private index;
     private w;
     constructor(cfg?: Partial<CityspeakConfig>);
     /** Seconds between lines in a bark exchange (config.barkGap: setting it here sets the config). */
@@ -165,6 +167,8 @@ export declare class Cityspeak implements Module {
      * (Voice passes the talk's counter).
      */
     choose(who: Id, opts?: ChooseOpts): Said | null;
+    /** The indices of the lines that could answer a topic, in the order declared: its own, and (unless exact) those with no topic. */
+    private linesFor;
     /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
     private pick;
     private pickNow;

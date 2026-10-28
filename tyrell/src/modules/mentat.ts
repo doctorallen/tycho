@@ -86,6 +86,8 @@ export class Mentat implements Module {
     const task = this.w.tasks.get(c.id);
     if (!task) return null;
     p.plan = { task: task.id, stack: [], failed: {}, tries: 0, started: this.w.s.now, rank: c.rank, layer: c.layer };
+    // a task aimed at someone keeps who
+    if (task.target === 'person' && c.target) p.plan.target = c.target;
     if (!this.push(p, task.id)) {
       this.w.log('no-plan', p.id, { task: task.id });
       p.plan = null;
@@ -106,7 +108,7 @@ export class Mentat implements Module {
     const def = this.w.tasks.get(taskId);
     if (!def) return false;
     const failed = plan.failed[taskId] || [];
-    const ctx = this.w.ctx(p, { action: taskId });
+    const ctx = this.w.ctx(p, { action: taskId, ...(plan.target !== undefined ? { target: plan.target } : {}) });
     for (let i = 0; i < def.methods.length; i++) {
       if (failed.includes(i)) continue;
       const m = def.methods[i];
@@ -148,13 +150,14 @@ export class Mentat implements Module {
           continue;
         }
         if (w.actions.has(step)) {
-          const c = this.actionStep(p, { action: step });
+          // in a plan aimed at someone, a step aimed at someone is aimed at them
+          const c = this.actionStep(p, plan.target !== undefined && w.actions.get(step)?.target === 'person' ? { action: step, target: plan.target } : { action: step });
           if (!c) return this.fail(p, `can't ${step} now`);
           return c;
         }
         return this.fail(p, `unknown step ${step}`);
       }
-      const c = this.actionStep(p, step);
+      const c = this.actionStep(p, step.target === 'target' ? { ...step, target: plan.target } : step.target === undefined && plan.target !== undefined && w.actions.get(step.action)?.target === 'person' ? { ...step, target: plan.target } : step);
       if (!c) return this.fail(p, `can't ${step.action} now`);
       if (step.minutes !== undefined) c.minutes = step.minutes;
       return c;
@@ -170,7 +173,7 @@ export class Mentat implements Module {
   /** Where a go: step walks to: the nearest declared place its spec names that they can get to. */
   private destination(p: PersonState, spec: PlaceSpec): Id | null {
     const w = this.w;
-    for (const id of w.ring.resolve(spec, p)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
+    for (const id of w.ring.resolve(spec, p, p.plan?.target)) if (w.ring.get(id) && isFinite(w.ring.travel(p.place, id, p))) return id;
     return null;
   }
 

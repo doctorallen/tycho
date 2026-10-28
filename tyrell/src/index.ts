@@ -25,6 +25,7 @@ import { Athelas, DEFAULT_ATHELAS } from './modules/athelas';
 import { Delos, DEFAULT_DELOS } from './modules/delos';
 import { Voice, DEFAULT_VOICE } from './modules/voice';
 import { Bree, DEFAULT_BREE, OUTCOMES, breeStarter } from './modules/bree';
+import { Morgul, DEFAULT_MORGUL } from './modules/morgul';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -33,7 +34,7 @@ import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from '
 export const VERSION = '2.0.0';
 
 /** Every module that ships with Tyrell, by name. */
-export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree'] as const;
+export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree', 'morgul'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
@@ -61,6 +62,7 @@ export function create(opts: CreateOptions = {}): World {
     delos: () => new Delos(cfg.delos as any),
     voice: () => new Voice(cfg.voice as any),
     bree: () => new Bree(cfg.bree as any),
+    morgul: () => new Morgul(cfg.morgul as any),
   };
   const modules: Module[] = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -76,12 +78,12 @@ export const VoightKampff = { run, compare };
 export const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>> = {
   reverie: DEFAULT_REVERIE, fellowship: DEFAULT_FELLOWSHIP, wormtongue: DEFAULT_WORMTONGUE, cityspeak: DEFAULT_CITYSPEAK, mentat: DEFAULT_MENTAT,
   gaff: DEFAULT_GAFF, ceres: DEFAULT_CERES, cradle: DEFAULT_CRADLE, joi: DEFAULT_JOI, athelas: DEFAULT_ATHELAS, delos: DEFAULT_DELOS, voice: DEFAULT_VOICE,
-  bree: DEFAULT_BREE,
+  bree: DEFAULT_BREE, morgul: DEFAULT_MORGUL,
 } as unknown as Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>>;
 
 export {
   World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA,
-  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree,
+  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, Morgul,
   OUTCOMES, breeStarter,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
@@ -96,12 +98,13 @@ export type { StoryletDef, Phase, GaffConfig } from './modules/gaff';
 export type { GoodDef, ChainDef, GoodReport, ProductionReport, CeresConfig } from './modules/ceres';
 export type { CradleConfig } from './modules/cradle';
 export type { JoiRequest, JoiReply, JoiProvider, Spoken, JoiConfig } from './modules/joi';
-export type { CourseDef, CoursePhase, AthelasConfig } from './modules/athelas';
+export type { CourseDef, CoursePhase, CourseBranch, CourseSeverity, CourseView, AthelasConfig } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
 export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
 export type { LandRules } from './modules/landing';
 export type { Outcome, OutcomeKey, OutcomeDo, KindDef, TopicDef, TopicSource, MannerDef, BreeConfig, Exchange, ExchangeView, Turn, Feud, Finished, StarterOptions } from './modules/bree';
+export type { Intent, MeansUse, MeansDef, WoundDef, TrapDef, TaintDef, Harm, HarmView, Blow, Response, MorgulConfig } from './modules/morgul';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
-export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions } from './tools/voightkampff';
+export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions, VKHarm } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';
 export type { LogFilter } from './core/westmarch';

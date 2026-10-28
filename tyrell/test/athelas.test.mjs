@@ -185,3 +185,142 @@ test('courses are state: they rewind and save, and a world without them keeps no
   a.advance(DAY); c.advance(DAY);
   assert.equal(c.hash(), a.hash());
 });
+
+// ---------------------------------------------------------------------------
+// Athelas, grown: severity, worsening, branches, care, ending badly, quiet
+// phases (all opt-in: a course without them runs as it always did)
+// ---------------------------------------------------------------------------
+
+/** One person in a room, energy rising, a course to give them. */
+function room(course, opts = {}) {
+  const w = Tyrell.create({ seed: 's', start: 8 * HOUR, modules: opts.modules ?? ['athelas'], moduleConfig: opts.moduleConfig });
+  w.need({ id: 'energy', rise: 0.04, start: 0 });
+  w.place({ id: 'room' });
+  w.action({ id: 'sit', at: 'room', minutes: 2000, base: 0.1 });
+  w.action({ id: 'nap', at: 'room', minutes: 60, base: 0.1 });
+  if (course) w.athelas.course(course);
+  for (const id of opts.people ?? ['ana']) w.person(id, { place: 'room', ...(opts.def?.[id] || {}) });
+  return w;
+}
+
+test('severity stretches a course\'s phases and deepens what they do; sev reads it', () => {
+  const bruise = { id: 'bruise', phases: [{ id: 'sore', minutes: 120, rates: { energy: 2 }, weigh: { nap: 1.5 } }] };
+  const at = (sev) => { const w = room(bruise); w.athelas.afflict('ana', 'bruise', undefined, sev); return w; };
+  const len = (w) => { const c = w.athelas.of('ana')[0]; return c.until - c.since; };
+  assert.equal(len(at(undefined)), 120, 'without a severity, as written');
+  assert.equal(len(at(0.5)), 120, 'at sevAt, as written');
+  assert.equal(len(at(1)), 240, 'twice as long at 1');
+  assert.equal(len(at(0)), 60, 'half as long at 0');
+  const w = at(1);
+  const ctx = () => w.ctx(w.get('ana'));
+  assert.equal(w.athelas.of('ana')[0].severity, 1);
+  assert.equal(w.lang.value('sev:bruise', ctx()), 1);
+  assert.equal(w.lang.value('sev:nothing', ctx()), 0, 'not running: 0');
+  assert.equal(w.lang.value('sev:bruise', room(bruise, {}).ctx()), 0);
+  w.advance(60);
+  assert.ok(Math.abs(w.needOf('ana', 'energy') - 0.04 * 4) < 1e-9, `rates twice as deep: 2 squared (${w.needOf('ana', 'energy')})`);
+  const nap = w.mind.explain(w.get('ana'), 'nap')[0];
+  assert.ok(nap.parts.some(([n, v]) => n === 'bruise' && Math.abs(v - 2.25) < 1e-6), 'weights twice as deep: 1.5 squared');
+  const plain = at(undefined);
+  assert.equal(plain.lang.value('sev:bruise', plain.ctx(plain.get('ana'))), 0.5, 'a course with no severity reads as the one it\'s written for');
+  assert.equal(plain.athelas.of('ana')[0].severity, undefined);
+  // the effect takes a severity too
+  const e = room(bruise);
+  e.internally(() => e.lang.apply('afflict:bruise=0.75', e.ctx(e.get('ana'))));
+  assert.equal(e.athelas.of('ana')[0].severity, 0.75);
+  // and its own numbers, over the config's
+  const own = room({ ...bruise, severity: { stretch: 1, depth: 0 } });
+  own.athelas.afflict('ana', 'bruise', undefined, 1);
+  assert.equal(len(own), 120, 'a course whose severity stretches nothing');
+});
+
+test('again: worsen adds to the severity, up to 1, and the phase they\'re in runs as long as it would at the new one', () => {
+  const w = room({ id: 'beating', again: 'worsen', phases: [{ id: 'hurting', minutes: 100 }, { id: 'aching', minutes: 100 }] });
+  const seen = [];
+  w.on('afflicted', (e) => seen.push(e.again ?? 'new'));
+  w.athelas.afflict('ana', 'beating', 'bo', 0.5);
+  w.advance(50);
+  w.athelas.afflict('ana', 'beating', 'bo', 0.3);
+  const c = w.athelas.of('ana')[0];
+  assert.equal(c.severity, 0.8);
+  assert.ok(Math.abs(c.until - c.since - 100 * Math.pow(2, 0.6)) < 1e-3, 'stretched to the new severity');
+  w.athelas.afflict('ana', 'beating', 'bo', 0.5);
+  assert.equal(w.athelas.of('ana')[0].severity, 1, 'never past 1');
+  assert.deepEqual(seen, ['new', 'worsen', 'worsen']);
+});
+
+test('branches: a phase\'s next by conditions, so a tended cut heals and an untended one festers', () => {
+  const cut = { id: 'cut', phases: [
+    { id: 'bleeding', minutes: 60, next: [{ if: ['tended:cut'], to: 'healing' }, { to: 'festering' }] },
+    { id: 'festering', minutes: 120, next: 'healing' },
+    { id: 'healing', minutes: 60, next: null },
+    { id: 'never', minutes: 60 },
+  ] };
+  const w = room(cut, { people: ['ana', 'bo'] });
+  w.athelas.afflict('ana', 'cut');
+  w.athelas.afflict('bo', 'cut');
+  const tended = [];
+  w.on('tended', (e) => tended.push(e));
+  w.athelas.tend('ana', 'cut', 'bo');
+  assert.equal(w.lang.value('tended:cut', w.ctx(w.get('ana'))), 0.5, 'tendBase, with no skill to make it better');
+  assert.equal(w.athelas.of('ana')[0].until, 8 * HOUR + 60 - 60 * 0.25 * 0.5, 'and the phase ends sooner');
+  assert.equal(tended.length, 1);
+  w.advance(61);
+  assert.equal(w.athelas.of('ana')[0].phase, 'healing');
+  assert.equal(w.athelas.of('bo')[0].phase, 'festering');
+  w.advance(120);
+  assert.equal(w.athelas.of('bo')[0].phase, 'healing', 'next by name');
+  w.advance(61);
+  assert.equal(w.athelas.of('bo').length, 0, 'next null: it passes (never reaching the phase after)');
+});
+
+test('care is the better for skill; the effect tends the target, or themselves', () => {
+  const w = room({ id: 'cut', phases: [{ id: 'bleeding', minutes: 600 }] }, { people: ['ana', 'doc', 'cy'], moduleConfig: { athelas: { tendSkill: 'medicine' } }, def: { doc: { skills: { medicine: 0.8 } } } });
+  w.skill({ id: 'medicine' });
+  w.athelas.afflict('ana', 'cut');
+  w.athelas.afflict('cy', 'cut');
+  w.athelas.tend('ana', undefined, 'doc');
+  assert.ok(Math.abs(w.athelas.of('ana')[0].tended - 0.9) < 1e-9, '0.5, and half the rest by skill');
+  w.internally(() => w.lang.apply('tend', w.ctx(w.get('doc'), { target: 'cy' })));
+  assert.ok(Math.abs(w.athelas.of('cy')[0].tended - 0.9) < 1e-9, 'the person tends the target');
+  w.internally(() => w.lang.apply('tend', w.ctx(w.get('cy'))));
+  assert.ok(Math.abs(w.athelas.of('cy')[0].tended - 0.9) < 1e-9, 'a worse tending doesn\'t undo a better one');
+  w.athelas.tend('nobody');
+  assert.equal(w.s.mod.athelas.on.nobody, undefined);
+});
+
+test('a phase that ends in death: through Cradle; without it, they pull through to its next', () => {
+  const plague = { id: 'plague', phases: [{ id: 'gravely', minutes: 60, dies: 'the plague', next: 'recovering' }, { id: 'recovering', minutes: 60 }] };
+  const w = room(plague, { modules: ['athelas', 'cradle'] });
+  const gone = [];
+  w.on('gone', (e) => gone.push(e));
+  w.athelas.afflict('ana', 'plague');
+  w.advance(61);
+  assert.equal(w.get('ana').status, 'gone');
+  assert.deepEqual(gone.map((e) => e.why), ['the plague']);
+  assert.equal(w.cradle.departed().ana.why, 'the plague');
+  const lives = room(plague);
+  lives.athelas.afflict('ana', 'plague');
+  lives.advance(61);
+  assert.equal(lives.get('ana').status, 'active');
+  assert.equal(lives.athelas.of('ana')[0].phase, 'recovering', 'no Cradle: they pull through');
+});
+
+test('quiet phases: nobody notices (no feeling, under reads nothing); a phase that tells shows', () => {
+  const w = room({ id: 'nightshade', phases: [{ id: 'working', minutes: 60, quiet: true, feel: 'sick', rates: { energy: 3 } }, { id: 'sick', minutes: 60, tells: true, feel: 'sick' }] }, { modules: ['athelas', 'reverie'] });
+  w.reverie.feeling({ id: 'sick', label: 'Sick', weight: -0.2, minutes: DAY });
+  const shows = [];
+  w.on('shows', (e) => shows.push(e.phase));
+  w.athelas.afflict('ana', 'nightshade');
+  const ctx = () => w.ctx(w.get('ana'));
+  assert.equal(w.lang.value('under:nightshade', ctx()), false, 'quiet: not known');
+  assert.equal(w.lang.value('under', ctx()), 0);
+  assert.equal(w.athelas.of('ana')[0].quiet, true, 'the truth, for the game');
+  assert.equal(w.reverie.feelings('ana').length, 0, 'no feeling');
+  w.advance(30);
+  assert.ok(w.needOf('ana', 'energy') > 0.04 * 0.5 * 2.9, 'it works all the same');
+  w.advance(31);
+  assert.equal(w.lang.value('under:nightshade', ctx()), 'sick');
+  assert.deepEqual(shows, ['sick']);
+  assert.ok(w.reverie.feelings('ana').some((f) => f.id === 'sick'));
+});

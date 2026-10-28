@@ -89,7 +89,8 @@ export declare class Cradle implements Module {
     private applyBirth;
     /** Someone leaves for good ('died', 'moved away'...). Money passes on; those who cared grieve. */
     depart(id: Id, why?: string): void;
-    private applyDepart;
+    /** Someone leaves for good, inside the simulation (a course that ends in death, a killing). */
+    applyDepart(id: Id, why: string): void;
     day(): void;
     removed(p: PersonState, why: string): void;
 }

@@ -1,6 +1,6 @@
 # API reference
 
-The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api), [Bree](modules/bree.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
+The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api), [Bree](modules/bree.md#api), [Morgul](modules/morgul.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
 
 Throughout, **input** marks a method that changes the world through `world.input`: it's recorded for time walk and safe to call from the game. **Engine** marks a method that changes state directly: call it only from inside the simulation (effects, storylets, module hooks, custom input handlers).
 
@@ -21,7 +21,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 |---|---|
 | `create(opts?)` | Makes a new world: `World` |
 | `VERSION` | `'2.0.0'` |
-| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree']` |
+| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree', 'morgul']` |
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |
 | `DEFAULT_CONFIG` | The default `Config` |
@@ -29,7 +29,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `CORE_KNOBS` | The core's headline knobs: `{ needs: 'person', habits: 'person', learning: 'person', wishes: 'person', crowds: 'world' }` |
 | `SCHEMA` | The save schema version: `2` |
 | `MIGRATIONS` | Save migrations: `MIGRATIONS[v](state)` turns a version-`v` state into `v + 1`. See [Saving](saving.md) |
-| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice`, `Bree` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
+| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice`, `Bree`, `Morgul` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
 | `OUTCOMES` | Bree's outcomes, best first: `['warm', 'good', 'fine', 'awkward', 'sour', 'row']` |
 | `breeStarter(opts?)` | Bree's starter set as plain definitions: `{ kinds, topics, manners }` (see [Bree](modules/bree.md#the-starter-set)) |
 | `curveAt(curve, x)` | Evaluates a response curve at `x` in 0..1 |
@@ -42,7 +42,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `inHours(h, [from, to])` | Is hour `h` inside the span (wrapping past midnight)? |
 | `HOUR`, `DAY` | 60 and 1440 |
 
-Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `CityspeakConfig`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CeresConfig`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `JoiConfig`, `CourseDef`, `CoursePhase`, `AthelasConfig`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `LandRules`, `Outcome`, `OutcomeKey`, `OutcomeDo`, `KindDef`, `TopicDef`, `TopicSource`, `MannerDef`, `BreeConfig`, `Exchange`, `ExchangeView`, `Turn`, `Feud`, `Finished`, `StarterOptions`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `VKInteractions`, `Requirement`, `LogFilter`).
+Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `CityspeakConfig`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CeresConfig`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `JoiConfig`, `CourseDef`, `CoursePhase`, `CourseBranch`, `CourseSeverity`, `CourseView`, `AthelasConfig`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `LandRules`, `Outcome`, `OutcomeKey`, `OutcomeDo`, `KindDef`, `TopicDef`, `TopicSource`, `MannerDef`, `BreeConfig`, `Exchange`, `ExchangeView`, `Turn`, `Feud`, `Finished`, `StarterOptions`, `ChooseOpts`, `Intent`, `MeansUse`, `MeansDef`, `WoundDef`, `TrapDef`, `TaintDef`, `Harm`, `HarmView`, `Blow`, `Response`, `MorgulConfig`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `VKInteractions`, `VKHarm`, `Requirement`, `LogFilter`).
 
 ## Options
 
@@ -135,7 +135,7 @@ The decision settings, habits, pastimes and wishes:
 | `modules` | Map | Modules by name |
 | `hooks` | Module[] | Modules in the order their hooks run |
 | `replaying` | boolean | True while Esper replays (events are silent) |
-| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos`, `voice`, `bree` | | Each module, or `undefined` when it's off |
+| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos`, `voice`, `bree`, `morgul` | | Each module, or `undefined` when it's off |
 
 ## World methods
 
@@ -299,15 +299,17 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `granted` | `{ id, wish, x, label, dream }` | A wish came true |
 | `faded` | `{ id, wish, x, label }` | A wish faded unmet |
 | `stage` | `{ id, from, to }` | Cradle: a new life stage |
-| `afflicted` | `{ id, course, from, label, again? }` | Athelas: a course came on (or, with `again`, again) |
-| `course` | `{ id, course, phase, label }` | Athelas: a phase started |
+| `afflicted` | `{ id, course, from, label, again?, severity?, quiet? }` | Athelas: a course came on (or, with `again`, again) |
+| `course` | `{ id, course, phase, label, quiet? }` | Athelas: a phase started |
+| `shows` | `{ id, course, phase, label }` | Athelas: a phase that tells started: the harm shows |
+| `tended` | `{ id, by, courses, quality }` | Athelas: someone's courses were tended |
 | `recovered` | `{ id, course, cured, label }` | Athelas: a course passed or was cured |
 | `mutated` | `{ id, kind, what, by?, to? }` | Delos: a child was born with a mutation |
 | `voice:start` | `{ who, by }` | Voice: a talk began |
 | `voice:end` | `{ who, by, threads, why }` | Voice: a talk ended (`'bye'`, `'left'`, `'gone'`) |
 | `promise` | `{ who, by, id, state }` | Voice: a promise was made (`'open'`) or settled |
 | `bree:start` | ExchangeView | Bree: an exchange began |
-| `bree:turn` | Turn | Bree: a turn of one: who to whom, the step, topic and manner, how it landed, the words |
+| `bree:turn` | Turn | Bree: a turn of one: who to whom, the step, topic and manner, how it landed, the words; in a fight by numbers (Morgul), the blow (`harm`) |
 | `bree:joined` | `{ id, who }` | Bree: someone joined a group exchange |
 | `bree:escalated` | `{ id, from, to, by, against }` | Bree: talk turned into an argument, an argument into a fight |
 | `bree:witnessed` | `{ id, exchange, actor, kind, against }` | Bree: someone saw an exchange go wrong |
@@ -315,6 +317,16 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `bree:grudge` | `{ id, against, strength, why }` | Bree: a grudge formed or deepened |
 | `bree:feud` | `{ a, b, strength, why }` | Bree: a feud began, changed, or (strength 0) ended |
 | `bree:mended` | `{ id, with, why }` | Bree: someone made up their grudge |
+| `morgul:harm` | HarmView | Morgul: a harm (a blow, a trap, a dose, a fall...) |
+| `morgul:down` | `{ id, harm, hurt }` | Morgul: someone went down |
+| `morgul:up` | `{ id, why, by }` | Morgul: someone came round, or was helped up |
+| `morgul:killed` | `{ id, by, harm }` | Morgul: someone was killed (only with `lethality` above 0) |
+| `morgul:set` | `{ trap, kind, place, by, for, seenBy }` | Morgul: a trap was set |
+| `morgul:sprung` | `{ trap, kind, place, id, by, harm }` | Morgul: a trap caught someone |
+| `morgul:disarmed` | `{ trap, kind, place, by }` | Morgul: a trap was disarmed |
+| `morgul:tainted` | `{ taint, course, place, owner, item, n, by, for, seenBy }` | Morgul: food or drink was tainted |
+| `morgul:suspect` | `{ id, suspect, harm, to, strength, why, right }` | Morgul: someone suspects someone of a harm they didn't see done |
+| `morgul:respond` | Response | Morgul: a character answers a fight with the player (fight, flee, yield, help) |
 
 Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
 
@@ -336,12 +348,13 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `trigger`, `bump`, `draw` | Gaff |
 | `pay`, `rent`, `income`, `stock` (`restock`) | Ceres |
 | `birth`, `pair`, `depart` | Cradle |
-| `afflict`, `cure`, `hasten` | Athelas |
+| `afflict`, `cure`, `hasten`, `tend` | Athelas |
 | `genome` (`set`) | Delos |
 | `voice.start`, `voice.answer`, `voice.end` | Voice |
 | `bree.start`, `bree.end`, `bree.witness` (`witnessed`), `bree.grudge` (`grudgeAgainst`), `bree.feud`, `bree.reconcile` | Bree |
+| `morgul.harm`, `morgul.set`, `morgul.spring`, `morgul.disarm`, `morgul.taint`, `morgul.tend`, `morgul.near` | Morgul |
 
-`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start`, `voice.answer` and `bree.start` apply at once even inside a listener, because they return a value.
+`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start`, `voice.answer`, `bree.start` and `morgul.harm` apply at once even inside a listener, because they return a value.
 
 ## Types
 
@@ -460,7 +473,7 @@ A person in the state (`world.get(id)`):
 | `JobDef` | `{ id, place, action, shifts, days?, wage? }` | [Deciding](deciding.md#jobs-and-shifts) |
 | `Directive` | `{ do, at?, target?, until?, rank?, repeat?, label?, done? }` | [Deciding](deciding.md#directives) |
 | `DeedDef` | `{ feeling?, witnessFeeling?, memory?, regard?, sentiment?, fame?, infamy?, crime? }` | [Integration](integration.md#sensing-and-deeds) |
-| `Stimulus` | `{ kind, actor, what?, place?, seenBy?, strength?, disguise?, data? }` | [Integration](integration.md#sensing-and-deeds) |
+| `Stimulus` | `{ kind, actor, what?, place?, seenBy?, strength?, disguise?, severity?, data? }` | [Integration](integration.md#sensing-and-deeds) |
 | `Consideration` | `{ name?, input, range?, curve?, out? }` | [Deciding](deciding.md#considerations-and-curves) |
 | `Curve` | a curve name, `[[x, y], ...]`, or `(x) => y` | [Deciding](deciding.md#considerations-and-curves) |
 | `Cond`, `Effect` | a string, or a function of `Ctx` | [Conditions](conditions.md) |

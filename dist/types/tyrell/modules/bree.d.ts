@@ -3,6 +3,7 @@ import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonStat
 import type { World } from '../core/world';
 import { DAY } from '../core/util';
 import type { LandRules } from './landing';
+import type { Blow } from './morgul';
 /** The steps an exchange can come out at, best first. */
 export type Outcome = 'warm' | 'good' | 'fine' | 'awkward' | 'sour' | 'row';
 export declare const OUTCOMES: readonly Outcome[];
@@ -145,6 +146,14 @@ export interface BreeConfig {
     talk: number;
     /** The chance a meeting (two people doing something together) starts an exchange, before talk. Default 0.3. */
     strike: number;
+    /**
+     * Two people still together after an exchange between them is done (both
+     * free, at the same place) may strike up another this many minutes later,
+     * by the same chance, and every as many after while they stay together
+     * and nothing strikes: people sitting side by side talk on and off. 0:
+     * only when they meet. Default 0.
+     */
+    again: number;
     /** Nobody strikes up an exchange, joins one, or keeps one going while doing an action with one of these tags. Default ['sleep']. */
     quiet: string[];
     /** A kind that relieves a pressing need is more appealing: weight × (1 + relief × urgency × needPull), summed over its needs. Default 2. */
@@ -446,6 +455,8 @@ export interface Turn {
     text?: string;
     /** The exchange ends with this turn. */
     end: boolean;
+    /** A fight by numbers (Morgul): the blow this turn landed, one way or the other. */
+    harm?: Blow;
 }
 export interface StarterOptions {
     /** Only these kinds (ids); default all. */
@@ -664,6 +675,8 @@ export declare class Bree implements Module {
      * walk off, or let it go?
      */
     private react;
+    /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
+    private stepper;
     /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
     private escalate;
     /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */
@@ -707,9 +720,19 @@ export declare class Bree implements Module {
     consider(p: PersonState, cand: Candidate): Array<[string, number]> | void;
     /** Two people spend time together: now and then one strikes up an exchange. */
     met(a: PersonState, b: PersonState, _place: Id, minutes: number): void;
-    /** An action that interacts (its `interact`) begins its exchange with its target, over its length. */
+    /**
+     * An action that interacts (its `interact`) begins its exchange with its
+     * target, over its length; with no target, with whoever there its
+     * `interactWith` finds (who leaves any exchange they're in for it).
+     */
     started(p: PersonState, d: Doing): void;
-    /** The next turn of an exchange comes due. */
+    /** Who an action with no target interacts with: the first one at the place (by id) who is free and for whom its interactWith holds, someone not in an exchange before someone in one. */
+    private partner;
+    /** Two people who've talked may strike up again in config.again minutes, if they're still together then. */
+    private later;
+    /** Still together (free, at the same place, neither in an exchange) for a few minutes more: a meeting of Bree's own, or another wait. */
+    private again;
+    /** The next turn of an exchange comes due, or two who talked may talk again. */
     timer(item: QueueItem): void;
     day(): void;
     removed(p: PersonState): void;

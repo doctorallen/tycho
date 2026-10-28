@@ -155,6 +155,23 @@ test('lines: the most specific that matches wins', () => {
   assert.equal(cs.choose('kofi', { topic: 'greet', to: 'player' }).key, 'greet_player_fixed');
 });
 
+test('lines: a topic is answered by its own lines and those with none, in the order declared, and lines added later count', () => {
+  const w = rocinante({ start: 7 * HOUR });
+  const cs = w.cityspeak;
+  cs.addLines([{ key: 'odd', text: 'Hm.', pri: 5 }, { key: 'odd_topic', topic: 'odd', text: 'Odd.' }]);
+  assert.equal(cs.choose('kofi', { topic: 'greet' }).key, 'odd', 'a line with no topic can win a topic, if it\'s specific enough');
+  assert.equal(cs.choose('kofi', { topic: 'greet', exact: true }).key, 'greet', 'but not an exact one');
+  assert.equal(cs.choose('kofi', { topic: 'odd', exact: true }).key, 'odd_topic');
+  assert.equal(cs.choose('kofi', { topic: 'later', exact: true }), null);
+  cs.line({ key: 'later', topic: 'later', text: 'Later.' });
+  assert.equal(cs.choose('kofi', { topic: 'later', exact: true }).key, 'later', 'a line declared after a choice is seen');
+  // ties keep the order lines were declared in: the same draw as before
+  cs.addLines([{ key: 'tie_a', topic: 'tie', text: 'A' }, { key: 'tie_none', text: 'N', pri: 1 }, { key: 'tie_b', topic: 'tie', text: 'B' }]);
+  const picks = new Set();
+  for (let i = 0; i < 40; i++) picks.add(cs.choose('kofi', { topic: 'tie', exact: true, salt: [i] }).key);
+  assert.deepEqual([...picks].sort(), ['tie_a', 'tie_b']);
+});
+
 test('saying something on purpose: remembered, with cooldowns and replies', () => {
   const w = rocinante({ start: 7 * HOUR });
   w.advanceTo(8 * HOUR); // Mara is at the cafe

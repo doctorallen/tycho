@@ -23,3 +23,4 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 Proposed, and not built yet:
 
 - [harm.md](harm.md): people and creatures hurting each other (fights, weapons, spells, traps, poison, accidents): what follows in Morgul, a Tyrell module, what's decided and the order to build it (the moment, `Tycho.harm`, is built: above).
+- [events.md](events.md): watching the simulation's events by impact (a death near 1, a chat near 0) above a threshold you set: impact in Tyrell's log, the view in the development tools.

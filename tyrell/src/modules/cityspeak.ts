@@ -135,6 +135,8 @@ export class Cityspeak implements Module {
   readonly acts = new Map<Id, SocialActDef>();
   /** Bark cooldowns are kept outside the state: barks only happen near the player, so they mustn't change the world. */
   private barkSaid = new Map<string, number>();
+  /** The lines by topic (indices, in the order declared), so choosing looks only at those that could fit; made again when lines are added. */
+  private index: { n: number; by: Map<string, number[]>; none: number[] } | null = null;
   private w!: World;
 
   constructor(cfg: Partial<CityspeakConfig> = {}) { this.config = { ...DEFAULT_CITYSPEAK, ...cfg }; }
@@ -203,6 +205,27 @@ export class Cityspeak implements Module {
     return this.pick(who, opts)?.said ?? null;
   }
 
+  /** The indices of the lines that could answer a topic, in the order declared: its own, and (unless exact) those with no topic. */
+  private linesFor(topic: string | undefined, exact: boolean | undefined): number[] {
+    let ix = this.index;
+    if (!ix || ix.n !== this.lines.length) {
+      const by = new Map<string, number[]>(), none: number[] = [];
+      this.lines.forEach((l, i) => {
+        if (l.topic === undefined) { none.push(i); return; }
+        const list = by.get(l.topic);
+        if (list) list.push(i); else by.set(l.topic, [i]);
+      });
+      ix = this.index = { n: this.lines.length, by, none };
+    }
+    if (topic === undefined) return ix.none;
+    const own = ix.by.get(topic) ?? [];
+    if (exact || !ix.none.length) return own;
+    if (!own.length) return ix.none;
+    const out: number[] = [];
+    for (let a = 0, b = 0; a < own.length || b < ix.none.length;) out.push(b >= ix.none.length || (a < own.length && own[a] < ix.none[b]) ? own[a++] : ix.none[b++]);
+    return out;
+  }
+
   /** The line choose() would pick, with its index. Looking only: chance: conditions peek. */
   private pick(who: Id, opts: ChooseOpts): { said: Said; i: number } | null {
     return this.w.peek(() => this.pickNow(who, opts));
@@ -218,7 +241,8 @@ export class Cityspeak implements Module {
     let bestSpec = -1;
     // with `avoid`: every line that fits, by how specific it is
     const all: Array<{ l: LineDef; i: number; spec: number }> | null = opts.avoid ? [] : null;
-    this.lines.forEach((l, i) => {
+    const lines = this.lines;
+    const fits = (l: LineDef, i: number): void => {
       if (opts.topic !== undefined && l.topic !== undefined && l.topic !== opts.topic) return;
       if (opts.topic === undefined && l.topic !== undefined) return;
       if (opts.exact && l.topic === undefined) return;
@@ -246,7 +270,8 @@ export class Cityspeak implements Module {
       if (l.cooldown && last !== undefined && now - last < l.cooldown) return;
       if (all) all.push({ l, i, spec });
       if (spec > bestSpec) { bestSpec = spec; best = [{ l, i }]; } else if (spec === bestSpec) best.push({ l, i });
-    });
+    };
+    for (const i of this.linesFor(opts.topic, opts.exact)) fits(lines[i], i);
     if (!best.length) return null;
     if (all && opts.avoid) {
       // the most specific level with a line not avoided; else the most specific lines, said again

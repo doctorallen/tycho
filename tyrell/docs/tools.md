@@ -126,6 +126,7 @@ Built-in checks:
 | `esper` | Going back 6 hours and forward again changes the world (skipped with Esper off) |
 | `save-load` | A saved and loaded world differs from the original, or runs differently for 3 more hours |
 | `interactions` | (Only when asked for by name.) Someone is in two of Bree's exchanges at once, an exchange has gone on for over 6 hours, or a grudge is out of range |
+| `harm` | (Only when asked for by name.) Someone was killed with `lethality` 0; meant harm someone saw done left them no grudge (with Bree); a harm's severity or someone's hurt is out of range; someone has been down for over 6 hours; or, with at least six suspicions of poisonings, the poisoner was never suspected, or suspected every time |
 
 A custom check:
 
@@ -139,7 +140,7 @@ const noStrandedKids = {
 Tyrell.VoightKampff.run({ build: (seed) => buildMyTown(Tyrell, { seed }), checks: ['capacity', noStrandedKids] });
 ```
 
-`sample(w, acc, fail)` is called at every sample, `end(w, acc, fail)` once at the end; `acc` is a scratch object shared across calls.
+`start(w, acc, fail)` is called once, when the world is built (to listen for events), `sample(w, acc, fail)` at every sample, `end(w, acc, fail)` once at the end; `acc` is a scratch object shared across calls.
 
 `VKReport`:
 
@@ -155,6 +156,7 @@ Tyrell.VoightKampff.run({ build: (seed) => buildMyTown(Tyrell, { seed }), checks
 | `stats.decisions` | How many decisions were made |
 | `stats.ms` | How long the run took |
 | `stats.interactions` | When people interacted (Bree): exchanges and their turns, by kind and by outcome, escalations, people who walked off and who stepped in, and the grudges and feuds at the end |
+| `stats.harm` | When people harmed each other (Morgul): harms by how they came, fights by numbers and their blows, downs and killings, traps set and sprung, taints and doses eaten, suspicions (right and wrong), tendings, answers to the player, and the wounds open and people down at the end |
 
 `Tyrell.VoightKampff.compare(report, baseline, tolerance = 0.05)` returns the differences between two reports: action shares and mean mood further apart than the tolerance. An empty list means they match. Keep a baseline report from a run you're happy with, and compare after changes to catch behavior drifting.
 
@@ -171,14 +173,14 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `<setup.js>` | A module exporting `(Tyrell, { seed }) => world`, loaded with `require` (CommonJS; an ES module with a default export works on Node versions that can require ES modules) |
 | `--days n` | Days to run (default 3) |
 | `--seed s` | The seed (default `'voight-kampff'`) |
-| `--with option` | Passes `{ option: true }` to the setup function (`--with bree` for Rocinante's interactions); as many as you like |
-| `--check name` | Adds a check to the usual ones (`--check interactions`); as many as you like |
+| `--with option` | Passes `{ option: true }` to the setup function (`--with bree` for Rocinante's interactions, `--with harm` for its harm); as many as you like |
+| `--check name` | Adds a check to the usual ones (`--check interactions`, `--check harm`); as many as you like |
 | `--json` | Print the whole report as JSON |
 | `--save file` | Write the report to a file (for a baseline) |
 | `--baseline file` | Compare with a saved report |
 | `--tolerance x` | The comparison tolerance (default 0.05) |
 
-It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, and `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check.
+It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted or harmed each other, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check, and `npm run vk:harm` a week of it with harm (Morgul) and the `harm` check.
 
 ## Rocinante
 
@@ -192,7 +194,7 @@ The sample town that ships with Tyrell, named for the ship in The Expanse: `exam
 | **Actions** | Sleeping (slowing other needs), naps, showers, reading (it trains lore, and palls), eating out (bread from the cafe's stock) and in, shopping, stealing, drinking (it palls, and goes to their heads), walks and sitting in the park (they pall together), chatting (a social act), helping out (a deed), work for each job (baking makes the cafe's bread from its flour, more of it the better Mara bakes; baking and fixing train their skills), a breakdown's sulk and bender, and the radio repair |
 | **Tasks** | Dinner at home (from the cupboard, or shop first with `get:food`); fixing the radio (take it in if they think the workshop's open, buy another, or do without) |
 | **Growth** | Skills for baking, repair and lore, with Mara's and Tomas's starting levels and talents; Kofi's instincts (he'd rather be outdoors, or reading); wishes for a night at the Belt, some fresh air and a talk with a friend, and dreams of mastering a trade |
-| **Modules** | Feelings, breaks and memory kinds; deeds; a household, the Watch and the regulars; theft and stripping as crimes; goods, a pension, a grant and rent, and the cafe's bread chain (flour to bread); lines, two practices and a social act; storylets for rain and a blackout; strangers passing through the main street; genomes for everyone (eyes, hair, traits, talents, instincts); a few drinks that wear off into a sore head, and a cold Kofi brings home that goes round; the player's talks (how someone is, Ruth's radio and a promise to fix it); with `bree`, Bree's starter set of interactions, a natter that interacts, a fight the Watch hears of, a few lines for their words, the natures they read, and a grudge Sam bears Dev |
+| **Modules** | Feelings, breaks and memory kinds; deeds; a household, the Watch and the regulars; theft and stripping as crimes; goods, a pension, a grant and rent, and the cafe's bread chain (flour to bread); lines, two practices and a social act; storylets for rain and a blackout; strangers passing through the main street; genomes for everyone (eyes, hair, traits, talents, instincts); a few drinks that wear off into a sore head, and a cold Kofi brings home that goes round; the player's talks (how someone is, Ruth's radio and a promise to fix it); with `bree`, Bree's starter set of interactions, a natter that interacts, a fight the Watch hears of, a few lines for their words, the natures they read, and a grudge Sam bears Dev; with `harm` (and Bree), Morgul: a brawl at the Belt Gaff paces, a snare Pip sets in the barn, nightshade in the cafe's stew, wounds that heal or fester, first aid, flight and revenge |
 
 Run it:
 
@@ -212,4 +214,4 @@ console.log(world.describe('ruth'));
 <script>const world = buildRocinante(Tyrell, {});</script>
 ```
 
-Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`, `moduleConfig` (merged over Rocinante's own, module by module), `tuned` (a town tuned to taste: the headline knobs for everyone and a few people's own `tune`; see [Tuning](tuning.md#an-example)), and `bree` (Bree's interactions between the townsfolk: see [Bree](modules/bree.md#example)). Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.
+Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`, `moduleConfig` (merged over Rocinante's own, module by module), `tuned` (a town tuned to taste: the headline knobs for everyone and a few people's own `tune`; see [Tuning](tuning.md#an-example)), `bree` (Bree's interactions between the townsfolk: see [Bree](modules/bree.md#example)), and `harm` (harm between them, with Bree: see [Morgul](modules/morgul.md#example)). Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.

@@ -49,7 +49,7 @@ When something is sensed, each witness in `seenBy` (not the actor):
 
 1. **Recognizes the actor, or doesn't.** The chance is `strength × (1 - disguise)`, times `recognizeStranger` (0.5) if they don't know the actor. They know the actor if they have a relationship record with them (Fellowship) or a file on them (Reverie).
 2. **Believes it.** They believe `did:<actor>:<kind>` (or `did:someone:<kind>` if they didn't recognize the actor) with the value `what` (or `true`), as something seen, with strength at least 0.3 (`sawStrength`).
-3. **Remembers it**, as a memory of kind `saw:<kind>`, with importance 4 + 6 × severity for a crime (3 otherwise).
+3. **Remembers it**, as a memory of kind `saw:<kind>`, with importance 4 + 6 × severity for a crime (3 otherwise). The severity is the stimulus's own if it gives one (a harm's, from [Morgul](morgul.md)), else the crime's, and a report it leads to adds heat and infamy by it too.
 4. **Feels it**, for a crime: the crime's `feeling`.
 5. **Maybe reports it**, for a crime whose actor they recognized: with probability `report × (0.5 + lawful) × (1 - fear × 0.3) × (1 - max(0, regard) × 0.8) × reporting`, clamped to 0..1, where `lawful` is their trait `lawful` (else their value `law`, else 0.5), `fear` is `1 - courage` (0.5 if they have no courage trait), `regard` is their regard for the actor, 0.3 and 0.8 are `fearWeight` and `loyalty`, and `reporting` is the headline knob (the world's times the witness's own; 0: nobody reports). A report is scheduled `reportDelay` (10 to 90) minutes later.
 

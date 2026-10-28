@@ -42,16 +42,19 @@ flowchart LR
 
 | Field | Meaning |
 |---|---|
-| `to` | Who it struck |
-| `by` | Who did it: a person, `'player'`, or nobody (a rockfall) |
-| `kind` | The game's own: `blunt`, `cut`, `burn`, `shock`, `poison`... |
+| `to` | Who it struck: a person, or `'player'` |
+| `by` | Who did it: a person, `'player'`, or nobody (null: a rockfall) |
+| `kind` | The game's own: `blunt`, `cut`, `burn`, `shock`, `poison`... (default: what it was done with's first kind) |
 | `severity` | 0..1, how bad, on the same scale as Wormtongue's crimes: a slap 0.05, a beating 0.5, a killing blow 1. A game with a health bar gives the share of it the hit took |
-| `via` | How it came: `blow`, `trap`, `dose`, `fall`, `fire`, `area`... the game's |
-| `intent` | `meant`, `defense`, `careless` or `accident` |
-| `cause` | The hazard it came from, if it came from one (a trap, a tainted pot) |
-| `what` | What it was done with: a good (a knife, a cudgel), a trap's kind |
-| `place` | Where |
+| `via` | How it came: `blow`, `trap`, `dose`, `fall`, `fire`, `area`... the game's. A blow (or something thrown, shot or cast: Morgul's `direct`) is seen done; anything else leaves suspicion |
+| `intent` | `meant`, `defense`, `careless` or `accident` (default `meant` if someone did it, else `accident`) |
+| `cause` | The hazard it came from, if it came from one: a trap's or a taint's id |
+| `what` | What it was done with: a means (a knife, a cudgel), an item, a trap's kind |
+| `place` | Where (default: where the one struck is) |
 | `seenBy` | Who saw it land: from the game's sight on screen (`Tycho.minds.witnesses`), everyone at the place off screen |
+| `course` | The Athelas course it starts, over the wound it would leave (a dose's own) |
+
+`world.morgul.harm(h)` takes one from the game (an input, recorded) and returns it as it stands: its `id`, the `wound` and `course` it left, whether it's `shown` yet (a dose isn't, until its course tells), and how `hurt` the one struck is now.
 
 A health bar is one game's fast pool, not the measure of harm. The general case is the wound it leaves, a condition that runs its course, so a game with no health still has harm: a shock from a rigged machine can leave someone with shaking hands for an hour. That goes for the player too: harm to the player leaves wounds, not a health bar (Lodestar's Kindler keeps his light, which is his health already).
 
@@ -239,78 +242,85 @@ What's Tycho's in Lodestar now: the two pipelines and their stock stages, the ho
 
 ## Tyrell: what follows
 
-Morgul, a Tyrell module. It's inert until the game declares a wound: a world with no harm saves and hashes as if Morgul were off. All its state is plain JSON in `world.s.mod.morgul`; everything from outside is an input, so time walk records it, and a poisoning rewinds like anything else.
+Morgul, a Tyrell module, built: [morgul.md](../tyrell/docs/modules/morgul.md) has all of it, and [Athelas](../tyrell/docs/modules/athelas.md) grew what wounds and poison need ([below](#athelas-grown)). It's inert until the game declares a means, a wound or a trap: a world with no harm saves and hashes as if Morgul were off. All its state is plain JSON in `world.s.mod.morgul`; everything from outside is an input, so time walk records it, and a poisoning rewinds like anything else. Off screen it draws from a stream of its own, so people's own draws stay as they were.
 
-### Wounds
+### Means and wounds
 
-The game maps harm to wounds: by kind and by how severe, the first that fits.
+The means are declared once and shared with `Tycho.harm` (Morgul reads `id`, `kinds`, `use`, `severity`, `course`, and keeps the rest); a character holds one as a Ceres good of the same id. The game maps harm to wounds: by kind, by how severe, by what it was done with and how it came, the first that fits.
 
 ```js
 const M = world.morgul;
+M.means({ id: 'cudgel', kinds: ['blunt'], use: 'strike', severity: 0.2 });
+M.means({ id: 'nightshade', kinds: ['poison'], use: 'dose', course: 'nightshade', severity: 0.45 });
 M.wound({ id: 'bruised', kinds: ['blunt'], at: [0, 0.3], course: 'bruised' });
 M.wound({ id: 'beaten', kinds: ['blunt'], at: [0.3, 1], course: 'beaten' });
-M.wound({ id: 'cut', kinds: ['cut'], course: 'cut' });   // festers if nobody tends it
-M.wound({ id: 'nightshade', kinds: ['poison'], what: 'nightshade', course: 'nightshade' });
+M.wound({ id: 'cut', kinds: ['cut'], course: 'cut' });   // festers if nobody tends it: the course's branches
 ```
 
-A wound is an Athelas course carrying the harm's severity: it runs its phases (sore, then stiff, then healed), changes what they need and can do while it lasts, and heals in its own time. Someone's `hurt` is the sum of their open wounds' severities, easing as each heals: two beatings in a day are worse than one.
+A wound is an Athelas course afflicted at the harm's severity: it runs its phases (sore, then stiff, then healed), changes what they need and can do while it lasts, and heals in its own time (faster or slower by the `healing` knob). Someone's `hurt` is the sum of their open wounds' severities, each by its phase's `hurts` (1 at first, less as it heals), so it eases as each heals; with `again: 'worsen'` two beatings in a day are worse than one.
 
 ### Down and dead
 
-At `downAt` (0.8) hurt they go down: they stop, can do nothing, and lie there until someone helps them up or it passes. At 1 they may die, as often as the `lethality` knob says (0 by default: nobody dies of harm unless the game says so): a departure through Cradle (`depart(id, 'killed')`), with grief for those who loved them, inheritance, and the one who did it remembered by everyone who knew.
+At `downAt` (0.8) hurt they go down: they stop (and leave any exchange), lie there (the down action, above everything, everything else ruled out), and come round after a while, or sooner when someone helps them up (the `tend` effect). At `killAt` (1) they may die, with `deathChance` times the `lethality` knob (0 by default: nobody dies of harm unless the game says so): a departure through Cradle (`'killed'`), with grief for those who loved them, inheritance, the game's crime for a killing to whoever saw it, and the one who did it remembered by whoever knew them and believes it. Without Cradle nobody dies. A wound's phase that ends in death (a cut gone bad) kills only as often as lethality says, and otherwise they pull through.
 
 ### The victim
 
-- **Feelings**, through Reverie: pain while the wound lasts, fear or anger by their temper, shaken for a while after.
-- **A memory** of it, as important as it was severe, with who did it if they know.
-- **What they believe**: who did it, as seen if they saw it, else suspected (below).
-- **A grudge** against whoever did it, through Bree, by the severity and the intent: little for an accident, none for a blow they started themselves. A harm between two households can set them feuding.
-- **Fear of them** (a sentiment): they keep out of the way, give way, or stay home.
-- **Fear of the place**: a place where they were hurt, or where they believe a trap is, weighs less for a while (the `caution` knob).
+- **Feelings**, through Reverie: `in_pain`; `furious` or `scared`, by their temper and nerve; `shaken` after a bad one.
+- **A memory** of it, as important as it was severe, about who did it if they know.
+- **What they believe**: who did it, as seen if it was done to their face (a blow), else suspected (below).
+- **A grudge** against whoever did it, through Bree, by the severity and the intent's share (`intents`: meant 1, careless 0.4, accident 0.1, defense 0), so none for a blow struck back in a fight they started. Meant harm between two households can set them feuding (`feud`, off by default).
+- **What they hold against them** (`hurt_by`), fading by their forgiveness: revenge grows from it.
+- **Fear of them**, more for the timid, fading by their courage: they keep away, want to leave when they're about, and fight back less.
+- **Fear of the place**: a place where they were hurt, or where they believe a trap or a taint is, weighs less for a while (the `caution` knob).
+- **Less regard**, and a note in their file (`file:<who>.harmed`).
 
 ### Onlookers and the law
 
-Whoever saw it believes it (`did:<who>:harm`), remembers it, thinks less of whoever did it, and may step in. A harm the game declares a crime (meant harm as `assault`, a killing as `murder`, careless harm as `negligence`) goes to Wormtongue with its severity: reports to the watch, heat for the player, infamy, and gossip that carries it to people who never saw it. Self-defense isn't a crime.
+Whoever saw it believes it (`did:<who>:harm`), remembers it, thinks less of whoever did it. A harm the game declares a crime (`crimes: { meant: 'assault', careless: 'negligence', killed: 'murder' }`) goes to Wormtongue with the harm's own severity (a stimulus can carry one now): reports to the watch, heat for the player, infamy, and gossip that carries it to people who never saw it. Self-defense is never a crime. Blows in a fight are Bree's to witness. Onlookers don't step in on their own outside a fight (the game's on-screen choice, or Bree's stepping in).
 
 ### Traps
 
-A hazard is something set at a place that will harm whoever it catches.
-
 ```js
-M.trap({ id: 'snare', severity: 0.25, kind: 'cut', hidden: true, uses: 1, catch: 0.3 });
+M.trap({ id: 'snare', kind: 'cut', severity: 0.25, hidden: true, uses: 1, catch: 0.3 });
 world.action({ id: 'set_snare', at: 'tag:path', minutes: 20, tags: ['harm'], if: ['has:snare'], then: ['take:snare', 'set:snare'] });
+world.morgul.set('snare', { by: 'pip', place: 'barn', for: 'tomas' });   // the game's own (the player's), recorded
 ```
 
-`set:<trap>` sets one where they are, with them as its setter and, in a task with a target, that target as who it's for. Off screen it catches people who come to or do something at its place, with its `catch` chance (less for someone careful, none for someone who knows it's there); one set for someone catches only them (a snare on their own gate). On screen the game draws it as a trigger and says when it springs. Whoever saw it set knows it's there: they may warn whoever it's for, disarm it, or keep quiet; gossip carries it.
+`set:<trap>` sets one where they are, with them as its setter and the action's target (a plan's target) as who it's for. Off screen, whenever someone starts something at its place, it may catch them, with its `catch` chance (less for someone careful, less for one in plain sight, never for someone who knows it's there); one set for someone catches only them. Whoever saw it set knows it's there (`trap:<id>`) and who set it (`set:<id>`): they steer clear, warn whoever it's for if they like them (`warnAt`), disarm it (the `disarm` effect), or keep quiet; gossip carries it. On screen the game draws it as a trigger and reports when it springs (`morgul.spring`); the regions the game says are near (`morgul.near`, by default the regions in focus) are left to it, so nobody is caught twice. It's an input rather than a read of the focus, so a rewind replays it as it was.
 
 ### Poison
 
-A taint goes into a place's stock (Ceres) or into someone's food:
-
 ```js
 M.taint({ place: 'stall', item: 'noodles', n: 3, course: 'nightshade', by: 'vey' });
+world.action({ id: 'spike', target: 'person', at: 'cafe', if: ['has:nightshade'], then: ['take:nightshade', 'taint:nightshade'] });
 ```
 
-Tainted servings travel with the goods: bought, they go home with the buyer (the pantry keeps the count); used or eaten on the spot, they afflict whoever eats them. The poison's course starts quiet (a phase nobody notices), then shows (a phase that `tells`), and that's when the questions start. A poisoner can aim at one person (the meal they'll eat), or not care who.
+A taint goes into a place's stock of a good, a place's pot (whatever's eaten there next), or someone's goods. Tainted servings travel with the goods: bought, they go home with the buyer (their household's pantry keeps the count); used or eaten on the spot, each serving is tainted with the chance of what's left, and whoever gets one has a harm (`via: 'dose'`) that starts the course. The poison's course starts quiet (a phase nobody notices, not even the one eating), then shows (a phase that `tells`), and that's when the questions start. A poisoner can aim at one person (`for`: the meal they'll eat), or not care who. Whoever saw it dosed knows who did it, and won't eat there.
 
 ### Suspicion
 
-When a harm is seen, whoever saw it knows who did it. When it isn't (a trap sprung, a poison that tells, a body found), suspicion falls where people have reason to put it: whoever set or served it if anyone saw that; whoever bore the victim a grudge (Bree's `animosity`); whoever was about. Each is a belief, as strong as the evidence, and it can be wrong. A scapegoat can be blamed and hated for a harm someone else did, and gossip spreads the wrong name as readily as the right one. Nobody investigates: suspicion is all there is, and working out the truth is the player's to do.
+When a harm is seen done, whoever saw it knows who did it. When it isn't (a trap sprung, a poison that tells), the victim and whoever saw them struck down may suspect someone: whoever saw it set or dosed knows; anyone else, by chance (`suspect` times the `suspicion` knob), draws a suspect by the evidence: being told who set or dosed it, having served it (the place's owner, staff on shift), a grudge against the victim (Bree's `animosity`), being about when it was done or when it struck; weighed up by dislike and down by liking. Each is a belief (`did:<suspect>:harm`), as strong as the evidence, and it can be wrong: a scapegoat is blamed, feared and hated for a harm someone else did, and gossip spreads the wrong name as readily as the right one. Nobody investigates: suspicion is all there is, and working out the truth is the player's to do.
 
 ### Fights by numbers
 
-Off screen, a Bree fight comes out by a contest. Each turn of it, one of them lands a blow, by the odds of their `might` (the game's considerations: strength, size, skill, nerve, what they're holding: a [means](#means-weapons-spells-poisons-traps), by its `severity`) and how hurt each already is. A fight ends as Bree's do, by someone stepping in or someone walking off, and two more ways: someone yields (hurt past `yieldAt`, sooner for the timid), or someone goes down. Everything above then follows from each blow.
+A Bree fight (a kind in `fights`) comes out by a contest, wherever it is. Both fighters are held in it (the fighting action) until it's over. Each turn one of them lands a blow, by the odds of their `might` (the game's considerations: strength, size, skill, nerve), what they hold (a means, by its `severity`), and how hurt each already is; the blow's severity is a fist's plus the means', give or take. The one who started it strikes meant blows, the other strikes back in defense. A fight ends as Bree's do, by someone stepping in, or someone walking off (the more readily the nearer they are to yielding), and two more ways: someone yields (hurt past `yieldAt`, sooner for the timid), or someone goes down. Each blow is a harm, and each `bree:turn` carries it (`turn.harm`), so the game can show a scuffle in step.
+
+### Fights with the player
+
+Harm by `'player'` (or to the player by a character) makes the character answer, as the fight starts and after each harm between them: fight back, flee, yield or call for help, drawn by their nerve and temper, how hurt they are, their odds against the player (whose might is the game's fact, `might:player`), and whether a friend is about. It's emitted as `morgul:respond`; `respond(id)` asks without changing anything. One who flees wants to get away a while.
 
 ### Choosing harm
 
 Harm is chosen like anything else. The game declares the actions (attacking, ambushing, setting a trap, poisoning, fleeing, hiding, tending the hurt, calling the watch) and Morgul adds what to weigh them by:
 
-- terms: `hurt`, `wounded:<kind>`, `hurt_by:<id>`, `afraid_of:<id>`, `danger` (here), `armed`, `odds:<id>` (a look at how a fight with them would go), `suspects:<id>`;
-- revenge as a Mentat task: a grudge from harm past `vengeAt` makes `avenge:<id>` an option, with its methods (confront them, ambush them, poison their meal) planned like any other (get poison, get to their food, dose it);
-- flight: someone who fears a person at the same place, with poor odds against them, wants to leave;
-- care: someone who likes a hurt person tends them (Athelas's `hasten`, and the mark that keeps a cut from festering).
+- terms: `hurt`, `wounded:<kind>`, `hurt_by:<id>`, `afraid_of:<id>`, `danger` (here, or a place), `armed`, `odds:<id>` (a look at how a fight with them would go), `suspects:<id>`, `down`, `vengeance:<id>`, `fleeing`;
+- violence: actions tagged `harm` weigh by the `violence` knob (0: nobody ever does harm);
+- revenge as a Mentat task: what someone holds against whoever hurt them, past `vengeAt` (times `vengeance` and their temper), makes the game's `avenge` task an option aimed at them, its methods planned like any other (Mentat tasks can be aimed at someone now: `target: 'person'`); harm done to them sates it;
+- flight: someone who fears a person at the same place, with poor odds against them, wants to leave (options there weigh less, fleeing more, and they think again as they meet);
+- caution: a place they know is dangerous weighs less;
+- care: someone who likes a hurt person tends them (an action tagged `care`; the `tend` effect: Athelas's mark that keeps a cut from festering, the better for skill, and up if they're down).
 
-Gaff, the director, can pace it, so violence is an event when it comes, not the weather.
+Gaff, the director, can pace it, so violence is an event when it comes, not the weather: Rocinante's brawl at the Belt is a storylet.
 
 ### The dials
 
@@ -325,34 +335,40 @@ Headline knobs, as everywhere in Tyrell: the world's, times each person's own `t
 | `healing` | 1 | How fast wounds heal |
 | `suspicion` | 1 | How readily people suspect, and how strongly |
 
-### A sketch of the API
+Every finer number is a setting too ([Tuning](../tyrell/docs/tuning.md#morgul)).
+
+### The API
 
 | Method | | |
 |---|---|---|
 | `means(def)` | definition | What harm is done with, as [above](#means-weapons-spells-poisons-traps): its kinds, use, `severity`, `course` (the bridge's `means` declares it here and to Tycho at once) |
-| `wound(def)` | definition | A harm's kind and severity band, and the course it leaves |
+| `wound(def)` | definition | A harm's kind, severity band, what and how, and the course it leaves |
 | `trap(def)` | definition | A kind of trap: its harm, `hidden`, `uses`, `catch` |
-| `harm(h)` | **input** | A harm, from the game (on screen) |
+| `harm(h)` | **input** | A harm, from the game (on screen); returns it |
+| `set(kind, { by, place, for, seenBy })` | **input** | A trap set, from the game |
 | `spring(trap, id)` | **input** | A trap caught someone on screen |
 | `disarm(trap, by)` | **input** | |
-| `taint(def)` | **input** | Poison into stock, a pantry or a meal |
-| `hurt(id)`, `wounds(id)` | look | |
-| `traps(place?)`, `taints(place?)` | look | |
-| `odds(a, b)` | look | How a fight between them would go |
+| `taint(def)` | **input** | Poison into stock, a pot, or someone's goods |
+| `tend(id, by)` | **input** | Someone tends someone: their wounds, and up if down |
+| `near(regions)` | **input** | The regions whose traps the game springs (the regions in focus, by default) |
+| `hurt(id)`, `wounds(id)`, `isDown(id)` | look | |
+| `traps(place?)`, `taints(place?)`, `harms(id?)` | look | |
+| `odds(a, b)`, `might(id)` | look | How a fight between them would go |
+| `respond(id)` | look | How someone would answer a fight with the player |
 | `applyHarm(h)`... | engine | The versions code inside the simulation calls |
 
-Effects: `harm:<kind>=<severity>` (to the context's target), `set:<trap>`, `taint:<course>`, `disarm`, `tend`. Events: `morgul:harm`, `morgul:down`, `morgul:up`, `morgul:killed`, `morgul:set`, `morgul:sprung`, `morgul:disarmed`, `morgul:suspect`.
+Effects: `harm:<kind>=<severity>` (to the context's target), `set:<trap>`, `taint:<course>`, `disarm`, `tend`. Events: `morgul:harm`, `morgul:down`, `morgul:up`, `morgul:killed`, `morgul:set`, `morgul:sprung`, `morgul:disarmed`, `morgul:tainted`, `morgul:suspect`, `morgul:respond`; Bree's `bree:turn` with each blow.
 
 ## Athelas, grown
 
-Wounds and poisons need a little more of Athelas than colds and ale do:
+Wounds and poisons need a little more of Athelas than colds and ale do, and it has it now, all opt-in (a course without these runs as it always did, and every recorded hash is unchanged):
 
-- **Severity**: an affliction carries how bad it is, which stretches its phases and deepens what they do (`sev:<course>` reads it).
-- **Worsening**: `again: 'worsen'`, so a second beating adds to the first.
-- **Branches**: a phase's next can depend on a condition, so a tended cut heals and an untended one festers.
-- **Care**: being tended is a mark the branches read, given by a `tend` action anyone can do, the better for skill.
-- **Ending badly**: a phase that ends in death, through Cradle.
-- **Quiet phases**: a phase nobody notices (poison working), and one that `tells`, so lines, feelings and suspicion start when the harm shows and not before.
+- **Severity**: `afflict(id, course, from, severity)` (and `afflict:<course>=<severity>`) gives an affliction how bad it is, 0..1. A course is written for `sevAt` (0.5); a phase lasts `sevStretch ^ ((severity - sevAt) × 2)` times as long (2: twice at 1, half at 0), and its rates and weights are raised to the power `1 + sevDepth × (severity - sevAt) / sevAt` (twice as deep at 1, nothing at 0). A course can say its own (`severity: { at, stretch, depth }`). `sev:<course>` reads it.
+- **Worsening**: `again: 'worsen'`, so a second beating adds to the first (up to 1), the phase it's in running as long as it would at the new severity.
+- **Branches**: a phase's `next` is a phase's id, `null`, or `[{ if: [...], to }]`, the first that holds, so a tended cut heals and an untended one festers.
+- **Care**: `athelas.tend(id, course, by)` and the `tend` effect leave a mark of how well (`tendBase`, the rest by the tender's `tendSkill`) that the branches read (`tended:<course>`), and bring the phase's end sooner (`tendHasten`).
+- **Ending badly**: a phase with `dies` ends in death through Cradle as it runs out (a wound's only as often as Morgul's lethality says); without Cradle, or spared, they pull through to its `next`.
+- **Quiet phases**: a phase nobody notices (`quiet`: no feeling, and `under:` reads nothing, while its rates and weights work), and one that `tells` (the `shows` event), so feelings, onlookers and suspicion start when the harm shows and not before.
 
 ## On screen and off
 

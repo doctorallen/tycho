@@ -44,15 +44,27 @@ export interface ControlsOptions {
     /** A key's code (KeyboardEvent.code) to the action it holds. */
     keys?: Record<string, string>;
     /** The actions the keys move with, when the stick isn't held: each axis is
-     * -1, 0 or 1, both scaled to length one if `round` (so a diagonal isn't
-     * quicker), and scaled by `slow`'s factors while its action is held. */
+     * -1, 0 or 1, times `scale`'s factors (none: 1), scaled by `slow`'s factors
+     * while its action is held and by `fast`'s while its is (then held to -1..1),
+     * and both scaled to length one if `round` (so a diagonal isn't quicker). A
+     * game whose keys run with a walk and a sprint either side scales them below
+     * one and lets `fast` take them back up. */
     axes?: {
         left: string;
         right: string;
         up: string;
         down: string;
         round?: boolean;
+        scale?: {
+            x?: number;
+            y?: number;
+        };
         slow?: {
+            action: string;
+            x?: number;
+            y?: number;
+        };
+        fast?: {
             action: string;
             x?: number;
             y?: number;

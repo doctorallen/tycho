@@ -3151,6 +3151,8 @@ void main() {
   var PLATFORM = {
     walkUnder: 0.62,
     runSpan: 0.28,
+    sprintFrom: 0.78,
+    sprintSpan: 0.12,
     grabY: 0.5,
     grabX: 0.6,
     grabBelow: 3,
@@ -3233,7 +3235,7 @@ void main() {
         }
       }
       const m = Math.abs(ax), sp = c.scale === void 0 ? 1 : c.scale;
-      const pace = (m < O.walkUnder ? P.walk : lerp(P.walk, P.speed, clamp((m - O.walkUnder) / O.runSpan, 0, 1))) * sp;
+      const pace = (P.sprint !== void 0 && m > O.sprintFrom ? lerp(P.speed, P.sprint, clamp((m - O.sprintFrom) / O.sprintSpan, 0, 1)) : m < O.walkUnder ? P.walk : lerp(P.walk, P.speed, clamp((m - O.walkUnder) / O.runSpan, 0, 1))) * sp;
       const target = Math.sign(ax) * pace * busy, acc = b.ground ? P.accel : P.airAccel;
       if (ax) b.vx += clamp(target - b.vx, -acc * dt, acc * dt);
       else b.vx -= clamp(b.vx, -P.friction * dt, P.friction * dt);
@@ -3710,9 +3712,17 @@ void main() {
         return;
       }
       let kx = (this.held(A.right) ? 1 : 0) - (this.held(A.left) ? 1 : 0), ky = (this.held(A.down) ? 1 : 0) - (this.held(A.up) ? 1 : 0);
+      if (A.scale) {
+        kx *= A.scale.x ?? 1;
+        ky *= A.scale.y ?? 1;
+      }
       if (A.slow && this.held(A.slow.action)) {
         kx *= A.slow.x ?? 1;
         ky *= A.slow.y ?? 1;
+      }
+      if (A.fast && this.held(A.fast.action)) {
+        kx = clamp(kx * (A.fast.x ?? 1), -1, 1);
+        ky = clamp(ky * (A.fast.y ?? 1), -1, 1);
       }
       if (A.round) {
         const len = Math.hypot(kx, ky) || 1;

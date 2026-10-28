@@ -573,3 +573,23 @@ test('Routes find the cheapest way over places, with their legs in order', () =>
   assert.equal(O.route('up', 'down').cost, 1);
   assert.throws(() => new path.Routes().link('a', 'b', -1));
 });
+
+test('a Platform runner with a sprint walks, runs and sprints by how far the stick is pushed; without one it runs as before', () => {
+  const space = new collide.Space().boxes([{ x0: -1000, y0: 100, x1: 100000, y1: 140 }]).bounds(-1000, 100000);
+  const top = (runner, ax) => {
+    const b = { x: 0, y: 100, vx: 0, vy: 0, face: 1, ground: true, coyote: 0, drop: 0, ladder: null, walked: 0 };
+    for (let i = 0; i < 240; i++) runner.step(space, b, { ax, ay: 0, jump: false, jumpHit: false }, 1 / 60);
+    return Math.round(b.vx);
+  };
+  const P = Object.assign({}, WD.player, { walk: 56, sprint: 196 });
+  const tiers = new move.Platform(P, { walkUnder: 0.45, runSpan: 0.1, sprintFrom: 0.78, sprintSpan: 0.12 });
+  assert.equal(top(tiers, 0.3), 56);       // a walk
+  assert.equal(top(tiers, 0.5), 77);       // on the way to a run
+  assert.equal(top(tiers, 0.66), 98);      // a run
+  assert.equal(top(tiers, 0.84), 147);     // on the way to a sprint
+  assert.equal(top(tiers, 1), 196);        // a sprint
+  assert.equal(top(tiers, -1), -196);
+  const plain = new move.Platform(WD.player);
+  assert.equal(top(plain, 0.3), WD.player.walk);
+  assert.equal(top(plain, 1), WD.player.speed);
+});

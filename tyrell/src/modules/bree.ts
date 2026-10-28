@@ -22,7 +22,9 @@
 //                  joins in (Merryfolk's natters and table talk). Each turn
 //                  is told to the game as it comes, with the words left to it
 //                  (or Cityspeak's most specific line), and off screen it all
-//                  happens the same
+//                  happens the same. A game that works out who's near whom
+//                  itself strikes them up as its people meet, seats them at
+//                  a table, and says who's still together
 //   escalation     a sour turn can turn talk into an argument and an argument
 //                  into a fight, unless the other keeps their patience or
 //                  someone there steps in, or the one hurt walks off; whoever
@@ -80,10 +82,14 @@ export interface KindDef {
   relieves?: Record<Id, number>;
   /** Topics that fit: ids, 'tag:<tag>', or '*' (every topic that doesn't name its kinds). None: a word and an answer, no topics. */
   topics?: string[];
-  /** Turns: a number or [min, max]. Default: by how they stand (config.turns) for one with topics, config.quickTurns for one without. */
-  turns?: number | [number, number];
+  /** Turns: a number, [min, max], or a function (the starter as the person, the other as target: a game's own reckoning). Default: by how they stand (config.turns) for one with topics, config.quickTurns for one without. */
+  turns?: number | [number, number] | ((ctx: Ctx) => number);
+  /** Minutes between its turns: [min, max], drawn. Default config.turnGap. */
+  gap?: number[];
   /** Others nearby can join in (a table). */
   group?: boolean;
+  /** A group goes on without whoever leaves it, while two are left (a table someone gets up from). Default false: anyone leaving ends it. */
+  stays?: boolean;
   /** How it lands with the one spoken to, before anything else. Default 0. */
   base?: number;
   /** How it lands with the one spoken to: rules (the listener as the person, the speaker as target), or a function. */
@@ -674,6 +680,14 @@ export class Bree implements Module {
    * on a street), deterministic from the world's state.
    */
   witnesses: ((ex: ExchangeView, world: World) => Id[]) | null = null;
+  /**
+   * Whether the people in an exchange are still together (a definition, like
+   * witnesses): the id of someone who has left the others, or null. Default
+   * null: they must all be where it began (its outermost place). A game that
+   * works out who's near whom itself (its people each at a place of their
+   * own in Tyrell) says so here; whoever is asleep or away has left anyway.
+   */
+  together: ((ex: ExchangeView, world: World) => Id | null) | null = null;
   private w!: World;
   /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
   private foeCache: { st: State; id: Id; now: number; seq: number; v: number; list: Array<{ id: Id; a: number }> } | null = null;
@@ -731,6 +745,8 @@ export class Bree implements Module {
     L.term('subject', (c) => (c.person ? this.exOf(c.person.id)?.topic?.subject ?? null : null));
     L.effect('exchange', (c, a) => { if (c.person && c.target && this.kinds.has(a) && !this.exOf(c.person.id) && !this.exOf(c.target)) this.begin(a, [c.person.id, c.target], 'game'); });
     w.defineInput('bree.start', (kind: Id, a: Id, others: Id[], opts: { minutes?: number; turns?: number } | null) => this.applyStart(kind, a, others, opts ?? {}));
+    w.defineInput('bree.strike', (a: Id, b: Id, opts: { minutes?: number; turns?: number } | null) => this.applyStrike(a, b, opts ?? {}));
+    w.defineInput('bree.join', (exchange: number, id: Id) => this.applyJoin(exchange, id));
     w.defineInput('bree.end', (which: number | Id) => this.applyEnd(which));
     w.defineInput('bree.witness', (exchange: number, seenBy: Id[]) => this.applyWitnessed(exchange, seenBy));
     w.defineInput('bree.grudge', (a: Id, b: Id, by: number, why: string | null) => this.applyGrudge(a, b, by, why ?? 'the game'));
@@ -1002,15 +1018,51 @@ export class Bree implements Module {
     const w = this.w;
     const who = [a, ...others.filter((o, i) => o !== a && others.indexOf(o) === i)];
     if (who.length < 2 || !this.kinds.has(kind) || who.some((id) => w.s.people[id]?.status !== 'active')) return null;
-    for (const id of who) { const ex = this.exOf(id); if (ex) this.finish(ex, 'interrupted'); }
+    for (const id of who) { const ex = this.exOf(id); if (ex) this.leaveEx(ex, id, 'interrupted'); }
     const ex = this.begin(kind, who, 'game', opts.minutes, opts.turns);
     return ex ? this.view(ex) : null;
+  }
+
+  /**
+   * Strikes up an exchange as if they'd met (from the game: recorded, and it
+   * applies at once): `a`, the one who starts it, draws a kind among those
+   * that fit `b`, by weight, as on meeting. For a game that works out who
+   * meets whom itself (it walks someone up to another, and they talk).
+   * Returns it as it stands after the first turn, or null if nothing fits.
+   */
+  strike(a: Id, b: Id, opts: { minutes?: number; turns?: number } = {}): ExchangeView | null {
+    return (this.w.input('bree.strike', [a, b, opts]) as ExchangeView | null | undefined) ?? null;
+  }
+
+  /** Strikes one up inside the simulation (see strike). */
+  applyStrike(a: Id, b: Id, opts: { minutes?: number; turns?: number } = {}): ExchangeView | null {
+    const w = this.w;
+    const s = w.s.people[a], o = w.s.people[b];
+    if (a === b || s?.status !== 'active' || o?.status !== 'active') return null;
+    for (const id of [a, b]) { const ex = this.exOf(id); if (ex) this.leaveEx(ex, id, 'interrupted'); }
+    const pick = this.stream().weighted(this.choices(s, o), (x) => x.weight);
+    const ex = pick ? this.begin(pick.def.id, [a, b], 'meet', opts.minutes, opts.turns) : null;
+    return ex ? this.view(ex) : null;
+  }
+
+  /** Someone joins a group exchange in progress (from the game: recorded): they've sat down at the table. False if they can't (it isn't a group's, it's full, they're busy). */
+  join(exchange: number, id: Id): boolean { return !!this.w.input('bree.join', [exchange, id]); }
+
+  /** Joins one inside the simulation. */
+  applyJoin(exchange: number, id: Id): boolean {
+    const ex = this.st?.ex[exchange];
+    const def = ex ? this.kinds.get(ex.kind) : undefined;
+    if (!ex || !def?.group || ex.who.includes(id) || ex.who.length >= this.c.groupMax || this.exOf(id) || !this.free(this.w.s.people[id])) return false;
+    this.add(ex, id);
+    return true;
   }
 
   /** Ends an exchange inside the simulation. */
   applyEnd(which: number | Id): void {
     const ex = typeof which === 'number' ? this.st?.ex[which] : this.exOf(which);
-    if (ex) this.finish(ex, 'ended', typeof which === 'string' ? which : undefined);
+    // (someone walking away from a group that stays leaves it, and it goes on)
+    if (ex && typeof which === 'string' && this.stays(ex)) this.drop(ex, which);
+    else if (ex) this.finish(ex, 'ended', typeof which === 'string' ? which : undefined);
   }
 
   /** Begins an exchange: the turns it'll run to, the first turn now, the next on the clock. */
@@ -1047,7 +1099,8 @@ export class Bree implements Module {
     const [a, b] = who;
     const pa = w.s.people[a], pb = w.s.people[b];
     let n: number;
-    if (typeof def.turns === 'number') n = def.turns;
+    if (typeof def.turns === 'function') n = pa ? Number(def.turns(w.ctx(pa, { target: b ?? null }))) || 0 : c.minTurns;
+    else if (typeof def.turns === 'number') n = def.turns;
     else if (Array.isArray(def.turns)) n = def.turns[0] + r.int(Math.max(0, def.turns[1] - def.turns[0]) + 1);
     else if (def.topics?.length) {
       n = c.turns[this.bond(a, b)] ?? c.turns.stranger ?? c.minTurns;
@@ -1065,7 +1118,8 @@ export class Bree implements Module {
     if (k !== 1) n = Math.round(n * k);
     n = Math.max(1, Math.round(n));
     if (minutes !== undefined && isFinite(minutes)) {
-      const gap = (c.turnGap[0] + (c.turnGap[1] ?? c.turnGap[0])) / 2;
+      const tg = def.gap ?? c.turnGap;
+      const gap = (tg[0] + (tg[1] ?? tg[0])) / 2;
       n = Math.min(n, Math.max(1, Math.floor(minutes / Math.max(0.5, gap)) + 1));
     }
     return n;
@@ -1134,7 +1188,7 @@ export class Bree implements Module {
   }
 
   /** Someone joins a group exchange in progress. */
-  private join(ex: Exchange, id: Id): void {
+  private add(ex: Exchange, id: Id): void {
     const st = this.mut();
     ex.who.push(id);
     st.of[id] = ex.id;
@@ -1143,6 +1197,38 @@ export class Bree implements Module {
     ex.turns += this.c.groupTurns;
     this.w.log('joined', id, { id: ex.id });
     this.w.emit('bree:joined', { id: ex.id, who: id });
+  }
+
+  /** Does this exchange go on without someone who leaves it (a group whose kind stays, with more than two in it)? */
+  private stays(ex: Exchange): boolean { return ex.who.length > 2 && !!this.kinds.get(ex.kind)?.stays && !!this.kinds.get(ex.kind)?.group; }
+
+  /** Someone leaves a group that goes on without them: out of the turns to come; what's said stays said. */
+  private drop(ex: Exchange, id: Id): void {
+    const st = this.mut();
+    if (st.of[id] === ex.id) delete st.of[id];
+    ex.who = ex.who.filter((x) => x !== id);
+    delete ex.manners[id];
+    const tp = ex.topic;
+    if (tp && tp.by === id) delete ex.topic; // (whoever raised it has gone: on to the next)
+    else if (tp) {
+      const others = ex.who.filter((x) => x !== tp.by);
+      const steps: Array<[string, Id, Id]> = [];
+      let i = tp.i;
+      tp.steps.forEach((s, k) => {
+        if (s[1] === id) { if (k < tp.i) i--; return; }
+        steps.push([s[0], s[1], s[2] !== id ? s[2] : s[0] === 'open' || s[0] === 'more' ? others[0] : tp.by]);
+      });
+      tp.steps = steps;
+      tp.i = Math.max(0, i);
+    }
+    for (const k of ['opener', 'lead', 'lastWho', 'sourBy'] as const) if (ex[k] === id) delete ex[k];
+    this.w.log('parted', id, { id: ex.id });
+    this.w.emit('bree:parted', { id: ex.id, who: id });
+  }
+
+  /** Someone leaves the exchange they're in (for another, or gone): a group that stays goes on; anything else ends. */
+  private leaveEx(ex: Exchange, id: Id, why: string): void {
+    if (this.stays(ex)) this.drop(ex, id); else this.finish(ex, why, why === 'gone' ? id : undefined);
   }
 
   /** The manner that fits someone best now (or null, with none declared): its base, rules, their nature, and a little of their own. */
@@ -1309,22 +1395,28 @@ export class Bree implements Module {
    * score from the listener's side with its parts, and where it falls,
    * before the luck of the turn. A look: it changes nothing.
    */
-  weigh(kind: Id, speaker: Id, listener: Id, opts: { topic?: Id; subject?: Value; manner?: Id; place?: Id } = {}): { score: number; outcome: Outcome; parts: Array<[string, number]> } | null {
+  weigh(kind: Id, speaker: Id, listener: Id, opts: { topic?: Id; subject?: Value; manner?: Id; place?: Id; step?: string } = {}): { score: number; outcome: Outcome; parts: Array<[string, number]> } | null {
     const def = this.kinds.get(kind);
     const s = this.w.s.people[speaker], l = this.w.s.people[listener];
     if (!def || !s || !l) return null;
-    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner ?? this.mannerOf(speaker) ?? undefined));
+    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner ?? this.mannerOf(speaker) ?? undefined, opts.step));
     const score = round(parts.reduce((a, [, v]) => a + v, 0), 4);
     return { score, outcome: this.outcome(score), parts };
   }
 
-  /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
-  private parts(def: KindDef, s: PersonState, l: PersonState, place: Id | null | undefined, topic?: Id, subject?: Value, manner?: Id): Array<[string, number]> {
+  /**
+   * The parts of how words land with the listener (the speaker is the
+   * target), each a setting's weight. The rules (the kind's lands and knack,
+   * the manner's lands) can read what's being said in ctx.data: the kind,
+   * the step, the topic and its subject.
+   */
+  private parts(def: KindDef, s: PersonState, l: PersonState, place: Id | null | undefined, topic?: Id, subject?: Value, manner?: Id, step?: string): Array<[string, number]> {
     const w = this.w, c = this.c, L = w.lang;
     const out: Array<[string, number]> = [];
     const add = (name: string, v: number) => { if (v && isFinite(v)) out.push([name, round(v, 4)]); };
-    const lctx = w.ctx(l, { target: s.id, place: place ?? null });
-    const sctx = w.ctx(s, { target: l.id, place: place ?? null });
+    const data = { kind: def.id, step: step ?? null, topic: topic ?? null, subject: subject ?? null };
+    const lctx = w.ctx(l, { target: s.id, place: place ?? null, data });
+    const sctx = w.ctx(s, { target: l.id, place: place ?? null, data });
     add('base', def.base ?? 0);
     if (def.lands) add('lands', landing(L, 0, def.lands, lctx));
     const ap = def.approach ? w.voice?.approaches.get(def.approach) : undefined;
@@ -1369,16 +1461,17 @@ export class Bree implements Module {
   // Exchanges: turns
   // -------------------------------------------------------------------------
 
-  /** Are they all still together and awake, where it began? */
-  private together(ex: Exchange): Id | null {
+  /** Who has left the others (asleep, away, or no longer where it began, or as the game's own `together` says), or null. */
+  private whoLeft(ex: Exchange): Id | null {
     const w = this.w;
-    const root = ex.place ? w.ring.root(ex.place) : null;
+    const own = this.together;
+    const root = !own && ex.place ? w.ring.root(ex.place) : null;
     for (const id of ex.who) {
       const p = w.s.people[id];
       if (!this.free(p)) return id;
       if (root && w.ring.root(p.place as Id) !== root) return id;
     }
-    return null;
+    return own ? w.peek(() => own(this.view(ex), w)) ?? null : null;
   }
 
   /**
@@ -1426,7 +1519,9 @@ export class Bree implements Module {
     const def = this.kinds.get(ex.kind);
     if (!def) { this.finish(ex, 'ended'); return; }
     // (the game vouches for the first turn of one it starts: a greeting in passing)
-    const gone = ex.n === 0 && ex.why === 'game' ? null : this.together(ex);
+    let gone = ex.n === 0 && ex.why === 'game' ? null : this.whoLeft(ex);
+    // (a group that stays goes on without them, while two are left)
+    while (gone !== null && this.stays(ex)) { this.drop(ex, gone); gone = this.whoLeft(ex); }
     if (gone !== null) { this.finish(ex, 'parted', gone); return; }
     if (ex.until !== undefined && w.s.now > ex.until + 1e-6) { this.finish(ex, 'parted'); return; }
     const r = this.stream();
@@ -1434,7 +1529,7 @@ export class Bree implements Module {
     if (step === 'bye') { ex.n++; this.tell(ex, { who, to, step, landed: null, end: true }); this.finish(ex, 'done'); return; }
     const s = w.s.people[who], l = w.s.people[to];
     const subject = topic ? ex.topic?.subject : undefined;
-    const parts = this.parts(def, s, l, ex.place, topic?.id, subject, ex.manners[who]);
+    const parts = this.parts(def, s, l, ex.place, topic?.id, subject, ex.manners[who], step);
     const score = round(parts.reduce((acc, [, v]) => acc + v, 0) + this.luck(r), 4);
     const landed = this.outcome(score);
     ex.heard[to] = ex.heard[to] === undefined ? score : round(ex.heard[to] + (score - ex.heard[to]) * c.sway, 4);
@@ -1614,9 +1709,9 @@ export class Bree implements Module {
     if (done) this.witness({ id: done.id, kind: done.kind, who: done.who, place: done.place, by: done.by, outcome: done.outcome, seen: {} }, seenBy);
   }
 
-  /** Puts the next turn on the clock. */
+  /** Puts the next turn on the clock (the kind's own gap, or the config's). */
   private schedule(ex: Exchange, r: Stream): void {
-    const [lo, hi] = this.c.turnGap;
+    const [lo, hi] = this.kinds.get(ex.kind)?.gap ?? this.c.turnGap;
     ex.next = round(this.w.s.now + Math.max(0.5, r.range(lo, hi ?? lo)), 4);
     this.w.clock.schedule({ t: ex.next, k: 'module', ref: this.name, data: { ex: ex.id, n: ex.n } });
   }
@@ -1756,7 +1851,8 @@ export class Bree implements Module {
       if (def.on?.end) does.push(def.on.end);
       // whoever stepped in: thanked by both
       if (ex.mediator && fs && c.mediateRegard) fs.applyRegard(x, ex.mediator, round(c.mediateRegard * this.knob('warmth', x), 4));
-      const ctx = w.ctx(p, { target: y, place: ex.place });
+      // (what the kind does can read the exchange: its kind, who was in it, how many turns, their outcome, who walked off)
+      const ctx = w.ctx(p, { target: y, place: ex.place, data: { exchange: ex.id, kind: ex.kind, first: ex.first, who: ex.who.slice(), turns: ex.n, outcome: o, left: left ?? null } });
       for (const d of does) {
         const f = Array.isArray(d.feel) ? d.feel[x === starter ? 0 : 1] : d.feel;
         if (f && rv) rv.applyFeel(x, f, y);
@@ -1876,7 +1972,7 @@ export class Bree implements Module {
       const ex = (ea ?? eb) as Exchange, newcomer = ea ? b : a;
       if ((ea && eb) || !this.kinds.get(ex.kind)?.group || !this.talks(this.kinds.get(ex.kind) as KindDef) || ex.who.length >= c.groupMax || !ex.place || !this.w.ring.within(newcomer.place, ex.place)) return;
       if (!(c.joinChance * this.talkOf([newcomer.id]) > 0)) return;
-      if (this.joins(ex, newcomer.id, this.stream())) this.join(ex, newcomer.id);
+      if (this.joins(ex, newcomer.id, this.stream())) this.add(ex, newcomer.id);
       return;
     }
     // the headline knob: how readily people strike one up (the world's, times both people's own)
@@ -1975,7 +2071,7 @@ export class Bree implements Module {
     const st = this.st;
     if (!st) return;
     const ex = this.exOf(p.id);
-    if (ex) this.finish(ex, 'gone', p.id);
+    if (ex) this.leaveEx(ex, p.id, 'gone');
     delete st.g[p.id];
     for (const a of Object.keys(st.g)) { delete st.g[a][p.id]; if (!Object.keys(st.g[a]).length) delete st.g[a]; }
     for (const k of Object.keys(st.feuds)) if (st.feuds[k].a === p.id || st.feuds[k].b === p.id) delete st.feuds[k];

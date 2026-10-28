@@ -309,6 +309,7 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `bree:start` | ExchangeView | Bree: an exchange began |
 | `bree:turn` | Turn | Bree: a turn of one: who to whom, the step, topic and manner, how it landed, the words |
 | `bree:joined` | `{ id, who }` | Bree: someone joined a group exchange |
+| `bree:parted` | `{ id, who }` | Bree: someone left a group exchange that goes on without them |
 | `bree:escalated` | `{ id, from, to, by, against }` | Bree: talk turned into an argument, an argument into a fight |
 | `bree:witnessed` | `{ id, exchange, actor, kind, against }` | Bree: someone saw an exchange go wrong |
 | `bree:end` | Finished | Bree: an exchange ended, with its outcome (and each one's) |
@@ -339,9 +340,9 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `afflict`, `cure`, `hasten` | Athelas |
 | `genome` (`set`) | Delos |
 | `voice.start`, `voice.answer`, `voice.end` | Voice |
-| `bree.start`, `bree.end`, `bree.witness` (`witnessed`), `bree.grudge` (`grudgeAgainst`), `bree.feud`, `bree.reconcile` | Bree |
+| `bree.start`, `bree.strike`, `bree.join`, `bree.end`, `bree.witness` (`witnessed`), `bree.grudge` (`grudgeAgainst`), `bree.feud`, `bree.reconcile` | Bree |
 
-`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start`, `voice.answer` and `bree.start` apply at once even inside a listener, because they return a value.
+`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start`, `voice.answer`, `bree.start`, `bree.strike` and `bree.join` apply at once even inside a listener, because they return a value.
 
 ## Types
 

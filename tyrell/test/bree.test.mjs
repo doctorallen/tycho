@@ -366,6 +366,99 @@ test('the game starts and ends exchanges: inputs, the first turn at once', () =>
   assert.equal(w.bree.history().at(-1).n, 1);
 });
 
+test('a game that owns space: it says who is together, strikes exchanges up, seats people at a table; kinds keep their own turns and pace', () => {
+  // three people each at a place of their own, as in a game that works out who's near whom
+  const w = apart({ moduleConfig: { bree: { spread: 0, compatWeight: 0 } } });
+  const steps = [], ends = [];
+  w.bree.kind({ id: 'natter', turns: (ctx) => (ctx.target === 'b' ? 4 : 2), gap: [3, 3], lands: (ctx) => { steps.push(ctx.data.step); return ctx.data.step === 'reply' ? -10 : 0; },
+    on: { end: { then: [(ctx) => ends.push({ me: ctx.person.id, data: ctx.data })] } } });
+  w.bree.kind({ id: 'snipe', tags: ['hostile'], to: ['regard<-0.2'], turns: 1, weight: 50 });
+  w.bree.kind({ id: 'table', group: true, turns: 6, weight: 0 });
+  w.advance(10);
+  // without a word from the game, people at different places part after the first turn
+  w.bree.start('natter', 'a', 'b');
+  w.advance(10);
+  assert.equal(w.bree.history().at(-1).why, 'parted');
+  // with it, they talk it through, at the kind's own pace and length
+  let gone = null;
+  w.bree.together = (ex) => (gone && ex.who.includes(gone) ? gone : null);
+  const turns = record(w, 'bree:turn');
+  const t0 = w.now;
+  const v = w.bree.start('natter', 'a', 'b');
+  assert.equal(v.turns, 4, 'the kind\'s own reckoning, from the starter\'s side');
+  w.advance(30);
+  const mine = turns.filter((t) => t.id === v.id);
+  assert.deepEqual(mine.map((t) => t.n), [1, 2, 3, 4]);
+  assert.equal(w.bree.history().at(-1).why, 'done');
+  assert.equal(w.bree.history().at(-1).end - t0, 9, 'three minutes between turns');
+  assert.deepEqual(steps.slice(-4), ['open', 'reply', 'more', 'back'], 'the landing reads the step');
+  assert.deepEqual(mine.map((t) => t.landed), ['fine', 'row', 'fine', 'fine']);
+  assert.equal(w.bree.weigh('natter', 'c', 'b', { step: 'reply' }).outcome, 'row');
+  assert.equal(w.bree.weigh('natter', 'c', 'b').outcome, 'fine');
+  // what the kind does at the end reads the exchange
+  const theirs = ends.filter((e) => e.data.exchange === v.id);
+  assert.deepEqual(theirs.map((e) => e.me), ['a', 'b']);
+  assert.deepEqual(theirs[1].data, { exchange: v.id, kind: 'natter', first: 'natter', who: ['a', 'b'], turns: 4, outcome: theirs[1].data.outcome, left: null });
+  // the game's say that someone has gone
+  w.bree.start('natter', 'a', 'b');
+  gone = 'b';
+  w.advance(10);
+  assert.equal(w.bree.history().at(-1).why, 'parted');
+  gone = null;
+  // struck up as on meeting: the starter draws a kind that fits the other
+  const s = w.bree.strike('a', 'c');
+  assert.equal(s.kind, 'natter');
+  assert.equal(s.turns, 2);
+  assert.equal(s.why, 'meet');
+  w.advance(30);
+  w.fellowship.adjust('a', 'c', -0.5);
+  assert.equal(w.bree.strike('a', 'c').kind, 'snipe', 'a dislike makes it a snipe');
+  w.advance(30);
+  w.bree.kind({ ...w.bree.kinds.get('natter'), to: ['regard>0.5'] });
+  w.bree.kind({ ...w.bree.kinds.get('snipe'), to: ['regard<-0.9'] });
+  assert.equal(w.bree.strike('a', 'b'), null, 'nothing fits');
+  assert.equal(w.bree.strike('a', 'a'), null);
+  // a group the game seats people at, one by one
+  const tb = w.bree.start('table', 'a', 'b');
+  assert.equal(w.bree.join(tb.id, 'c'), true);
+  assert.deepEqual(w.bree.exchange('c').who, ['a', 'b', 'c']);
+  assert.equal(w.bree.exchange('c').turns, tb.turns + 3, 'three more turns for one more');
+  assert.equal(w.bree.join(tb.id, 'c'), false, 'already in it');
+  w.bree.end(tb.id);
+  const plain = w.bree.start('snipe', 'c', 'a');
+  assert.equal(w.bree.join(plain.id, 'b'), false, 'not a group');
+  // a table that stays goes on without whoever gets up, while two are left
+  w.bree.topic({ id: 'supper' });
+  w.bree.topic({ id: 'the day' });
+  w.bree.kind({ id: 'supper', topics: ['*'], group: true, stays: true, turns: 12, weight: 0 });
+  const parted = record(w, 'bree:parted');
+  const sp = w.bree.start('supper', 'a', ['b', 'c']);
+  w.advance(4);
+  w.bree.end('c');
+  assert.deepEqual(w.bree.exchange('a').who, ['a', 'b'], 'c got up; a and b talk on');
+  assert.deepEqual(parted.map((e) => [e.id, e.who]), [[sp.id, 'c']]);
+  const seen = turns.length;
+  w.advance(10);
+  assert.ok(turns.slice(seen).every((t) => t.id !== sp.id || (t.who !== 'c' && t.to !== 'c')), 'nobody talks to an empty chair');
+  assert.ok(turns.slice(seen).some((t) => t.id === sp.id));
+  gone = 'b';
+  w.advance(10);
+  assert.equal(w.bree.history().at(-1).why, 'parted', 'with only one left, it\'s over');
+  gone = null;
+  // the same world, input for input
+  const again = () => {
+    const u = apart();
+    u.bree.kind({ id: 'natter', turns: 3, gap: [2, 6] });
+    u.bree.together = () => null;
+    u.advance(10);
+    u.bree.strike('a', 'b');
+    u.advance(HOUR);
+    assert.equal(u.bree.history().at(-1).n, 3);
+    return u.hash();
+  };
+  assert.equal(again(), again());
+});
+
 test('time walk across an exchange gives the same world; so does saving mid-way', () => {
   const run = () => { const w = table({ bree: { spread: 1.5 } }); w.bree.starter({ company: 'company' }); w.advance(HOUR); return w; };
   const w = run();

@@ -942,7 +942,7 @@ function plain(v: unknown): boolean {
 const kindOf = (v: unknown): string => (Array.isArray(v) ? 'list' : v === null ? 'null' : typeof v);
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
-const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer', 'bree.start']);
+const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer', 'bree.start', 'bree.strike', 'bree.join']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
 export const MIGRATIONS: Record<number, (s: any) => any> = {

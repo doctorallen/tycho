@@ -42,10 +42,14 @@ export interface KindDef {
     relieves?: Record<Id, number>;
     /** Topics that fit: ids, 'tag:<tag>', or '*' (every topic that doesn't name its kinds). None: a word and an answer, no topics. */
     topics?: string[];
-    /** Turns: a number or [min, max]. Default: by how they stand (config.turns) for one with topics, config.quickTurns for one without. */
-    turns?: number | [number, number];
+    /** Turns: a number, [min, max], or a function (the starter as the person, the other as target: a game's own reckoning). Default: by how they stand (config.turns) for one with topics, config.quickTurns for one without. */
+    turns?: number | [number, number] | ((ctx: Ctx) => number);
+    /** Minutes between its turns: [min, max], drawn. Default config.turnGap. */
+    gap?: number[];
     /** Others nearby can join in (a table). */
     group?: boolean;
+    /** A group goes on without whoever leaves it, while two are left (a table someone gets up from). Default false: anyone leaving ends it. */
+    stays?: boolean;
     /** How it lands with the one spoken to, before anything else. Default 0. */
     base?: number;
     /** How it lands with the one spoken to: rules (the listener as the person, the speaker as target), or a function. */
@@ -499,6 +503,14 @@ export declare class Bree implements Module {
      * on a street), deterministic from the world's state.
      */
     witnesses: ((ex: ExchangeView, world: World) => Id[]) | null;
+    /**
+     * Whether the people in an exchange are still together (a definition, like
+     * witnesses): the id of someone who has left the others, or null. Default
+     * null: they must all be where it began (its outermost place). A game that
+     * works out who's near whom itself (its people each at a place of their
+     * own in Tyrell) says so here; whoever is asleep or away has left anyway.
+     */
+    together: ((ex: ExchangeView, world: World) => Id | null) | null;
     private w;
     /** Who someone has something against, as of a moment (outside the state: it's worked out again from it). */
     private foeCache;
@@ -598,6 +610,26 @@ export declare class Bree implements Module {
         minutes?: number;
         turns?: number;
     }): ExchangeView | null;
+    /**
+     * Strikes up an exchange as if they'd met (from the game: recorded, and it
+     * applies at once): `a`, the one who starts it, draws a kind among those
+     * that fit `b`, by weight, as on meeting. For a game that works out who
+     * meets whom itself (it walks someone up to another, and they talk).
+     * Returns it as it stands after the first turn, or null if nothing fits.
+     */
+    strike(a: Id, b: Id, opts?: {
+        minutes?: number;
+        turns?: number;
+    }): ExchangeView | null;
+    /** Strikes one up inside the simulation (see strike). */
+    applyStrike(a: Id, b: Id, opts?: {
+        minutes?: number;
+        turns?: number;
+    }): ExchangeView | null;
+    /** Someone joins a group exchange in progress (from the game: recorded): they've sat down at the table. False if they can't (it isn't a group's, it's full, they're busy). */
+    join(exchange: number, id: Id): boolean;
+    /** Joins one inside the simulation. */
+    applyJoin(exchange: number, id: Id): boolean;
     /** Ends an exchange inside the simulation. */
     applyEnd(which: number | Id): void;
     /** Begins an exchange: the turns it'll run to, the first turn now, the next on the clock. */
@@ -613,7 +645,13 @@ export declare class Bree implements Module {
     /** Would someone join an exchange now? */
     private joins;
     /** Someone joins a group exchange in progress. */
-    private join;
+    private add;
+    /** Does this exchange go on without someone who leaves it (a group whose kind stays, with more than two in it)? */
+    private stays;
+    /** Someone leaves a group that goes on without them: out of the turns to come; what's said stays said. */
+    private drop;
+    /** Someone leaves the exchange they're in (for another, or gone): a group that stays goes on; anything else ends. */
+    private leaveEx;
     /** The manner that fits someone best now (or null, with none declared): its base, rules, their nature, and a little of their own. */
     mannerOf(id: Id): Id | null;
     /** Is a kind a conversation, topic by topic? (One with topics, in a world that declares some; without any, it goes turn about.) */
@@ -643,17 +681,23 @@ export declare class Bree implements Module {
         subject?: Value;
         manner?: Id;
         place?: Id;
+        step?: string;
     }): {
         score: number;
         outcome: Outcome;
         parts: Array<[string, number]>;
     } | null;
-    /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
+    /**
+     * The parts of how words land with the listener (the speaker is the
+     * target), each a setting's weight. The rules (the kind's lands and knack,
+     * the manner's lands) can read what's being said in ctx.data: the kind,
+     * the step, the topic and its subject.
+     */
     private parts;
     /** The luck of a turn: two draws, so mostly near nothing. */
     private luck;
-    /** Are they all still together and awake, where it began? */
-    private together;
+    /** Who has left the others (asleep, away, or no longer where it began, or as the game's own `together` says), or null. */
+    private whoLeft;
     /**
      * Who speaks to whom next, and the step. A conversation (a kind with
      * topics) goes topic by topic: the next opener raises one, the others
@@ -689,7 +733,7 @@ export declare class Bree implements Module {
     witnessed(exchange: number, seenBy: Id[]): void;
     /** Witnesses reported by the game, inside the simulation. */
     applyWitnessed(exchange: number, seenBy: Id[]): void;
-    /** Puts the next turn on the clock. */
+    /** Puts the next turn on the clock (the kind's own gap, or the config's). */
     private schedule;
     /** Tells the game about a turn. */
     private tell;

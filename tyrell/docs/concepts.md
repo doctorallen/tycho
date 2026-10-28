@@ -122,6 +122,10 @@ The core (Bicameral, Ring, Entmoot, Esper, Westmarch, Strangers) is always on. T
 | [Ceres](modules/ceres.md) | Money, prices, stock, wages, rent, incomes, household purses and pantries |
 | [Cradle](modules/cradle.md) | Ages and stages, couples, births, departures and inheritance |
 | [Joi](modules/joi.md) | An optional language-model voice that never changes the world |
+| [Athelas](modules/athelas.md) | Conditions that run a course: phases, contagion, immunity |
+| [Delos](modules/delos.md) | Genomes: genes, blended traits, talents and instincts, inherited |
+| [Voice](modules/voice.md) | The player's conversations: threads, beats, answers whose approaches land by the listener |
+| [Bree](modules/bree.md) | Interactions between people: outcomes by degrees, conversations over turns, quarrels that escalate, grudges and feuds, making up |
 
 A module that's off leaves no trace: its getter (`world.reverie`) is `undefined`, its terms aren't registered, and its fields on definitions (`price`, `feels`, `crime`...) are ignored.
 

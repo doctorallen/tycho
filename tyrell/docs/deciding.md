@@ -90,6 +90,7 @@ Every field of `ActionDef`:
 | `yields` | Consideration[] | none | Factors on what `makes` makes (Ceres) |
 | `wage` | number | none | Pay per hour, paid at the end by the place's owner (Ceres) |
 | `social` | string | none | A social act resolved with the target when it ends (Cityspeak) |
+| `interact` | string | none | An interaction (a Bree kind) begun with the target as it starts, its turns over the action's length |
 | `feels` | string[] | none | Feelings the person gets when it ends (Reverie) |
 | `deed` | string | none | A deed done to the target when it ends: the same path as `world.did` (Reverie, Fellowship) |
 | `crime` | string | none | Doing it is this crime: everyone at the place may witness it (Wormtongue) |
@@ -268,6 +269,7 @@ Relief beyond what the person needs counts for nothing (eating when barely hungr
 | Fellowship | `regard` for `'social'` actions with a target: `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)` (its `socialRegard`, `socialCompat`, `socialMin`, `socialMax`) |
 | Ceres | `price`: `clamp(1 - share × (0.4 + thrift × 0.8) × prices, 0.05, 1)`, where share is price over money (its `priceShare`, `priceThrift`, `priceFloor`, and the knob `prices`) |
 | Cityspeak | `<practice>: <role>`: the practice's `boost` (1.5) for role actions of people filling the role |
+| Bree | `avoiding <name>`: an option where someone they bear a grudge against (or feud with) is, `1 - animosity × 0.6`, a social one aimed at them `1 - animosity × 0.8`; `a grudge against <name>`: a hostile interaction aimed at them, `1 + animosity` (its `avoidPlace`, `avoidTarget`, `avoidFloor`, `hostilePull`) |
 | your modules | Whatever `consider` returns |
 
 **Ruled out** before weighing, with the reason shown in the inspector: no such action; needs a job they don't have; `who` fails; cooling down; failed at that place in the last `config.backoff` minutes (`failed recently`); can't get there (infinite travel); `hours` don't include the arrival time; the place is closed at arrival (except staff, above); the slot's `who` ([places](places.md#slots)) fails; no free slot (unless they already hold it); `if` fails; the target isn't around; or a module blocks it (Ceres: can't afford it, sold out, needs an item).

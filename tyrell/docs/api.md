@@ -1,6 +1,6 @@
 # API reference
 
-The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
+The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api), [Bree](modules/bree.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
 
 Throughout, **input** marks a method that changes the world through `world.input`: it's recorded for time walk and safe to call from the game. **Engine** marks a method that changes state directly: call it only from inside the simulation (effects, storylets, module hooks, custom input handlers).
 
@@ -21,7 +21,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 |---|---|
 | `create(opts?)` | Makes a new world: `World` |
 | `VERSION` | `'2.0.0'` |
-| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice']` |
+| `MODULES` | `['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree']` |
 | `VoightKampff` | `{ run(opts), compare(report, baseline, tolerance?) }`: see [Tools](tools.md#voight-kampff) |
 | `World` | The world class (use `create`) |
 | `DEFAULT_CONFIG` | The default `Config` |
@@ -29,7 +29,9 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `CORE_KNOBS` | The core's headline knobs: `{ needs: 'person', habits: 'person', learning: 'person', wishes: 'person', crowds: 'world' }` |
 | `SCHEMA` | The save schema version: `2` |
 | `MIGRATIONS` | Save migrations: `MIGRATIONS[v](state)` turns a version-`v` state into `v + 1`. See [Saving](saving.md) |
-| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
+| `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice`, `Bree` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
+| `OUTCOMES` | Bree's outcomes, best first: `['warm', 'good', 'fine', 'awkward', 'sour', 'row']` |
+| `breeStarter(opts?)` | Bree's starter set as plain definitions: `{ kinds, topics, manners }` (see [Bree](modules/bree.md#the-starter-set)) |
 | `curveAt(curve, x)` | Evaluates a response curve at `x` in 0..1 |
 | `Stream` | A seeded random stream: `new Stream(...parts)`; `next()`, `range(lo, hi)`, `int(n)`, `chance(p)`, `pick(items)`, `weighted(items, weightFn)`, `shuffle(items)` |
 | `clamp(x, lo = 0, hi = 1)` | Clamps a number |
@@ -40,7 +42,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `inHours(h, [from, to])` | Is hour `h` inside the span (wrapping past midnight)? |
 | `HOUR`, `DAY` | 60 and 1440 |
 
-Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `CityspeakConfig`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CeresConfig`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `JoiConfig`, `CourseDef`, `CoursePhase`, `AthelasConfig`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `Requirement`, `LogFilter`).
+Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` for the global): everything in `types.ts`, `SaveData`, `Module`, and the modules' definition types (`FeelingDef`, `BreakDef`, `MemoryKindDef`, `Belief`, `Memory`, `PersonFile`, `Shift`, `ReverieConfig`, `GroupDef`, `Sentiment`, `FellowshipConfig`, `CrimeDef`, `Report`, `Secret`, `WormtongueConfig`, `LineDef`, `PracticeDef`, `SocialActDef`, `Said`, `CityspeakConfig`, `MentatConfig`, `StoryletDef`, `Phase`, `GaffConfig`, `GoodDef`, `ChainDef`, `GoodReport`, `ProductionReport`, `CeresConfig`, `CradleConfig`, `JoiRequest`, `JoiReply`, `JoiProvider`, `Spoken`, `JoiConfig`, `CourseDef`, `CoursePhase`, `AthelasConfig`, `GeneDef`, `BlendDef`, `Genome`, `Mutation`, `DelosConfig`, `ApproachDef`, `AnswerDef`, `BeatDef`, `ThreadDef`, `PromiseDef`, `VoiceConfig`, `TalkLine`, `TalkOption`, `TalkView`, `LandRules`, `Outcome`, `OutcomeKey`, `OutcomeDo`, `KindDef`, `TopicDef`, `TopicSource`, `MannerDef`, `BreeConfig`, `Exchange`, `ExchangeView`, `Turn`, `Feud`, `Finished`, `StarterOptions`, `ChooseOpts`, `StrangerDef`, `StrangerErrand`, `VKOptions`, `VKReport`, `VKStats`, `VKCheck`, `VKInteractions`, `Requirement`, `LogFilter`).
 
 ## Options
 
@@ -133,7 +135,7 @@ The decision settings, habits, pastimes and wishes:
 | `modules` | Map | Modules by name |
 | `hooks` | Module[] | Modules in the order their hooks run |
 | `replaying` | boolean | True while Esper replays (events are silent) |
-| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos`, `voice` | | Each module, or `undefined` when it's off |
+| `reverie`, `fellowship`, `wormtongue`, `cityspeak`, `mentat`, `gaff`, `ceres`, `cradle`, `joi`, `athelas`, `delos`, `voice`, `bree` | | Each module, or `undefined` when it's off |
 
 ## World methods
 
@@ -304,6 +306,15 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `voice:start` | `{ who, by }` | Voice: a talk began |
 | `voice:end` | `{ who, by, threads, why }` | Voice: a talk ended (`'bye'`, `'left'`, `'gone'`) |
 | `promise` | `{ who, by, id, state }` | Voice: a promise was made (`'open'`) or settled |
+| `bree:start` | ExchangeView | Bree: an exchange began |
+| `bree:turn` | Turn | Bree: a turn of one: who to whom, the step, topic and manner, how it landed, the words |
+| `bree:joined` | `{ id, who }` | Bree: someone joined a group exchange |
+| `bree:escalated` | `{ id, from, to, by, against }` | Bree: talk turned into an argument, an argument into a fight |
+| `bree:witnessed` | `{ id, exchange, actor, kind, against }` | Bree: someone saw an exchange go wrong |
+| `bree:end` | Finished | Bree: an exchange ended, with its outcome (and each one's) |
+| `bree:grudge` | `{ id, against, strength, why }` | Bree: a grudge formed or deepened |
+| `bree:feud` | `{ a, b, strength, why }` | Bree: a feud began, changed, or (strength 0) ended |
+| `bree:mended` | `{ id, with, why }` | Bree: someone made up their grudge |
 
 Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
 
@@ -328,8 +339,9 @@ The names Esper records, for tools that read a history. Each is made by the meth
 | `afflict`, `cure`, `hasten` | Athelas |
 | `genome` (`set`) | Delos |
 | `voice.start`, `voice.answer`, `voice.end` | Voice |
+| `bree.start`, `bree.end`, `bree.witness` (`witnessed`), `bree.grudge` (`grudgeAgainst`), `bree.feud`, `bree.reconcile` | Bree |
 
-`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start` and `voice.answer` apply at once even inside a listener, because they return a value.
+`person`, `promote`, `say`, `birth`, `recollect`, `social`, `draw`, `afflict`, `voice.start`, `voice.answer` and `bree.start` apply at once even inside a listener, because they return a value.
 
 ## Types
 

@@ -186,7 +186,8 @@ export class Cradle implements Module {
   /** Someone leaves for good ('died', 'moved away'...). Money passes on; those who cared grieve. */
   depart(id: Id, why = 'left'): void { this.w.input('depart', [id, why]); }
 
-  private applyDepart(id: Id, why: string): void {
+  /** Someone leaves for good, inside the simulation (a course that ends in death, a killing). */
+  applyDepart(id: Id, why: string): void {
     const w = this.w;
     const p = w.s.people[id];
     if (!p || p.status === 'gone') return;

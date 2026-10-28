@@ -5,13 +5,19 @@
 // gives the same world, and time walk and saving give back exactly what they
 // took. It also gathers the numbers a baseline can be compared against, and,
 // when people interact (Bree), what passed between them; the 'interactions'
-// check (asked for by name) holds those exchanges to sense.
+// check (asked for by name) holds those exchanges to sense. When people harm
+// each other (Morgul), it counts what was done and what came of it, and the
+// 'harm' check (asked for by name) holds that to sense: nobody dies with
+// lethality 0, grudges follow harm, the poisoner is suspected some of the
+// time and not always.
 import type { Id } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, HOUR, hourOf, round } from '../core/util';
 
 export interface VKCheck {
   name: string;
+  /** Called once, when the world is built, before it runs (to listen for events). */
+  start?(w: World, acc: Record<string, any>, fail: (msg: string) => void): void;
   /** Called at every sample; push failures into the list. */
   sample?(w: World, acc: Record<string, any>, fail: (msg: string) => void): void;
   /** Called once at the end. */
@@ -45,6 +51,36 @@ export interface VKStats {
   ms: number;
   /** What passed between people (Bree), when anything did. */
   interactions?: VKInteractions;
+  /** Harm between people (Morgul), when there was any. */
+  harm?: VKHarm;
+}
+
+/** Harm between people over a run (Morgul). */
+export interface VKHarm {
+  /** Harms, by how they came ('blow', 'trap', 'dose'...). */
+  harms: number;
+  via: Record<string, number>;
+  /** Fights by numbers (Bree exchanges with blows), and the blows. */
+  fights: number;
+  blows: number;
+  /** Times someone went down, and was killed. */
+  downs: number;
+  killed: number;
+  /** Traps set and sprung; taints made, and the doses eaten. */
+  set: number;
+  sprung: number;
+  tainted: number;
+  doses: number;
+  /** Suspicions formed of harm nobody saw done: right, and wrong. */
+  suspicions: number;
+  right: number;
+  wrong: number;
+  /** Tendings, and answers to the player. */
+  tended: number;
+  responses: number;
+  /** At the end: open wounds, and people down. */
+  wounds: number;
+  down: number;
 }
 
 /** What passed between people over a run (Bree's exchanges). */
@@ -75,6 +111,59 @@ export interface VKReport {
 }
 
 const builtins: Record<string, VKCheck> = {
+  // asked for by name: harm between people (Morgul) makes sense
+  harm: {
+    name: 'harm',
+    start(w, acc, fail) {
+      const mg = w.morgul;
+      if (!mg) return;
+      acc.harmKilled = 0;
+      acc.harmPoison = { right: 0, wrong: 0 };
+      acc.harmVia = {} as Record<number, string>;
+      acc.harmGrudges = { due: 0, held: 0 };
+      w.on('morgul:killed', (e: { id: string }) => {
+        acc.harmKilled++;
+        if (!(Number(w.tuning('morgul', e.id).lethality) > 0)) fail(`${e.id} was killed with lethality 0 (day ${w.day})`);
+      });
+      w.on('morgul:harm', (h: { id: number; to: string; by: string | null; via: string; intent: string; shown: boolean; severity: number }) => {
+        acc.harmVia[h.id] = h.via;
+        if (!(h.severity >= 0 && h.severity <= 1)) fail(`harm ${h.id} has severity ${h.severity}`);
+        // meant harm the victim saw done leaves them a grudge (Bree), however small
+        if (!w.bree || !h.shown || h.intent !== 'meant' || !h.by || !w.s.people[h.by] || !w.s.people[h.to] || !w.morgul?.config.direct.includes(h.via) || !(h.severity > 0)) return;
+        acc.harmGrudges.due++;
+        if (w.bree.grudge(h.to, h.by) > 0) acc.harmGrudges.held++;
+        else fail(`${h.to} bears ${h.by} no grudge right after harm ${h.id} (day ${w.day})`);
+      });
+      w.on('morgul:suspect', (e: { harm: number; right: boolean }) => {
+        if (acc.harmVia[e.harm] !== 'dose') return;
+        if (e.right) acc.harmPoison.right++; else acc.harmPoison.wrong++;
+      });
+    },
+    sample(w, acc, fail) {
+      const mg = w.morgul;
+      if (!mg) return;
+      const down: Record<string, number> = (acc.harmDown ||= {});
+      for (const p of w.people()) {
+        const h = mg.hurt(p.id);
+        if (!(h >= 0 && h < 5)) fail(`${p.id}'s hurt is ${h} at ${w.now}`);
+        if (mg.isDown(p.id)) {
+          down[p.id] ??= w.now;
+          if (w.now - down[p.id] > 6 * HOUR && !acc['harmDownLong:' + p.id]) { acc['harmDownLong:' + p.id] = true; fail(`${p.id} has been down for over 6 hours (day ${w.day})`); }
+        } else delete down[p.id];
+      }
+    },
+    end(w, acc, fail) {
+      if (!w.morgul) return;
+      const lethal = Number(w.tuning('morgul').lethality) > 0;
+      if (!lethal) for (const id of Object.keys(w.s.people)) { const p = w.s.people[id]; if (p.status === 'gone' && w.cradle?.departed()[id]?.why === 'killed') fail(`${id} is gone, killed, with lethality 0`); }
+      // (judged once there are enough suspicions to judge by)
+      const pz = acc.harmPoison as { right: number; wrong: number } | undefined;
+      if (pz && pz.right + pz.wrong >= 6) {
+        if (!pz.right) fail(`the poisoner was never suspected (${pz.wrong} suspicions, all of others)`);
+        if (!pz.wrong) fail(`the poisoner was suspected every time (${pz.right} suspicions): suspicion should be able to fall wrong`);
+      }
+    },
+  },
   // asked for by name: exchanges between people (Bree) make sense
   interactions: {
     name: 'interactions',
@@ -175,6 +264,7 @@ export function run(opts: VKOptions): VKReport {
   const start = w.now;
   const end = start + days * DAY;
   const acc: Record<string, any> = {};
+  for (const c of checks) c.start?.(w, acc, fail);
   const moods: Array<{ day: number; vals: number[] }> = [];
   const places: Record<number, Record<Id, number>> = {};
   const needMax: Record<Id, number> = {};
@@ -193,6 +283,25 @@ export function run(opts: VKOptions): VKReport {
     if (e.why === 'stepped in') t.steppedIn++;
   });
   w.on('bree:escalated', () => { tally().escalations++; });
+  // harm between people, as it comes (Morgul)
+  let harm: VKHarm | null = null;
+  const hurt = (): VKHarm => (harm ||= { harms: 0, via: {}, fights: 0, blows: 0, downs: 0, killed: 0, set: 0, sprung: 0, tainted: 0, doses: 0, suspicions: 0, right: 0, wrong: 0, tended: 0, responses: 0, wounds: 0, down: 0 });
+  const fought = new Set<number>();
+  w.on('morgul:harm', (h: { via: string; exchange?: number }) => {
+    const t = hurt();
+    t.harms++;
+    t.via[h.via] = (t.via[h.via] || 0) + 1;
+    if (h.via === 'dose') t.doses++;
+    if (h.exchange !== undefined) { t.blows++; if (!fought.has(h.exchange)) { fought.add(h.exchange); t.fights++; } }
+  });
+  w.on('morgul:down', () => { hurt().downs++; });
+  w.on('morgul:killed', () => { hurt().killed++; });
+  w.on('morgul:set', () => { hurt().set++; });
+  w.on('morgul:sprung', () => { hurt().sprung++; });
+  w.on('morgul:tainted', () => { hurt().tainted++; });
+  w.on('morgul:suspect', (e: { right: boolean }) => { const t = hurt(); t.suspicions++; if (e.right) t.right++; else t.wrong++; });
+  w.on('morgul:respond', () => { hurt().responses++; });
+  w.on('tended', () => { if (harm) harm.tended++; });
   for (let t = start + every; t <= end + 1e-6; t += every) {
     w.advanceTo(t);
     for (const c of checks) c.sample?.(w, acc, fail);
@@ -251,6 +360,15 @@ export function run(opts: VKOptions): VKReport {
     done.grudges = w.people().reduce((n, p) => n + (w.bree as NonNullable<World['bree']>).grudges(p.id).length, 0);
     done.feuds = w.bree.feuds().length;
     stats.interactions = done;
+  }
+  const harmed = harm as VKHarm | null;
+  if (harmed && w.morgul) {
+    const via: Record<string, number> = {};
+    for (const k of Object.keys(harmed.via).sort()) via[k] = harmed.via[k];
+    harmed.via = via;
+    harmed.wounds = w.people().reduce((n, p) => n + (w.morgul as NonNullable<World['morgul']>).wounds(p.id).length, 0);
+    harmed.down = w.people().filter((p) => (w.morgul as NonNullable<World['morgul']>).isDown(p.id)).length;
+    stats.harm = harmed;
   }
   return {
     seed, days, passed: failures.length === 0, failures,

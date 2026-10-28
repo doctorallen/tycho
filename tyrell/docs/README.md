@@ -86,6 +86,7 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 | Delos | [delos.md](modules/delos.md) | Genomes: genes with dominance, blended traits, talents and instincts, mutations |
 | Voice | [voice.md](modules/voice.md) | Branching conversations: threads, beats, answers with approaches, promises |
 | Bree | [bree.md](modules/bree.md) | Interactions between people: outcomes by degrees, conversations over turns, escalation, grudges, feuds, avoidance, making up |
+| Morgul | [morgul.md](modules/morgul.md) | Harm between people: wounds, hurt, down and dead, the victim and onlookers, crimes, traps, poison, suspicion, fights by numbers, revenge |
 
 ## Glossary
 
@@ -125,9 +126,13 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **Grudge.** One person's against another: a strength that fades, and a reason, left by a bad exchange or set by the game; it colors what they do after (Bree).
 
+**Harm.** One person (or nothing) hurting another: who, by whom, what kind, how severe (0..1), how it came (a blow, a trap, a dose), why (meant, defense, careless, accident), and who saw it land. It leaves a wound and what follows in the mind (Morgul).
+
 **Headline knob.** A plain multiplier on a whole behavior (`friendship`, `breaks`, `gossip`...), 1 by default, so 2 is twice as much and 0 none; a person can have their own (`PersonDef.tune`). See [Tuning](tuning.md).
 
 **Heat.** The weight of crime reports against someone, fading by the day (Wormtongue).
+
+**Hurt.** How hurt someone is: the severities of their open wounds, each by how much its phase still hurts. Past `downAt` they go down (Morgul).
 
 **Input.** A change to the world from outside the simulation, made through `world.input` (every public mutator is one). Esper records inputs and replays them after a rewind.
 

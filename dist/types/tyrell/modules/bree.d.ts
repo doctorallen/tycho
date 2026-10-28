@@ -3,6 +3,7 @@ import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonStat
 import type { World } from '../core/world';
 import { DAY } from '../core/util';
 import type { LandRules } from './landing';
+import type { Blow } from './morgul';
 /** The steps an exchange can come out at, best first. */
 export type Outcome = 'warm' | 'good' | 'fine' | 'awkward' | 'sour' | 'row';
 export declare const OUTCOMES: readonly Outcome[];
@@ -454,6 +455,8 @@ export interface Turn {
     text?: string;
     /** The exchange ends with this turn. */
     end: boolean;
+    /** A fight by numbers (Morgul): the blow this turn landed, one way or the other. */
+    harm?: Blow;
 }
 export interface StarterOptions {
     /** Only these kinds (ids); default all. */
@@ -672,6 +675,8 @@ export declare class Bree implements Module {
      * walk off, or let it go?
      */
     private react;
+    /** Does someone there step in? Whoever likes one of them best, with the nerve for it, by chance. */
+    private stepper;
     /** Talk turns into an argument, an argument into a fight: the one who escalated leads it now, and whoever's there sees it. */
     private escalate;
     /** An exchange of a kind breaks out where people can see it: a crime for Wormtongue, if the game calls it one, and Bree's own witnesses. */

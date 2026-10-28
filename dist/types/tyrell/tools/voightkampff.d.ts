@@ -2,6 +2,8 @@ import type { Id } from '../core/types';
 import type { World } from '../core/world';
 export interface VKCheck {
     name: string;
+    /** Called once, when the world is built, before it runs (to listen for events). */
+    start?(w: World, acc: Record<string, any>, fail: (msg: string) => void): void;
     /** Called at every sample; push failures into the list. */
     sample?(w: World, acc: Record<string, any>, fail: (msg: string) => void): void;
     /** Called once at the end. */
@@ -37,6 +39,35 @@ export interface VKStats {
     ms: number;
     /** What passed between people (Bree), when anything did. */
     interactions?: VKInteractions;
+    /** Harm between people (Morgul), when there was any. */
+    harm?: VKHarm;
+}
+/** Harm between people over a run (Morgul). */
+export interface VKHarm {
+    /** Harms, by how they came ('blow', 'trap', 'dose'...). */
+    harms: number;
+    via: Record<string, number>;
+    /** Fights by numbers (Bree exchanges with blows), and the blows. */
+    fights: number;
+    blows: number;
+    /** Times someone went down, and was killed. */
+    downs: number;
+    killed: number;
+    /** Traps set and sprung; taints made, and the doses eaten. */
+    set: number;
+    sprung: number;
+    tainted: number;
+    doses: number;
+    /** Suspicions formed of harm nobody saw done: right, and wrong. */
+    suspicions: number;
+    right: number;
+    wrong: number;
+    /** Tendings, and answers to the player. */
+    tended: number;
+    responses: number;
+    /** At the end: open wounds, and people down. */
+    wounds: number;
+    down: number;
 }
 /** What passed between people over a run (Bree's exchanges). */
 export interface VKInteractions {

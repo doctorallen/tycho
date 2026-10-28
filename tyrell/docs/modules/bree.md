@@ -192,6 +192,8 @@ When a turn lands at `escalateAt` (sour) or worse, the one who heard it reacts:
 
 A kind that starts hostile (an insult) has its starter as `by`. Every escalation is [seen](#witnesses); a kind with `crime` (the starter's fight) goes to Wormtongue as it breaks out. With `feudSpread` above 0, a fight between people of two households sets the households [feuding](#feuds) by that much.
 
+**Fights by numbers.** With [Morgul](morgul.md) given a wound, a kind in its `fights` (the starter set's `fight`) comes out blow by blow: both fighters are held in it, each turn one of them lands a blow by the odds of their might (a harm, with its wound, grudge and fear), its turn carries the blow (`harm`), someone there may step in, and it ends when one yields (`yielded`), goes down (`down`) or walks off (`left`). Someone down talks to nobody.
+
 ## Witnesses
 
 Whoever is about sees every escalation, and an exchange that ends at `seenAt` (sour) or worse: by default everyone at the place (its outermost), awake, not in it; give `world.bree.witnesses = (exchange, world) => ids` (a definition, deterministic) for the game's own sight, or report them after with `world.bree.witnessed(exchangeId, ids)` (an input; it works on an exchange lately finished, too). Each one, once a kind:
@@ -299,7 +301,7 @@ Turns are module timers in the world's queue. Kinds, topics, manners and `witnes
 | `applyStart`, `applyEnd`, `applyGrudge`, `applyFeud`, `applyReconcile`, `applyWitnessed` | | **Engine** versions |
 | `kinds`, `topics`, `manners`, `config` | | Declarations and config |
 
-**ExchangeView**: `{ id, kind, first, who, place, t, why, turn, turns, outcome, score, topic: { id, subject? } | null, manners, by? }`. **Finished**: `{ id, kind, first, who, place, t, end, outcome, outcomes (each one's), n, why, by?, left?, mediator? }`; `why` is `'done'`, `'parted'`, `'left'` (walked off), `'stepped in'`, `'ended'` (the game), `'interrupted'` or `'gone'`.
+**ExchangeView**: `{ id, kind, first, who, place, t, why, turn, turns, outcome, score, topic: { id, subject? } | null, manners, by? }`. **Finished**: `{ id, kind, first, who, place, t, end, outcome, outcomes (each one's), n, why, by?, left?, mediator? }`; `why` is `'done'`, `'parted'`, `'left'` (walked off), `'stepped in'`, `'ended'` (the game), `'interrupted'` or `'gone'`; a fight by numbers (Morgul) also `'yielded'` or `'down'`.
 
 ## Terms, effects, events and log
 
@@ -310,7 +312,7 @@ Effects: `grudge+=n` / `grudge:<id>-=n` / `grudge=n`, `reconcile` / `reconcile:<
 | Event | Payload |
 |---|---|
 | `bree:start` | ExchangeView |
-| `bree:turn` | `{ id, kind, n, who, to, step, topic, subject?, manner?, landed, outcome, line, key?, text?, end }` |
+| `bree:turn` | `{ id, kind, n, who, to, step, topic, subject?, manner?, landed, outcome, line, key?, text?, end, harm? }`; `harm` in a fight by numbers: `{ id, by, to, kind, severity, what?, hurt, end? }` (Morgul) |
 | `bree:joined` | `{ id, who }` |
 | `bree:escalated` | `{ id, from, to, by, against }` |
 | `bree:witnessed` | `{ id, exchange, actor, kind, against }`: `id` is the witness |
@@ -345,6 +347,7 @@ Every other setting is in [Tuning](../tuning.md#bree), with its default and whic
 - **Voice**: a kind can land as a Voice approach does (the same landing, shared), so a game's approaches serve its people as well as the player.
 - **Cradle**: flirting grows attraction, which Cradle's courtship pairs by.
 - **Bicameral**: avoidance is a consideration on every choice; an action can interact.
+- **Morgul**: fights come out blow by blow, by the odds of might; harm leaves grudges and feuds here; grudges are evidence when someone suspects who did a harm nobody saw.
 
 ## Carrying a game's own talk
 

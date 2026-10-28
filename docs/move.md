@@ -5,16 +5,16 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 | Phase | What moves | State |
 |---|---|---|
 | 0 | The repository: Tyrell merged in with its history; the build, CI, license, test kit; golden tests in the games | Done |
-| 1 | Core: seed, math, color, loop | In progress |
-| 2 | save, pwa, dev, loader | |
-| 3 | The renderer: view, gpu, light, post | |
+| 1 | Core: seed, math, color, loop | Done: all three games |
+| 2 | save, pwa, dev, loader | Done: the White Dragon and Lodestar; Merryfolk's pwa (it's installable now), its save and dev flags after phase 9 |
+| 3 | The renderer: gpu, light, post | Done: all three games (Merryfolk's first GPU path) |
 | 4 | Pixels: sprite, figure, paint, fx, life, sky | |
-| 5 | World: grid, shapes, space, collide, move, path, gen | |
+| 5 | World: grid, collide (the shapes and the space in one), move, path, gen | grid, collide, move and path in; gen next |
 | 6 | Play: input, interact, items, craft, trade, build, mine, guide | input, items and guide in, the White Dragon and Lodestar on them; interact, craft, trade, build, mine to come |
 | 7 | The rest of the shell: ui, hud, map, audio, inspect | |
-| 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production | Tyrell done; the White Dragon's talk next |
+| 8 | Tyrell: Voice, Delos, skills, conditions (Athelas), novelty and wishes, production | Done; the White Dragon talks on Voice |
 | 9 | Merryfolk's minds onto Tyrell | |
-| 10 | The bridge | |
+| 10 | The bridge | In: the White Dragon uses it |
 
 ## Phase 0: the repository
 
@@ -23,6 +23,35 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 - MIT license.
 - The test kit runs on Playwright or on puppeteer-core with `$CHROME`. The games keep puppeteer-core in their `package.json` for now (their lockfiles couldn't be regenerated where this work was done), so CI drives their tests through puppeteer-core and local runs through Playwright, with the same tests.
 - CI builds and tests Tycho, then runs each game's own tests with the new build in place of its `vendor/tycho`.
+
+## Phase 1: the core
+
+- `Tycho.seed` (hashes, value noise, `mulberry32`, Lodestar's `Rng`, `fxRand`), `Tycho.math`, `Tycho.color` (mixing, shading, the painter's ramps), `Tycho.loop` (`Stepper` for fixed steps, `Samples` for frame times, `Governor` for the quality the White Dragon lowers when frames are slow). Each game's own copies went, and `test/core.test.mjs` holds each to the game's original, value for value.
+- Each game names what it uses near the top of its first script (`const { hash, noise, Rng } = Tycho.seed;`), so the rest of its code reads as it did. The golden tests (every level's shape and painting, the sprites, the pictures) didn't move.
+
+## Phase 2: the shell's first parts
+
+- `Tycho.save`: storage that never throws, and a `Store` for a game's one save (old keys deleted, renamed ids put right, a save of another version started over, one that can't be read kept aside). The White Dragon and Lodestar keep their saves on it, under the same keys, so a save from before reads as it did.
+- `Tycho.pwa`: the installable app (a new worker found when the game comes to the foreground and every 15 minutes; then save and reload, or ask). The service worker is `dist/tycho-sw.js`; each game's `sw.js` is a few lines naming what else to keep. Merryfolk became installable with it: a manifest, icons drawn from one of the valley's trees, the worker, `js/pwa.js` and `test/pwa.js`. Opened from a file it still plays as a page.
+- `Tycho.dev` (the query, flags in storage) and `Tycho.loader` (loading in slices between frames: Lodestar's loading screen).
+- Merryfolk keeps its own save and dev flags until its minds have moved (phase 9), which rewrites both.
+
+## Phase 3: the renderer
+
+- `Tycho.gpu` is Lodestar's GPU design made general: a batcher with a stand-in for the 2D context (`Ctx`: fillRect, drawImage, alpha, the blend modes, save and restore, transforms, a rect clip, linear and radial gradients), an atlas of every picture drawn, textures for a painted ground, the light map's multiply, a tint per quad, bloom, and `read()` for tests. `Tycho.light` is the White Dragon's smooth light model, and `Tycho.post` its blur finish (bloom, reflections, the fade).
+- Lodestar's `js/gpu.js` is now a thin adapter over it; the White Dragon's own WebGL path (`js/gl.js`) went; Merryfolk had none and draws the valley on the GPU for the first time (about 6,800 quads in 3 to 6 draws a frame).
+- Each game draws the same frame both ways in a test (`test/gpu.js`, Lodestar's `test/gllight.js`) and holds the GPU to the 2D picture within a few tones; the golden pictures stay the 2D path's.
+- One change a player could see: the White Dragon's old GL path didn't dim the neon's glow by day (its alpha wasn't premultiplied); the new path dims it as the 2D path always did.
+
+## Phase 5: the world
+
+- `Tycho.grid`, `Tycho.collide`, `Tycho.move` and `Tycho.path` ([world.md](world.md)). The plan's shapes and space became one part, `collide`: a `Space` holds the shapes (boxes, ellipses, the sides, walkways and stairs, ladders) and grids' tiles, and answers for all of them. `test/world.test.mjs` holds each to the code it came from, kept in the test: the White Dragon's on six of its levels as they're built (`test/fixtures/wd-levels.json`) and a level made to have ceilings and ledges, Lodestar's on floors made like its own, Merryfolk's A* on maps of its kind. Each game also recorded traces from its old code before anything moved (`test/traces.js`, `test/traces.json`) and replays them through the new, frame by frame.
+- The White Dragon: `World.hits`, `World.way` and `World.ladderAt` ask the level's space (`L.space`, made when the level first loads: its solids, the props that block until they're done, its sides, its walkways and stairs, its ladders), and the runner's step is a `Tycho.move.Platform` with `T.player`'s numbers (the stick, the dev speed and what Use is busy at passed in; taking a ladder lets go of the machine, as before). Its 14 traces (14,574 frames: walls, every pace, hops and jumps, stairs, walkways jumped up through and dropped through, coyote jumps, ladders up, down, jumped off and let go of, long falls, and seeded random input in six places) replay bit for bit. Stayed in the game: `Town.route`, which is bound to the census and the residents' minds and will be reworked with them (`Tycho.path.Routes` is the graph router for that), and the people's footing (`Actors.ground` asks the World as before; residents are placed by the clock and the minds, not moved against the level).
+- Lodestar: a floor's tiles and ore are a flat grid over its own arrays (`f.grid`, made by `floorSpace` as soon as a floor's tiles are), and `floorTile` is its lookup; `rockAt` is those tiles felt along the smooth line (`f.rock`, with the floor's noise), `bodyHits` and `bodyInRock` ask the floor's space (`f.space`), `moveBody` is `Tycho.move.topdown` and `floorDistances` is `Tycho.path.distances`. The one tile changed in play (a storm charging a vein) is set through the grid. Generation's golden hashes are unchanged; its 18 traces (8,688 frames on the surface, the Deep and a ruin, bodies of 4, 6 and 9 px walked into walls eight ways, round curves, wandering and dashing, worked out of a wedge) and its probes (the wall line on both its tables, the body test on a lattice, flow fields from five caverns) replay bit for bit. Stayed in the game: `clearLine`, the enemies' sight, sampled every 4 px through square tiles (`space.ray` is exact, so it would change what they see), and `wayToPlayer`, the enemies' own eight-way reading of the flow field.
+- `path.distances` stays inside the grid where Lodestar's went round to the next row at the left and right edges; that never mattered, as its edge is always solid rock.
+- Merryfolk isn't touched (it's being changed elsewhere): `Tycho.path.AStar` is its `findPath`, step for step, the game giving the costs, ready when it moves.
+- Speed, measured in Node by CPU time on a 320 × 320 floor: the wall line 102 ms against the game's 131 for the same points, the body test 27 against 30, ten flow fields over open ground 28 against 62 (a flat grid reads the game's arrays straight; the field's queue is kept between searches).
+- Not yet: gen, liquid and tilelight; a big grid's chunks let go of and made again (its changes are kept by chunk for that); and no game saves a grid's changes yet (Lodestar's world is made whole from its seed and keeps nothing of its tiles in a save).
 
 ## Phase 6: play (input, items, guide)
 
@@ -33,3 +62,12 @@ The record of the move planned in [the Tycho plan](https://claude.ai/artifact/Nr
 - **Changed in Lodestar**: `input.js` is a thin `Input` over Tycho's controls, and the screens' tap guard is the controls' (`Input.guard`, `Input.guarded`, from `UI.show`, a confirm button arming and the map's tap); the map's drag, pinch and tap are Tycho's gestures; the motes carried (`d.motes`) are a bag. Its equipment (`Save.data.equip`: one rig, never changed or saved) and the unused `d.cargo` stayed as they were: neither is an inventory any more.
 - Where the games' own controls disagreed with themselves, Tycho's do the plainer thing, the same in both games: two keys for one action (the White Dragon let go of the action when either came up), two fingers on one button (it let go when either lifted), keys and thumbs at once (the last to speak won), a third finger on a map (it panned) and a finger the browser cancelled on a map (it stayed down). None of these comes up playing on one device.
 
+## Phase 8: Tyrell's new parts
+
+- Voice (conversations), Delos (genomes inherited through births), skills that grow with practice, Athelas (conditions that run a course), pastimes that pall and wishes that pull, and production in Ceres. A test holds that a world using none of them is byte for byte what it was.
+- The White Dragon's talk moved onto Voice (`js/talk.js`): what's theirs raised first (what they saw, what they heard, a job, a hand-back, a lead), then subjects, each answer with an approach that lands well or badly by the listener. The smoke test takes Ozzy's job through it.
+
+## Phase 10: the bridge
+
+- `dist/tycho-minds.js` (`Tycho.minds`, [minds.md](minds.md)): the clock (the game's time driving Tyrell's, back through time walk, remade past what Esper remembers), the minds in the save, seats, presence (who might be in a level, once per doing), travel times, witnesses and reports. It takes only shapes from Tyrell, so it builds and tests on its own.
+- The White Dragon's `city.js` uses all of it; what stayed in the game is its own: the census, routines, the route on screen, the reactions' words.

@@ -148,7 +148,7 @@ export interface Pic { x: number; y: number; w: number; h: number; page: number;
 interface Run { start: number; n: number; blend: number; clip: number[] | null; dyn: { tex: WebGLTexture } | null; clear?: false }
 interface Clear { clear: true; em: boolean; x: number; y: number; w: number; h: number }
 interface Pass { s: number; a: number; pw: number; ph: number; tex: WebGLTexture; fb: WebGLFramebuffer; ox: number; oy: number }
-type Source = CanvasImageSource & { width: number; height: number; gpuOwn?: boolean; getContext?: (k: '2d') => CanvasRenderingContext2D | null };
+type Source = CanvasImageSource & { width: number; height: number; gpuOwn?: boolean; gpuLive?: boolean; getContext?: (k: '2d') => CanvasRenderingContext2D | null };
 
 export interface GpuOptions {
   /** The atlas's page size (px square), its first and most pages, how many
@@ -398,11 +398,14 @@ export class Gpu {
   /** Pictures onto the pages ahead of their first frame (while loading). */
   warm(...srcs: (Source | null | undefined)[]): void { if (this.on) for (const s of srcs) if (s) this.pic(s); }
   /** A canvas drawn before has been painted again: read anew next time. */
-  dirty(src: object): void { const e = this.pics.get(src); if (e) { e.dead = true; this.pics.delete(src); } }
+  dirty(src: object): void {
+    const e = this.pics.get(src); if (e) { e.dead = true; this.pics.delete(src); }
+    const t = this.dynTexs.get(src); if (t) { for (const x of t.texs) this.gl.deleteTexture(x); this.dynTexs.delete(src); }
+  }
   /** A picture of its own (bigger than a page, or pixels rewritten each
    * frame): a 2D texture (a ring of three), the rows y0..y1 of `img`
    * uploaded. Returns what a run draws from. */
-  ownTex(src: object & { width: number; height: number }, img: ImageData | null, y0 = 0, y1 = src.height): { tex: WebGLTexture; w: number; h: number } {
+  ownTex(src: object & { width: number; height: number }, img: ImageData | TexImageSource | null, y0 = 0, y1 = src.height): { tex: WebGLTexture; w: number; h: number } {
     const gl = this.gl, w = src.width, h = src.height;
     let t = this.dynTexs.get(src);
     gl.activeTexture(gl.TEXTURE4);
@@ -417,9 +420,11 @@ export class Gpu {
       t.i = (t.i + 1) % t.texs.length; t.tex = t.texs[t.i];
       gl.bindTexture(gl.TEXTURE_2D, t.tex);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, w); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, y0);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, w, y1 - y0, gl.RGBA, gl.UNSIGNED_BYTE, img.data);
-      gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+      if (img instanceof ImageData) {
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, w); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, y0);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, w, y1 - y0, gl.RGBA, gl.UNSIGNED_BYTE, img.data);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0); gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+      } else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, img); // (from the canvas itself)
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       this.stats.uploads++;
     } else if (!t.tex) { t.tex = t.texs[0]; gl.bindTexture(gl.TEXTURE_2D, t.tex); }
@@ -780,6 +785,16 @@ export class Gradient {
   }
 }
 
+/** A radial gradient a Ctx can fill with: drawn as a picture a 2D canvas
+ * rasterized (kept, by its shape and the box's place in it). */
+export class RadialGradient {
+  x0: number; y0: number; r0: number; x1: number; y1: number; r1: number; css: [number, string][] = [];
+  constructor(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number) { this.x0 = x0; this.y0 = y0; this.r0 = r0; this.x1 = x1; this.y1 = y1; this.r1 = r1; }
+  addColorStop(t: number, color: string): void { this.css.push([t, color]); }
+  key(): string { return [this.x0 - this.x1, this.y0 - this.y1, this.r0, this.r1].join(',') + ':' + this.css.map(([t, c]) => t + c).join(';'); }
+}
+const radials = new Map<string, HTMLCanvasElement>();
+
 /** A stand-in for a 2D context on a Gpu (gpu.ctx(layers)): fillRect,
  * clearRect, drawImage, globalAlpha, globalCompositeOperation (source-over,
  * lighter, destination-out, multiply), save/restore, translate, scale,
@@ -797,15 +812,15 @@ export class Ctx {
   tint: number[] | null = null;
   /** Pictures drawn are multiplied by the light map (light.ts's smooth model). */
   lightMap = false;
-  private _fs: string | Gradient = '#000000'; private _rgba: number[] = [0, 0, 0, 1]; private _op = 'source-over'; private _blend = 0;
+  private _fs: string | Gradient | RadialGradient = '#000000'; private _rgba: number[] = [0, 0, 0, 1]; private _op = 'source-over'; private _blend = 0;
   // the transform: [a, b, c, d, e, f] as a 2D context's
   m = [1, 0, 0, 1, 0, 0];
   clipBox: number[] | null = null; path: number[] | null = null;
   private stack: unknown[][] = [];
   constructor(gpu: Gpu, layers: number, over = false) { this.gpu = gpu; this.layers = layers; this.over = over; this.canvas = gpu.canvas; this.reset(); }
   reset(): void { this.fillStyle = '#000000'; this.globalAlpha = 1; this.globalCompositeOperation = 'source-over'; this.imageSmoothingEnabled = false; this.m = [1, 0, 0, 1, 0, 0]; this.clipBox = null; this.stack = []; this.path = null; this.tint = null; this.lightMap = false; }
-  get fillStyle(): string | Gradient { return this._fs; }
-  set fillStyle(v: string | Gradient) { if (v !== this._fs) { this._fs = v; if (typeof v === 'string') this._rgba = parseColor(v); } }
+  get fillStyle(): string | Gradient | RadialGradient { return this._fs; }
+  set fillStyle(v: string | Gradient | RadialGradient) { if (v !== this._fs) { this._fs = v; if (typeof v === 'string') this._rgba = parseColor(v); } }
   get globalCompositeOperation(): string { return this._op; }
   set globalCompositeOperation(v: string) { this._op = v; this._blend = BLEND[v] || 0; }
   // (Lodestar's names for the translate, kept)
@@ -824,10 +839,24 @@ export class Ctx {
   resetTransform(): void { this.m = [1, 0, 0, 1, 0, 0]; }
   private plain(): boolean { const m = this.m; return m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1; }
   beginPath(): void { this.path = null; }
-  rect(x: number, y: number, w: number, h: number): void { this.path = [x + this.m[4], y + this.m[5], x + w + this.m[4], y + h + this.m[5]]; }
+  rect(x: number, y: number, w: number, h: number): void { this.path = this.box(x, y, w, h); }
+  // a box in the context's space as view px [x0, y0, x1, y1] (scaled and
+  // moved; a rotated transform's box is its bounds)
+  private box(x: number, y: number, w: number, h: number): number[] {
+    const m = this.m, xs = [x, x + w], ys = [y, y + h], px: number[] = [], py: number[] = [];
+    for (const a of xs) for (const b of ys) { px.push(m[0] * a + m[2] * b + m[4]); py.push(m[1] * a + m[3] * b + m[5]); }
+    return [Math.min(...px), Math.min(...py), Math.max(...px), Math.max(...py)];
+  }
+  private covers(x: number, y: number, w: number, h: number): boolean {
+    const m = this.m;
+    if (m[1] !== 0 || m[2] !== 0) return false;
+    const b = this.box(x, y, w, h);
+    return b[0] <= 0 && b[1] <= 0 && b[2] >= this.gpu.w && b[3] >= this.gpu.h;
+  }
   closePath(): void { /* rects only */ }
   clip(): void { if (this.path) { const p = this.path, c = this.clipBox; this.clipBox = c ? [Math.max(c[0], p[0]), Math.max(c[1], p[1]), Math.min(c[2], p[2]), Math.min(c[3], p[3])] : p; } }
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): Gradient { return new Gradient(x0, y0, x1, y1); }
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): RadialGradient { return new RadialGradient(x0, y0, r0, x1, y1, r1); }
   private setState(dyn: { tex: WebGLTexture } | null) { if (!this.over) this.gpu.state(this._blend, this.clipBox, dyn); }
   // a quad at (x, y, w, h) in the context's own space, through its transform
   private quad(x: number, y: number, w: number, h: number, u0: number, v0: number, u1: number, v1: number, page: number, r: number, g: number, b: number, a: number, flags: number) {
@@ -839,9 +868,10 @@ export class Ctx {
     const al = this.globalAlpha, G = this.gpu;
     if (al <= 0 || !(w > 0 && h > 0)) return;
     if (this._fs instanceof Gradient) { this.fillGradient(this._fs, x, y, w, h); return; }
+    if (this._fs instanceof RadialGradient) { this.fillRadial(this._fs, x, y, w, h); return; }
     const c = this._rgba, ca = c[3] * al;
     // (the frame's first fill of the whole view: the layer's clear color instead)
-    if (!this.over && !G.drawn && G.target === 'scene' && ca >= 1 && !this.clipBox && this._blend === 0 && this.plain() && x + this.tx <= 0 && y + this.ty <= 0 && x + this.tx + w >= G.w && y + this.ty + h >= G.h) {
+    if (!this.over && !G.drawn && G.target === 'scene' && ca >= 1 && !this.clipBox && this._blend === 0 && this.covers(x, y, w, h)) {
       if (c[0] || c[1] || c[2]) { const gl = G.gl; G.bind(G.scene.fb); if (this.layers & F.COL) gl.clearBufferfv(gl.COLOR, 0, new Float32Array([c[0], c[1], c[2], 1])); if (this.layers & F.EM) gl.clearBufferfv(gl.COLOR, 1, new Float32Array([c[0], c[1], c[2], 1])); }
       return;
     }
@@ -862,10 +892,32 @@ export class Ctx {
       else this.quad(x + i, y, Math.min(1, w - i), h, 0, 0, 1, 1, 0, c[0] * ca, c[1] * ca, c[2] * ca, ca, this.layers | F.SOLID);
     }
   }
+  // A radial gradient, rasterized by a 2D canvas once (at the view's scale)
+  // for its shape and the box's place in it, and drawn as a picture.
+  private fillRadial(gr: RadialGradient, x: number, y: number, w: number, h: number) {
+    const m = this.m, sx = Math.hypot(m[0], m[1]) || 1, sy = Math.hypot(m[2], m[3]) || 1;
+    const key = [gr.key(), x - gr.x1, y - gr.y1, w, h, sx, sy].map((v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)).join('|');
+    let c = radials.get(key);
+    if (!c) {
+      const cw = Math.max(1, Math.ceil(w * sx)), ch = Math.max(1, Math.ceil(h * sy));
+      c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      const g = c.getContext('2d')!;
+      g.scale(cw / w, ch / h); g.translate(-x, -y);
+      const rg = g.createRadialGradient(gr.x0, gr.y0, gr.r0, gr.x1, gr.y1, gr.r1);
+      for (const [t, col] of gr.css) rg.addColorStop(t, col);
+      g.fillStyle = rg; g.fillRect(x, y, w, h);
+      if (radials.size > 64) radials.clear();
+      radials.set(key, c);
+    }
+    const smooth = this.imageSmoothingEnabled;
+    this.imageSmoothingEnabled = true;
+    this.drawImage(c, x, y, w, h);
+    this.imageSmoothingEnabled = smooth;
+  }
   clearRect(x: number, y: number, w: number, h: number): void {
     if (this.over) return;
     const G = this.gpu;
-    if (this.plain() && x + this.tx <= 0 && y + this.ty <= 0 && x + this.tx + w >= G.w && y + this.ty + h >= G.h && !this.clipBox) {
+    if (this.covers(x, y, w, h) && !this.clipBox) {
       if (!G.drawn && G.target === 'scene') return;
       if (this.layers & F.EM) G.clearLayer(true, 0, 0, G.w, G.h); if (this.layers & F.COL) G.clearLayer(false, 0, 0, G.w, G.h);
       return;
@@ -891,10 +943,12 @@ export class Ctx {
     if (G.groundOn && (img === G.groundSrc[0] || img === G.groundSrc[1])) {
       if (G.groundPending && G.onGroundDraw) G.onGroundDraw();
       flags = (flags & ~F.SMOOTH) | (img === G.groundSrc[0] ? F.GROUND : F.GROUNDEM); u0 = sx; v0 = sy;
-    } else if (img.gpuOwn || img.width > G.o.atlas || img.height > G.o.atlas) {
-      // (a picture too big for a page, or one that asks: a texture of its own)
+    } else if (img.gpuLive || img.gpuOwn || img.width > G.o.atlas || img.height > G.o.atlas) {
+      // (a picture too big for a page, or one that asks: a texture of its
+      // own; one marked gpuLive, painted afresh every frame, goes up each
+      // time it's drawn)
       const t = G.dynTexs.get(img);
-      dyn = t && t.tex ? { tex: t.tex } : G.ownTex(img, img.getContext!('2d')!.getImageData(0, 0, img.width, img.height), 0, img.height);
+      dyn = t && t.tex && !img.gpuLive ? { tex: t.tex } : G.ownTex(img, img as TexImageSource, 0, img.height);
       flags |= F.DYN; u0 = sx; v0 = sy;
       if (flags & F.SMOOTH && dw === sw && dh === sh) flags &= ~F.SMOOTH;
     } else {

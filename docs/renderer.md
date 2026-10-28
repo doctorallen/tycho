@@ -19,7 +19,7 @@ gpu.resize(w, h, bloom);           // the framebuffers at the view's size; bloom
 const g = gpu.ctx(Tycho.gpu.F.COL), gg = gpu.ctx(Tycho.gpu.F.EM);
 ```
 
-The stand-in (`Ctx`) takes `fillRect`, `clearRect`, `drawImage` (all three forms), `globalAlpha`, `globalCompositeOperation` (source-over, lighter, destination-out, multiply), `imageSmoothingEnabled` (bilinear when scaled), `save`/`restore`, `translate`, `scale`, `rotate`, `setTransform`, a rectangle `clip`, and `fillStyle` as a color or a `createLinearGradient`. Beyond a 2D context's:
+The stand-in (`Ctx`) takes `fillRect`, `clearRect`, `drawImage` (all three forms), `globalAlpha`, `globalCompositeOperation` (source-over, lighter, destination-out, multiply), `imageSmoothingEnabled` (bilinear when scaled), `save`/`restore`, `translate`, `scale`, `rotate`, `setTransform`, a rectangle `clip` (through the transform), and `fillStyle` as a color, a `createLinearGradient` (drawn as strips) or a `createRadialGradient` (rasterized once by a 2D canvas for its shape and kept). Beyond a 2D context's:
 
 | | |
 |---|---|
@@ -29,7 +29,7 @@ The stand-in (`Ctx`) takes `fillRect`, `clearRect`, `drawImage` (all three forms
 
 On the Gpu: `pic(canvas)` (its place in the atlas), `warm(...canvases)` (onto the atlas ahead of the first frame), `dirty(canvas)` (a canvas painted again: read anew), `ownTex`, `feet` (Lodestar's occlusion row for the quads pushed next, with `occlude: true`), `stats` (quads, draws, uploads this frame), `program(vs, fs, uniforms)`, `lightPass(program, setUniforms)`, `plain()`, `bloom(cx, cy)`, `frameEnd()`, `overlay()`, and `read('scene' | 'lit' | 'glow')` for tests.
 
-A canvas that's painted again after it's been drawn needs `gpu.dirty(canvas)`, or the atlas keeps the old pixels.
+A canvas that's painted again after it's been drawn needs `gpu.dirty(canvas)`, or the atlas keeps the old pixels. One painted afresh every frame (a darkness layer) can be marked `canvas.gpuLive = true`: it goes up as a texture of its own each time it's drawn. `canvas.gpuOwn = true` keeps a canvas out of the atlas, as a texture of its own uploaded once.
 
 ## Tycho.light
 

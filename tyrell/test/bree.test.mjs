@@ -274,6 +274,20 @@ test('an action that interacts begins its exchange with its target, and the turn
   assert.equal(w.bree.exchange('a'), null, 'over');
 });
 
+test('an exchange needs people: one aimed at the player (or nobody) begins nothing; old pairs are let go', () => {
+  const w = table();
+  w.bree.kind({ id: 'chat', turns: 2 });
+  w.advance(10);
+  w.lang.apply('exchange:chat', w.ctx(w.get('a'), { target: 'player' }));
+  assert.equal(w.bree.exchange('a'), null);
+  assert.equal(w.bree.start('chat', 'a', 'nobody'), null);
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  assert.equal(w.lang.value('exchanges', w.ctx(w.get('a'), { target: 'b' })), 1);
+  w.advance(31 * DAY);
+  assert.equal(w.lang.value('exchanges', w.ctx(w.get('a'), { target: 'b' })), 0, 'a month on, forgotten');
+});
+
 test('the game starts and ends exchanges: inputs, the first turn at once', () => {
   const w = table();
   w.bree.kind({ id: 'chat', topics: ['*'], turns: 6 });
@@ -289,12 +303,14 @@ test('the game starts and ends exchanges: inputs, the first turn at once', () =>
   w.bree.end('a');
   assert.equal(w.bree.exchange('b'), null);
   assert.equal(w.bree.history().at(-1).why, 'ended');
-  // a pair that isn't together can't keep one going
+  // a pair that isn't together can't keep one going: the game's first word, and they've parted
   w.direct('b', { do: 'wait_about', at: 'yard' });
   w.advance(30);
   const v = w.bree.start('chat', 'a', 'b');
-  assert.equal(v.turn, 0);
+  assert.equal(v.turn, 1, 'the game says they meet, in passing');
+  w.advance(10);
   assert.equal(w.bree.history().at(-1).why, 'parted');
+  assert.equal(w.bree.history().at(-1).n, 1);
 });
 
 test('time walk across an exchange gives the same world; so does saving mid-way', () => {
@@ -640,6 +656,7 @@ test('topics come from what\'s true for both: news one has, a memory they share,
   w.bree.topic({ id: 'the_moment', from: 'doing' });
   w.bree.topic({ id: 'here', from: 'place' });
   w.bree.topic({ id: 'grievance', from: 'grudge' });
+  w.bree.topic({ id: 'doings', from: 'events' });
   const bree = w.bree;
   const subj = (id, s = 'a', l = 'b') => bree.subject(id, s, l);
   assert.equal(subj('news'), undefined, 'no news yet');
@@ -653,6 +670,9 @@ test('topics come from what\'s true for both: news one has, a memory they share,
   assert.equal(subj('old_times'), undefined, 'only a\'s');
   w.reverie.remember('b', { k: 'flood' });
   assert.equal(subj('old_times'), 'flood', 'a memory they share');
+  assert.equal(subj('doings'), 'flood', 'what\'s happened to them lately');
+  w.advance(2 * DAY);
+  assert.equal(subj('doings'), undefined, 'not so lately');
   assert.equal(subj('pastimes'), 'fish');
   assert.equal(subj('pastimes', 'b', 'a'), undefined, 'b has no passion to speak of');
   assert.equal(subj('the_moment'), 'sit');
@@ -755,4 +775,45 @@ test('talk 0: an exchange begun by an action is a word and no more', () => {
   const done = w.bree.history().at(-1);
   assert.equal(done.why, 'done');
   assert.ok(done.n <= 2, 'a word, and goodbye');
+});
+
+// ---------------------------------------------------------------------------
+// Rocinante, Voight-Kampff, tuning during play
+// ---------------------------------------------------------------------------
+
+test('Rocinante with the bree option: a town that talks, quarrels and makes up, and still behaves like people', () => {
+  const plain = rocinante();
+  assert.equal(plain.bree.kinds.size, 0, 'without the option, nothing');
+  const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed, bree: true }), days: 3, checks: ['nobody-starves', 'capacity', 'no-stuck', 'deterministic', 'esper', 'save-load', 'interactions'] });
+  assert.ok(report.passed, report.failures.join('\n'));
+  const ix = report.stats.interactions;
+  assert.ok(ix.exchanges > 20 && ix.turns > ix.exchanges, JSON.stringify(ix));
+  assert.ok(Object.keys(ix.kinds).length > 5);
+  assert.ok(ix.outcomes.warm > 0 && ix.outcomes.fine > 0);
+  assert.equal(Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed }), days: 1, checks: ['capacity'] }).stats.interactions, undefined, 'nothing to say without it');
+});
+
+test('tuning Bree during play is recorded: rewound past, undone; played again, the same', () => {
+  const run = () => {
+    const w = rocinante({ bree: true });
+    w.advance(10 * HOUR);
+    w.tune('bree', { talk: 3, escalation: 2 });
+    w.tune('bree', { grudges: 0 }, 'sam');
+    w.advance(8 * HOUR);
+    return w;
+  };
+  const w = run();
+  const h = w.hash();
+  assert.equal(run().hash(), h);
+  assert.equal(w.tuning('bree').talk, 3);
+  assert.equal(w.tuning('bree', 'sam').grudges, 0);
+  w.rewind(9 * HOUR);
+  assert.equal(w.tuning('bree').talk, 1);
+  w.advance(9 * HOUR);
+  assert.equal(w.hash(), h);
+  const saved = JSON.stringify(w.save());
+  const v = rocinante({ bree: true });
+  v.load(saved);
+  v.advance(6 * HOUR); w.advance(6 * HOUR);
+  assert.equal(v.hash(), w.hash(), 'and loaded, it runs the same');
 });

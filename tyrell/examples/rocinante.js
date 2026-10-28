@@ -6,6 +6,12 @@
 //
 // Plain JavaScript that works three ways: in a browser after dist/tyrell.js
 // (it defines buildRocinante), with require() in Node, and with import.
+//
+// Options: `tuned` (a town tuned to taste: docs/tuning.md), `bree` (Bree's
+// interactions: people strike up chats, jokes, arguments and apologies, hold
+// grudges and make up; Sam bears Dev a grudge from the start), `seed`,
+// `start`, `modules`, `config`, `esper` and `moduleConfig` (over its own).
+// Without them, Rocinante runs as it always has.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
   else root.buildRocinante = factory;
@@ -17,6 +23,8 @@
   // knobs for everyone, and a few people's own (their `tune`, below). Without
   // it, Rocinante runs as it always has.
   const tuned = !!opts.tuned;
+  // With opts.bree, Bree's interactions between the townsfolk, and the natures they read
+  const bree = !!opts.bree;
   const own = { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } };
   if (tuned) {
     own.fellowship = { friendship: 1.5, fading: 0.5 };   // friendships form half as fast again, and fade half as fast
@@ -35,6 +43,8 @@
   });
   // a person's own pace for the headline knobs, in the tuned town (none otherwise)
   const tune = (t) => (tuned ? { tune: t } : {});
+  // a person's nature as Bree reads it (temper, warmth, humor, patience, forgiveness), with the bree option (none otherwise)
+  const nature = (t) => (bree ? t : {});
 
   // ---- needs: 0 is fine, 1 is desperate; rise is per game hour --------------
   w.need({ id: 'hunger', rise: 0.065, start: 0.3, emotion: 'irritable' });
@@ -143,38 +153,38 @@
   const sleepNight = [[7, null, '*'], [23, 'home', 'sleep']];
   w.person('mara', {
     name: 'Mara', home: 'apt_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
-    traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6 }, values: { honesty: 0.8, family: 0.9 },
+    traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6, ...nature({ warmth: 0.75, patience: 0.6 }) }, values: { honesty: 0.8, family: 0.9 },
     skills: { baking: 0.62 }, talents: { baking: 1.2 },
     job: { id: 'baker', place: 'cafe', action: 'bake', shifts: [[6, 14]], wage: 0 },
     routine: [[5.5, 'home', 'shower'], [6, null, '*'], [14.25, 'market', 'buy_food'], [14.5, null, '*'], [22, 'home', 'sleep']],
   });
   w.person('tomas', {
     name: 'Tomas', home: 'apt_1', groups: ['h_okafor'], vars: { money: 60 },
-    traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7 }, values: { honesty: 0.6, craft: 0.9 },
+    traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7, ...nature({ temper: 0.6, patience: 0.7 }) }, values: { honesty: 0.6, craft: 0.9 },
     skills: { repair: 0.74 }, talents: { repair: 1.3 },
     job: { id: 'mechanic', place: 'workshop', action: 'fix', shifts: [[8, 17]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: [[7, null, '*'], [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('pip', {
     name: 'Pip', home: 'apt_1', groups: ['h_okafor'], born: -9 * 365 * DAY, tags: ['child'],
-    traits: { talkative: 0.8, courage: 0.4, honesty: 0.7 },
+    traits: { talkative: 0.8, courage: 0.4, honesty: 0.7, ...nature({ humor: 0.8, temper: 0.6 }) },
     routine: [[7, 'home', '*'], [10, 'park', 'sit_park'], [11, null, '*'], [15, 'park', 'walk'], [16, null, '*'], [20.5, 'home', 'sleep']],
   });
   w.person('ines', {
     name: 'Ines', home: 'apt_2', groups: ['regulars'], vars: { money: 80 },
-    traits: { thrift: 0.3, honesty: 0.6, talkative: 0.9, courage: 0.8 }, values: { honesty: 0.4 },
+    traits: { thrift: 0.3, honesty: 0.6, talkative: 0.9, courage: 0.8, ...nature({ warmth: 0.8, humor: 0.7, patience: 0.6 }) }, values: { honesty: 0.4 },
     job: { id: 'bartender', place: 'bar', action: 'serve', shifts: [[17, 1]], wage: 9 },
     routine: [[2, 'home', 'sleep'], [10, null, '*']],
   });
   w.person('dev', {
     name: 'Dev', home: 'apt_3', vars: { money: 90 },
-    traits: { thrift: 0.8, honesty: 0.7, talkative: 0.5, greed: 0.6 }, values: { honesty: 0.5 },
+    traits: { thrift: 0.8, honesty: 0.7, talkative: 0.5, greed: 0.6, ...nature({ temper: 0.65, patience: 0.4 }) }, values: { honesty: 0.5 },
     job: { id: 'grocer', place: 'market', action: 'sell', shifts: [[8, 16]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: sleepNight,
   });
   w.person('ruth', {
     name: 'Ruth', home: 'apt_4', vars: { money: 100 }, inv: { broken_radio: 1 },
-    traits: { thrift: 0.7, honesty: 0.9, talkative: 0.8, memory: 0.5 }, values: { honesty: 0.9, faith: 0.7 },
+    traits: { thrift: 0.7, honesty: 0.9, talkative: 0.8, memory: 0.5, ...nature({ warmth: 0.75, forgiveness: 0.8, temper: 0.3 }) }, values: { honesty: 0.9, faith: 0.7 },
     routine: [
       { days: [6], plan: [[8, null, '*'], [11, 'park', 'sit_park'], [12, null, '*'], [22, 'home', 'sleep']] },
       { when: ['fact:raining'], plan: [[8, 'home', '*'], [22, 'home', 'sleep']] },
@@ -184,24 +194,24 @@
   });
   w.person('kofi', {
     name: 'Kofi', home: 'apt_5', vars: { money: 25 },
-    traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5 }, values: { honesty: 0.5 },
+    traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5, ...nature({ humor: 0.75 }) }, values: { honesty: 0.5 },
     talents: { lore: 1.5 }, instincts: { walk: 1.25, read: 1.2 },   // a student who'd rather be outdoors
     ...tune({ fellowship: { friendship: 2 }, cityspeak: { chatter: 1.5 } }), // (tuned: he makes friends fast, and talks)
   });
   w.person('lena', {
     name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],
-    traits: { thrift: 0.5, honesty: 0.9, talkative: 0.4, courage: 0.6 }, values: { honesty: 0.8 },
+    traits: { thrift: 0.5, honesty: 0.9, talkative: 0.4, courage: 0.6, ...nature({ patience: 0.75, warmth: 0.6 }) }, values: { honesty: 0.8 },
     job: { id: 'doctor', place: 'clinic', action: 'treat', shifts: [[9, 17]], days: [0, 1, 2, 3, 4], wage: 20 },
     routine: [[7, 'home', 'shower'], [7.5, null, '*'], [23, 'home', 'sleep']],
   });
   w.person('sam', {
     name: 'Sam', home: 'apt_3', vars: { money: 4 },
-    traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8 }, values: { honesty: 0.05 },
+    traits: { thrift: 0.2, honesty: 0.15, talkative: 0.7, courage: 0.7, greed: 0.8, ...nature({ temper: 0.85, forgiveness: 0.2, humor: 0.6 }) }, values: { honesty: 0.05 },
     ...tune({ wormtongue: { gossip: 1.5, lies: 2 }, reverie: { breaks: 2 } }), // (tuned: a gossip and a liar, quick to snap)
   });
   w.person('vance', {
     name: 'Officer Vance', home: 'apt_2', groups: ['watch'], vars: { money: 100 },
-    traits: { thrift: 0.5, honesty: 0.8, talkative: 0.5, courage: 0.9, lawful: 0.9 }, values: { honesty: 0.7, law: 0.9 },
+    traits: { thrift: 0.5, honesty: 0.8, talkative: 0.5, courage: 0.9, lawful: 0.9, ...nature({ patience: 0.8, temper: 0.3 }) }, values: { honesty: 0.7, law: 0.9 },
     job: { id: 'officer', place: 'park', action: 'patrol', shifts: [[10, 18]], wage: 15 },
     routine: [[7, null, '*'], [18, 'tag:food', 'eat_cafe'], [19, null, '*'], [23, 'home', 'sleep']],
   });
@@ -321,6 +331,37 @@
       },
     });
     vo.promise({ id: 'fix_radio', label: 'You said you\'d fix my radio', days: 2, kept: ['has:radio'], onKept: ['regard+=0.1', 'feel:helped'], onBroken: ['regard-=0.15'], lapse: 'broken' });
+  }
+
+  // ---- Bree: interactions between the townsfolk (with the bree option) -------
+  // The starter set: chats over topics, jokes, compliments, teasing, flirting,
+  // comfort, favors, gifts, a hand, lessons, arguments, insults, fights,
+  // apologies, making up and the cold shoulder. A fight is a crime the Watch
+  // hears of; a natter at the cafe or the Belt is a conversation of its own.
+  const br = w.bree;
+  if (bree && br) {
+    br.starter({ company: 'company', fun: 'fun' });
+    w.action({ id: 'natter', label: 'a natter', target: 'person', at: 'here', minutes: 25, relieves: { company: 0.3, fun: 0.05 }, tags: ['social'], interact: 'chat', pose: 'stand', cooldown: 60, targetIf: ['regard>0'] });
+    if (w.wormtongue) w.wormtongue.crime({ kind: 'fight', severity: 0.3, reportTo: 'watch' });
+    if (cs) cs.addLines([
+      { key: 'bree_small_open', topic: 'small_talk.open', text: ['Busy day?', 'Keeping well?', 'How\'s things?'] },
+      { key: 'bree_small_reply', topic: 'small_talk.reply', text: ['Can\'t complain.', 'Same as ever.'] },
+      { key: 'bree_small_reply_ornery', topic: 'small_talk.reply', when: ['manner:ornery'], text: 'Why do you want to know?' },
+      { key: 'bree_small_reply_sour', topic: 'small_talk.reply', when: ['turn:sour'], text: 'Mm.' },
+      { key: 'bree_news_open', topic: 'news.open', text: 'Have you heard?' },
+      { key: 'bree_doing_open', topic: 'the_moment.open', when: ['at:cafe'], text: 'Mara\'s outdone herself.' },
+      { key: 'bree_argue_open', topic: 'argue.open', text: 'Now you listen to me.' },
+      { key: 'bree_grievance_open', topic: 'grievance.open', text: 'You know what you did.' },
+      { key: 'bree_fight_open', topic: 'fight.open', text: '*shoves*' },
+      { key: 'bree_calm', topic: 'bree.calm', text: 'Hey. I didn\'t mean it like that.' },
+      { key: 'bree_step_in', topic: 'bree.step_in', text: 'All right, that\'s enough, the pair of you.' },
+      { key: 'bree_leave', topic: 'bree.leave', text: 'Suit yourself.' },
+      { key: 'bree_sorry', topic: 'apologize.open', text: 'Look, I\'m sorry.' },
+      { key: 'bree_bye', topic: 'bree.bye', text: ['See you around.', 'Mind how you go.'] },
+      { key: 'bree_bye_friend', topic: 'bree.bye', to: ['friend'], text: 'Same time tomorrow?' },
+    ]);
+    // Sam owes Dev rent, and Dev has let him know it
+    if (!w.kept('grudges')) { br.grudgeAgainst('sam', 'dev', 0.4, 'the rent'); w.keep('grudges', true); }
   }
 
   // ---- Gaff: storylets -------------------------------------------------------

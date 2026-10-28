@@ -430,6 +430,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `tellAt` | `'fine'` | News passes on when its telling lands at least this well |
 | `trust` | 0.7 | Without Wormtongue, the share of a belief's strength a telling keeps |
 | `shareWindow` | 60 | Two memories of the same kind this many minutes apart count as shared |
+| `recentMinutes` | 1440 | What's happened to someone lately (`events` topics): their memories of the last this many minutes |
 | `likeAbove` | 1.1 | A taste (an instinct or a habit) above this counts as something they love doing |
 | `shareFit` | 0.5 | A topic they share (the same doing, a memory both hold) is this much more to the listener's taste |
 | `mannerJitter` | 0.1 | Up to this much added to each manner's fit, the same for each person always |
@@ -480,6 +481,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `witnessRegard` | 0.5 | A witness's regard for whoever started it moves by this share of what the outcome moves |
 | `witnessFeeling` | `'saw_row'` | The feeling a witness gets |
 | `recent` | 50 | Finished exchanges kept, for history and witnesses reported late |
+| `pairDays` | 30 | Days after two people's last exchange that what's kept of their exchanges (the last row, their topics) is let go; 0 never |
 
 ### Mentat
 

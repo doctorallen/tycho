@@ -7886,6 +7886,7 @@ var DEFAULT_BREE = {
   tellAt: "fine",
   trust: 0.7,
   shareWindow: HOUR,
+  recentMinutes: DAY,
   likeAbove: 1.1,
   shareFit: 0.5,
   mannerJitter: 0.1,
@@ -7935,7 +7936,8 @@ var DEFAULT_BREE = {
   witnessMemory: 3,
   witnessRegard: 0.5,
   witnessFeeling: "saw_row",
-  recent: 50
+  recent: 50,
+  pairDays: 30
 };
 var BREE_FEELINGS = [
   { id: "good_talk", label: "A good talk", weight: 0.05, minutes: 4 * HOUR, emotion: "happy" },
@@ -8125,6 +8127,7 @@ function breeStarter(opts = {}) {
     { id: "small_talk", label: "this and that" },
     { id: "news", label: "the news", from: "beliefs", weight: 1.5 },
     { id: "old_times", label: "old times", from: "memories", tags: ["deep"], fit: [{ if: ["regard>0.3"], by: 0.5 }] },
+    { id: "doings", label: "what they've been up to", from: "events", weight: 1.2 },
     { id: "pastimes", label: "what they love doing", from: "likes" },
     { id: "here", label: "this place", from: "place", weight: 0.6 },
     { id: "the_moment", label: "what they're at", from: "doing", weight: 0.8 },
@@ -8538,7 +8541,7 @@ var Bree = class {
     const w = this.w;
     const def = this.kinds.get(kind);
     const p = w.s.people[who[0]];
-    if (!def || !p) return null;
+    if (!def || !p || who.some((id) => w.s.people[id]?.status !== "active")) return null;
     const st = this.mut();
     const r = this.stream();
     const ex = {
@@ -8738,6 +8741,10 @@ var Bree = class {
         const theirs = rv.memories(l.id);
         const m = rv.memories(s.id).find((x) => x.about === l.id || theirs.some((y) => y.k === x.k && Math.abs(y.t - x.t) <= c.shareWindow));
         return m?.k;
+      }
+      case "events": {
+        if (!rv) return void 0;
+        return rv.memories(s.id).find((m) => w.s.now - m.t <= c.recentMinutes && m.about !== l.id)?.k;
       }
       case "likes": {
         let best, top = c.likeAbove;
@@ -8955,7 +8962,7 @@ var Bree = class {
       this.finish(ex, "ended");
       return;
     }
-    const gone = this.together(ex);
+    const gone = ex.n === 0 && ex.why === "game" ? null : this.together(ex);
     if (gone !== null) {
       this.finish(ex, "parted", gone);
       return;
@@ -9033,6 +9040,7 @@ var Bree = class {
     if (topic.from === "memories") {
       for (const id of ex.who) if (id === s.id || rv.memories(id).some((m) => m.k === subject)) rv.applyRecall(id, { k: subject }, 1);
     }
+    if (topic.from === "events") rv.applyRecall(s.id, { k: subject }, 1);
   }
   /**
    * Words landed badly with the one who heard them (l): do they answer back
@@ -9284,7 +9292,7 @@ var Bree = class {
     const long = ex.n >= c.longTurns;
     for (const x of who) {
       const p = w.s.people[x];
-      if (!p) continue;
+      if (!p || p.status === "gone") continue;
       const o = outcomes[x];
       const y = x === starter ? who[1] : starter;
       if (fs) for (const z of who) {
@@ -9470,6 +9478,10 @@ var Bree = class {
       if (!Object.keys(st.g[a]).length) delete st.g[a];
     }
     for (const k of Object.keys(st.feuds)) if (this.feudStrength(st.feuds[k]) < floor) delete st.feuds[k];
+    const days = this.c.pairDays, now2 = this.w.s.now;
+    if (days > 0) {
+      for (const k of Object.keys(st.pairs)) if (now2 - st.pairs[k].last > days * DAY) delete st.pairs[k];
+    }
   }
   removed(p) {
     const st = this.st;
@@ -9487,6 +9499,26 @@ var Bree = class {
 
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
+  // asked for by name: exchanges between people (Bree) make sense
+  interactions: {
+    name: "interactions",
+    sample(w, acc, fail) {
+      const b = w.bree;
+      if (!b) return;
+      const seen = /* @__PURE__ */ new Set();
+      for (const ex of b.exchanges()) {
+        if (w.now - ex.t > 6 * HOUR && !acc["long:" + ex.id]) {
+          acc["long:" + ex.id] = true;
+          fail(`exchange ${ex.id} (${ex.kind}) has gone on for over 6 hours (day ${w.day})`);
+        }
+        for (const id of ex.who) {
+          if (seen.has(id)) fail(`${id} is in two exchanges at once at ${w.now}`);
+          seen.add(id);
+        }
+      }
+      for (const p of w.people()) for (const g of b.grudges(p.id)) if (!(g.strength > 0 && g.strength <= 1)) fail(`${p.id}'s grudge against ${g.id} is ${g.strength}`);
+    }
+  },
   "nobody-starves": {
     name: "nobody-starves",
     sample(w, acc, fail) {
@@ -9591,6 +9623,20 @@ function run(opts) {
   w.on("decided", () => {
     decisions++;
   });
+  let inter = null;
+  const tally = () => inter || (inter = { exchanges: 0, turns: 0, kinds: {}, outcomes: {}, escalations: 0, walkedOff: 0, steppedIn: 0, grudges: 0, feuds: 0 });
+  w.on("bree:end", (e) => {
+    const t = tally();
+    t.exchanges++;
+    t.turns += e.n;
+    t.kinds[e.kind] = (t.kinds[e.kind] || 0) + 1;
+    t.outcomes[e.outcome] = (t.outcomes[e.outcome] || 0) + 1;
+    if (e.why === "left") t.walkedOff++;
+    if (e.why === "stepped in") t.steppedIn++;
+  });
+  w.on("bree:escalated", () => {
+    tally().escalations++;
+  });
   for (let t = start + every; t <= end + 1e-6; t += every) {
     w.advanceTo(t);
     for (const c of checks) c.sample?.(w, acc, fail);
@@ -9647,13 +9693,27 @@ function run(opts) {
     copy.advance(3 * HOUR);
     if (copy.hash() !== w.hash()) fail("a loaded world ran differently from the original");
   }
+  const stats = { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 };
+  const done = inter;
+  if (done && w.bree) {
+    const sorted = (o) => {
+      const out = {};
+      for (const k of Object.keys(o).sort()) out[k] = o[k];
+      return out;
+    };
+    done.kinds = sorted(done.kinds);
+    done.outcomes = sorted(done.outcomes);
+    done.grudges = w.people().reduce((n, p) => n + w.bree.grudges(p.id).length, 0);
+    done.feuds = w.bree.feuds().length;
+    stats.interactions = done;
+  }
   return {
     seed,
     days,
     passed: failures.length === 0,
     failures,
     checks: names.map((c) => typeof c === "string" ? c : c.name),
-    stats: { actions, mood, places, needs: needMax, decisions: decided, ms: Date.now() - t0 },
+    stats,
     hash: hash2
   };
 }

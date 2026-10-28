@@ -127,7 +127,7 @@ export interface KindDef {
 }
 
 /** Where a topic's subject comes from. */
-export type TopicSource = 'beliefs' | 'memories' | 'likes' | 'doing' | 'place' | 'grudge';
+export type TopicSource = 'beliefs' | 'memories' | 'events' | 'likes' | 'doing' | 'place' | 'grudge';
 
 /** Something to talk about (a definition). */
 export interface TopicDef {
@@ -137,7 +137,9 @@ export interface TopicDef {
   /**
    * Where its subject comes from: 'beliefs' (news the speaker has and the
    * listener hasn't), 'memories' (one they share, or the speaker's of the
-   * listener), 'likes' (something the speaker loves doing), 'doing' (what
+   * listener), 'events' (what's happened to the speaker lately: their
+   * strongest memory of the last recentMinutes), 'likes' (something the
+   * speaker loves doing), 'doing' (what
    * they're doing now), 'place' (where they are), 'grudge' (what the speaker
    * holds against the listener). None: a plain subject.
    */
@@ -286,6 +288,8 @@ export interface BreeConfig {
   trust: number;
   /** Two memories of the same kind this many minutes apart count as shared. Default 60. */
   shareWindow: number;
+  /** What's happened to someone lately ('events' topics): a memory of the last this many minutes. Default 1440. */
+  recentMinutes: number;
   /** A taste (instinct, or habit) above this counts as something they like doing. Default 1.1. */
   likeAbove: number;
   /** A topic they share (the same doing, a memory both hold) is this much more to the listener's taste. Default 0.5. */
@@ -379,6 +383,8 @@ export interface BreeConfig {
 
   /** Finished exchanges kept, for history and late witnesses. Default 50. */
   recent: number;
+  /** Days after their last exchange that what's kept of two people's exchanges (the last row, their topics) is let go; 0 never. Default 30. */
+  pairDays: number;
 }
 
 export const DEFAULT_BREE: BreeConfig = {
@@ -398,7 +404,7 @@ export const DEFAULT_BREE: BreeConfig = {
   turns: { partner: 8, kin: 6, close: 8, friend: 5, acquaintance: 3, stranger: 2, rival: 4, sour: 2 },
   bonds: [0.6, 0.3, 0.05, -0.15], rivalAt: 0.3,
   talkativeTurns: 2, lowMood: 0.35, lowMoodTurns: 2, turnsJitter: 1, minTurns: 2, maxTurns: 12, quickTurns: 2, groupTurns: 3, turnGap: [2, 4],
-  topicPull: 0.5, topicCooldown: DAY, topicMemory: 8, tellAt: 'fine', trust: 0.7, shareWindow: HOUR, likeAbove: 1.1, shareFit: 0.5, mannerJitter: 0.1,
+  topicPull: 0.5, topicCooldown: DAY, topicMemory: 8, tellAt: 'fine', trust: 0.7, shareWindow: HOUR, recentMinutes: DAY, likeAbove: 1.1, shareFit: 0.5, mannerJitter: 0.1,
   groupMax: 5, joinChance: 0.5, joinRegard: 0,
   escalateAt: 'sour', escalateBase: 0.25, escalateTemper: 0.5, escalateStress: 0.5, escalateGrudge: 0.6, escalateRegard: 0.5,
   calmBase: 0.1, calmPatience: 0.6, calmRegard: 0.3,
@@ -409,7 +415,7 @@ export const DEFAULT_BREE: BreeConfig = {
   avoidFrom: 0.05, avoidPlace: 0.6, avoidTarget: 0.8, avoidFloor: 0.1, hostilePull: 1,
   reconcileLabel: 'made it up', reconcileSentiment: 0.05, reconcileFeeling: 'made_up', reconcileMemory: 5,
   seenAt: 'sour', witnessStrength: 0.8, witnessMemory: 3, witnessRegard: 0.5, witnessFeeling: 'saw_row',
-  recent: 50,
+  recent: 50, pairDays: 30,
 };
 
 /** Feelings Bree gives (declared when Reverie is on; a game declares its own with the same ids to change them). */
@@ -618,6 +624,7 @@ export function breeStarter(opts: StarterOptions = {}): { kinds: KindDef[]; topi
     { id: 'small_talk', label: 'this and that' },
     { id: 'news', label: 'the news', from: 'beliefs', weight: 1.5 },
     { id: 'old_times', label: 'old times', from: 'memories', tags: ['deep'], fit: [{ if: ['regard>0.3'], by: 0.5 }] },
+    { id: 'doings', label: 'what they\'ve been up to', from: 'events', weight: 1.2 },
     { id: 'pastimes', label: 'what they love doing', from: 'likes' },
     { id: 'here', label: 'this place', from: 'place', weight: 0.6 },
     { id: 'the_moment', label: 'what they\'re at', from: 'doing', weight: 0.8 },
@@ -999,7 +1006,7 @@ export class Bree implements Module {
     const w = this.w;
     const def = this.kinds.get(kind);
     const p = w.s.people[who[0]];
-    if (!def || !p) return null;
+    if (!def || !p || who.some((id) => w.s.people[id]?.status !== 'active')) return null;
     const st = this.mut();
     const r = this.stream();
     const ex: Exchange = {
@@ -1189,6 +1196,10 @@ export class Bree implements Module {
         const theirs = rv.memories(l.id);
         const m = rv.memories(s.id).find((x) => x.about === l.id || theirs.some((y) => y.k === x.k && Math.abs(y.t - x.t) <= c.shareWindow));
         return m?.k;
+      }
+      case 'events': {
+        if (!rv) return undefined;
+        return rv.memories(s.id).find((m) => w.s.now - m.t <= c.recentMinutes && m.about !== l.id)?.k;
       }
       case 'likes': {
         let best: Id | undefined, top = c.likeAbove;
@@ -1402,7 +1413,8 @@ export class Bree implements Module {
     const w = this.w, c = this.c;
     const def = this.kinds.get(ex.kind);
     if (!def) { this.finish(ex, 'ended'); return; }
-    const gone = this.together(ex);
+    // (the game vouches for the first turn of one it starts: a greeting in passing)
+    const gone = ex.n === 0 && ex.why === 'game' ? null : this.together(ex);
     if (gone !== null) { this.finish(ex, 'parted', gone); return; }
     if (ex.until !== undefined && w.s.now > ex.until + 1e-6) { this.finish(ex, 'parted'); return; }
     const r = this.stream();
@@ -1451,6 +1463,7 @@ export class Bree implements Module {
       }
     }
     if (topic.from === 'memories') for (const id of ex.who) if (id === s.id || rv.memories(id).some((m) => m.k === subject)) rv.applyRecall(id, { k: subject }, 1);
+    if (topic.from === 'events') rv.applyRecall(s.id, { k: subject }, 1);
   }
 
   /**
@@ -1698,7 +1711,7 @@ export class Bree implements Module {
     const long = ex.n >= c.longTurns;
     for (const x of who) {
       const p = w.s.people[x];
-      if (!p) continue;
+      if (!p || p.status === 'gone') continue;
       const o = outcomes[x];
       // the one they talked with (the starter's: the first other; the others': the starter)
       const y = x === starter ? who[1] : starter;
@@ -1892,6 +1905,9 @@ export class Bree implements Module {
       if (!Object.keys(st.g[a]).length) delete st.g[a];
     }
     for (const k of Object.keys(st.feuds)) if (this.feudStrength(st.feuds[k]) < floor) delete st.feuds[k];
+    // two people who haven't had words in a long while: what's kept of it goes
+    const days = this.c.pairDays, now = this.w.s.now;
+    if (days > 0) for (const k of Object.keys(st.pairs)) if (now - st.pairs[k].last > days * DAY) delete st.pairs[k];
   }
 
   removed(p: PersonState): void {

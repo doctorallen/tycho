@@ -88,7 +88,7 @@ export interface KindDef {
     line?: string;
 }
 /** Where a topic's subject comes from. */
-export type TopicSource = 'beliefs' | 'memories' | 'likes' | 'doing' | 'place' | 'grudge';
+export type TopicSource = 'beliefs' | 'memories' | 'events' | 'likes' | 'doing' | 'place' | 'grudge';
 /** Something to talk about (a definition). */
 export interface TopicDef {
     id: Id;
@@ -97,7 +97,9 @@ export interface TopicDef {
     /**
      * Where its subject comes from: 'beliefs' (news the speaker has and the
      * listener hasn't), 'memories' (one they share, or the speaker's of the
-     * listener), 'likes' (something the speaker loves doing), 'doing' (what
+     * listener), 'events' (what's happened to the speaker lately: their
+     * strongest memory of the last recentMinutes), 'likes' (something the
+     * speaker loves doing), 'doing' (what
      * they're doing now), 'place' (where they are), 'grudge' (what the speaker
      * holds against the listener). None: a plain subject.
      */
@@ -232,6 +234,8 @@ export interface BreeConfig {
     trust: number;
     /** Two memories of the same kind this many minutes apart count as shared. Default 60. */
     shareWindow: number;
+    /** What's happened to someone lately ('events' topics): a memory of the last this many minutes. Default 1440. */
+    recentMinutes: number;
     /** A taste (instinct, or habit) above this counts as something they like doing. Default 1.1. */
     likeAbove: number;
     /** A topic they share (the same doing, a memory both hold) is this much more to the listener's taste. Default 0.5. */
@@ -312,6 +316,8 @@ export interface BreeConfig {
     witnessFeeling: string;
     /** Finished exchanges kept, for history and late witnesses. Default 50. */
     recent: number;
+    /** Days after their last exchange that what's kept of two people's exchanges (the last row, their topics) is let go; 0 never. Default 30. */
+    pairDays: number;
 }
 export declare const DEFAULT_BREE: BreeConfig;
 /** An exchange in progress. */

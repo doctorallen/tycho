@@ -1,6 +1,6 @@
 # Deciding (Bicameral)
 
-Bicameral is the core's decision maker, named for Westworld's bicameral mind: the voice that tells a host what to do until it becomes their own. It holds the needs, the layered priorities (story, job, routine, needs), the weighing of every option, the pick, and the habits people learn.
+Bicameral is the core's decision maker, named for Westworld's bicameral mind: the voice that tells a host what to do until it becomes their own. It holds the needs, the layered priorities (story, job, routine, needs), the weighing of every option, the pick, and the habits people learn. Beside it, the core keeps the skills people grow by practice.
 
 - [Needs](#needs)
 - [Actions](#actions)
@@ -14,6 +14,7 @@ Bicameral is the core's decision maker, named for Westworld's bicameral mind: th
 - [The pick](#the-pick)
 - [When people think](#when-people-think)
 - [Habits and rewards](#habits-and-rewards)
+- [Skills and talents](#skills-and-talents)
 - [Config](#config)
 - [Asking why](#asking-why)
 
@@ -86,6 +87,7 @@ Every field of `ActionDef`:
 | `deed` | string | none | A deed done to the target when it ends: the same path as `world.did` (Reverie, Fellowship) |
 | `crime` | string | none | Doing it is this crime: everyone at the place may witness it (Wormtongue) |
 | `cost` | number | none | Extra planning cost in minutes (Mentat) |
+| `trains` | `{ skill: n }` | none | Skills it trains: `n` hours of practice per hour spent on it, given when it ends (or stops). See [Skills](#skills-and-talents) |
 | `data` | object | none | Anything the game wants to attach; the engine doesn't read it |
 
 An action is a free choice only if it has `relieves` or `base`, its `rank` isn't below 0, and the person has its `job` (if it names one). Actions without either are still possible when something requires them.
@@ -248,6 +250,7 @@ Relief beyond what the person needs counts for nothing (eating when barely hungr
 |---|---|
 | considerations | Each consideration's output, compensated for how many there are (see below). A zero vetoes the option |
 | `habit` | The person's habit for this action (1 when they've none) |
+| `instinct` | Their inborn taste for it: `PersonDef.instincts` (see [Instincts](#instincts)) |
 | `travel` | `1 / (1 + minutes / config.travelScale)`; 30 minutes away halves it |
 | `did it last` | `config.repeat` (0.75) for a free choice that's the same as the last thing they did, ended under 90 minutes ago (actions tagged `'sleep'` are exempt) |
 | `carrying on` | `config.inertia` (1.15) for what they're doing now, at the same place |
@@ -342,6 +345,43 @@ world.reward('sam', 'steal_food', -0.5);
 ```
 
 `reward` adds the amount to the fast weight and a quarter of it to the slow one. With Fellowship, people also pick up a little of the habits of people they like when they spend time together.
+
+### Instincts
+
+A habit is learned; an instinct is inborn. `PersonDef.instincts` gives a person a standing multiplier per action or task (`{ fish: 1.3, chat: 0.8 }`): it's weighed in as the factor `instinct` beside `habit`, and never changes. Delos fills it in from a genome, so children inherit their parents' tastes; a game can also write it by hand. Read it as `instinct.<action>`.
+
+## Skills and talents
+
+A skill is how good someone has got at something: a level per person that rises with practice, at their own pace, harder the nearer the top, and slips back slowly if they let it go. Declare skills, and say which actions train them:
+
+```js
+world.skill({ id: 'baking', label: 'Baking', rate: 0.03, levels: [[0.25, 'competent'], [0.5, 'skilled'], [0.75, 'expert']], decay: 0.01, then: ['feel:proud'] });
+world.action({ id: 'bake', at: 'cafe', minutes: 60, job: 'baker', rank: -1, trains: { baking: 1 } });
+world.person('mara', { talents: { baking: 1.4 }, skills: { baking: 0.3 }, job: { ... } });
+```
+
+- **Practice.** When an action with `trains` ends (or stops), each skill it names gets the time spent on it, times its number: `{ baking: 1 }` is an hour of practice per hour of baking, `{ baking: 0.5, chat: 0.2 }` half that and a little conversation. The game can give practice from outside the simulation with `world.train(id, skill, hours)` (a lesson, a book: an input), and set a level outright with `world.setSkill(id, skill, level)`. In effects: `train:<skill>=hours` and `skill.<skill>+=0.1`.
+- **The pace.** Progress is `rate` per hour at talent 1, scaled by how much room is left: the gain shrinks with `(1 - level / max)` to the power `diminish`. It's worked out exactly over the hours, so eight hours at once is the same as eight one-hour goes. A person's `talents` entry multiplies the rate (Delos inherits talents); the skill's `learn` considerations multiply it again (schooling, wit).
+- **Forgetting.** With `decay`, a skill not practiced for `grace` days (3) loses `decay` a day after that, down to `floor`. It's worked out when the level is read, so nothing ticks.
+- **Named levels.** Reaching one of `levels` on the way up logs `skill`, emits `skill` `{ id, skill, level, value }`, and runs the skill's `then` effects (`ctx.data.level` is the level's name).
+- **Reading them.** `skill.<id>` in conditions and considerations: gate an action (`if: ['skill.baking>=0.5']`), or weigh it (`{ input: 'skill.baking', out: [0.6, 1.4] }`); Ceres' `yields` can scale what a skilled hand makes. From the game, `world.skillOf(id, skill)`; `world.skills.of(person)` lists them; `world.describe` shows them.
+
+| `SkillDef` field | Default | Meaning |
+|---|---|---|
+| `id` | required | The skill's id. Actions can train a skill that wasn't declared; it gets the defaults |
+| `label` | none | A readable name |
+| `max` | 1 | The top of the scale |
+| `rate` | 0.02 | Level gained per hour of practice at talent 1, from nothing |
+| `diminish` | 1 | How much harder each step is: progress is scaled by `(1 - level / max) ** diminish`. 0 for none |
+| `decay` | 0 | Level lost per day without practice, once `grace` days have gone by |
+| `grace` | 3 | Days before a skill starts to slip |
+| `floor` | 0 | Forgetting never takes a level below this |
+| `start` | 0 | Where people start, unless their own `skills` says otherwise |
+| `levels` | none | `[[at, name], ...]`, lowest first |
+| `then` | none | Effects when someone reaches a named level |
+| `learn` | none | Considerations on the learner, multiplied into the rate |
+
+Levels live on the person (`PersonState.skills`: `[level, when last practiced]`), so they save and rewind.
 
 ## Config
 

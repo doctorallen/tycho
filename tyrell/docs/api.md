@@ -102,6 +102,7 @@ Types are exported too (from `dist/tyrell.d.ts`, or `dist/tyrell.global.d.ts` fo
 | `westmarch` | Westmarch | The log: `find(filter)`, `since(t, k?)`, `chronicle(id, since)` |
 | `palantir` | Palantir | The inspector: `why`, `whyNot`, `describe`, `history(id)`, `inspect(id)`, `parts(c)`, `enabled` |
 | `strangers` | Strangers | `define`, `at`, `find`, `promote` (input), `promoted` |
+| `skills` | Skills | Skills: `defs`, `def(id)`, `level(p, skill, t?)`, `talent(p, skill)`, `of(p)` (every skill and its level), `named(p, skill)` (the named level reached); engine: `applyTrain(p, skill, hours, mul?)`, `applySet(p, skill, level)` |
 | `modules` | Map | Modules by name |
 | `hooks` | Module[] | Modules in the order their hooks run |
 | `replaying` | boolean | True while Esper replays (events are silent) |
@@ -134,6 +135,7 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `action(def)` | An action: [ActionDef](deciding.md#actions) |
 | `task(def)` | A task: [TaskDef](modules/mentat.md#tasks-and-methods) |
 | `deed(verb, def)` | What a deed means: [DeedDef](integration.md#sensing-and-deeds) |
+| `skill(def)` | A skill: [SkillDef](deciding.md#skills-and-talents) |
 | `term(name, fn)` | A condition term: [Extending](conditions.md#extending-the-language) |
 | `effect(name, fn)` | An effect |
 | `defineInput(name, fn)` | A custom input: [Integration](integration.md#custom-inputs) |
@@ -157,6 +159,8 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `reward(id, action, amount)` | void | **Input.** Nudges a habit |
 | `setVar(id, name, value)` | void | **Input.** Sets a person's variable |
 | `give(id, item, count = 1)` | void | **Input.** Gives goods (negative takes, not below 0) |
+| `train(id, skill, hours)` | void | **Input.** Practice at the person's own pace (a lesson, a book): [Skills](deciding.md#skills-and-talents) |
+| `setSkill(id, skill, level)` | void | **Input.** Sets a skill's level outright |
 | `away(id, until, summary = '', place?)` | void | **Input.** Sends someone away until a time |
 | `follow(id, leader or null)` | void | **Input.** Following |
 | `remove(id, why = 'left')` | void | **Input.** Gone for good |
@@ -171,6 +175,7 @@ All definitions; declare them on every start. Each returns the world, so they ch
 | `people()` | PersonState[] | Everyone active |
 | `have(person, item)` | number | Their goods plus their household's pantry |
 | `needOf(id, need)` | number | A need's level now |
+| `skillOf(id, skill)` | number | A skill's level now (0 if they've none) |
 | `bodies()` | Body[] | Everyone near |
 | `body(id)` | Body or null | Anyone's body as it would be shown now (null if not active) |
 | `why(id)` | Decision or null | The latest decision |
@@ -250,6 +255,7 @@ Events are emitted to listeners registered with `world.on`. None are emitted whi
 | `rent-missed` | `{ id, amount }` | Ceres |
 | `paired` | `{ a, b }` | Cradle |
 | `born` | `{ id, parents }` | Cradle |
+| `skill` | `{ id, skill, level, value }` | Someone reached a named level of a skill |
 | `stage` | `{ id, from, to }` | Cradle: a new life stage |
 
 Listeners run synchronously, in the middle of the engine's work. Inputs they make are deferred until the engine finishes what it's handling (see [Concepts](concepts.md#inputs-and-determinism)). Calls that move time or replace the state (`tick`, `advance`, `advanceTo`, `seek`, `rewind`, `load`, `esper.seekMark`) wait until the call that's running returns, then run in order. Don't throw from a listener: an exception propagates out of the call that moved time.
@@ -262,6 +268,7 @@ The names Esper records, for tools that read a history. Each is made by the meth
 |---|---|
 | `person` | `world.person` |
 | `fact`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at` | The `world` method of the same name |
+| `train`, `skill` (`setSkill`) | The `world` methods |
 | `promote` | `strangers.promote` |
 | `log` | `world.log`, called from the game |
 | `feel`, `believe`, `remember`, `forget`, `recollect` (`recall`), `hush` (`silence`) | Reverie |
@@ -338,6 +345,9 @@ What the game declares about a person. Plain JSON: it's saved with them.
 | `inv` | Starting goods |
 | `place` | Where they start (default: home) |
 | `born` | Born at this time in minutes (Cradle) |
+| `skills` | Starting skill levels: `{ baking: 0.3 }` |
+| `talents` | How fast they learn each skill: a multiplier on its rate, 1 if unset (Delos inherits these) |
+| `instincts` | Inborn tastes: a standing multiplier on an action's or task's weight, 1 if unset (Delos inherits these) |
 | `data` | Anything the game wants: a look, a sprite id (on every body) |
 
 ### PersonState
@@ -365,12 +375,14 @@ A person in the state (`world.get(id)`):
 | `away` | While away: `{ until, summary?, place? }` |
 | `follow` | Who they follow |
 | `born` | Born at (Cradle) |
+| `skills` | By skill: `[level, when last practiced]` (made on first practice) |
 
 ### Other definitions
 
 | Type | Fields | See |
 |---|---|---|
 | `NeedDef` | `id, rise, start?, curve?, urgent?, label?, emotion?` | [Deciding](deciding.md#needs) |
+| `SkillDef` | `id, label?, max?, rate?, diminish?, decay?, grace?, floor?, start?, levels?, then?, learn?` | [Deciding](deciding.md#skills-and-talents) |
 | `ActionDef` | every field | [Deciding](deciding.md#actions) |
 | `TaskDef`, `MethodDef`, `Step` | | [Mentat](modules/mentat.md) |
 | `PlaceDef`, `SlotDef` | | [Places](places.md) |

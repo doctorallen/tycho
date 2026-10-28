@@ -15,6 +15,7 @@ import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
 import { Strangers } from './strangers';
+import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
 import type { Fellowship } from '../modules/fellowship';
 import type { Wormtongue } from '../modules/wormtongue';
@@ -26,7 +27,7 @@ import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
 import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState,
-  PlaceDef, Shell, Stimulus, TaskDef, Value, WorldState,
+  PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WorldState,
 } from './types';
 import { DAY, HOUR, Stream, clamp, clone, dayOf, hash, hourOf, stableStringify } from './util';
 
@@ -84,6 +85,8 @@ export class World {
   readonly westmarch: Westmarch;
   readonly palantir: Palantir;
   readonly strangers: Strangers;
+  /** Skills: levels that grow with practice. */
+  readonly skills: Skills;
   readonly modules = new Map<string, Module>();
   /** The modules in the order their hooks run. */
   readonly hooks: Module[] = [];
@@ -121,7 +124,9 @@ export class World {
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
     this.strangers = new Strangers(this);
+    this.skills = new Skills(this);
     this.registerCore();
+    this.skills.register();
     for (const m of modules) {
       this.modules.set(m.name, m);
       this.hooks.push(m);
@@ -237,6 +242,8 @@ export class World {
   task(def: TaskDef): this { this.tasks.set(def.id, def); return this; }
   /** Says what a deed (world.did) means: feelings, memories, regard, standing, crime. */
   deed(verb: string, def: DeedDef): this { this.deeds.set(verb, def); return this; }
+  /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
+  skill(def: SkillDef): this { this.skills.defs.set(def.id, def); return this; }
 
   /**
    * Adds a person, or returns them if they already exist (after a load the
@@ -316,6 +323,15 @@ export class World {
 
   /** Gives (or with a negative count, takes) goods. */
   give(id: Id, item: Id, count = 1): void { this.input('give', [id, item, count]); }
+
+  /** Practice from outside the simulation (a lesson, a book): hours of it at the person's own pace. */
+  train(id: Id, skill: Id, hours: number): void { this.input('train', [id, skill, hours]); }
+
+  /** Sets a skill's level outright. */
+  setSkill(id: Id, skill: Id, level: number): void { this.input('skill', [id, skill, level]); }
+
+  /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
+  skillOf(id: Id, skill: Id): number { const p = this.s.people[id]; return p ? this.skills.level(p, skill) : 0; }
 
   /** Sends someone away until a time (dormant): they come back with a summary of what they did. */
   away(id: Id, until: number, summary = '', place?: Id): void { this.input('away', [id, until, summary, place ?? null]); }

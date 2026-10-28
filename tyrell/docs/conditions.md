@@ -109,6 +109,9 @@ Always available. "The person" is the context's person.
 | `home` | The person's home id |
 | `habit`, `habit:<action>` | The person's habit weight for the context's action (or the one named): 1 with none, 0.25 to 4 |
 | `crowd`, `crowd:<place>` | How full a place is: the share of its slots taken, 0..1 (the context's place, else where the person is) |
+| `skill.<id>` | The person's level in a skill now, forgetting included (their starting level, or the skill's `start`, if they've never practiced) |
+| `talent.<id>` | How fast they learn the skill: their `talents` entry, 1 if unset |
+| `instinct.<action>` | Their inborn taste for an action or task: their `instincts` entry, 1 if unset (the context's action with no name) |
 | any other word | The world fact of that name |
 
 ## Module terms
@@ -212,6 +215,8 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `fact:<key>=v`, `fact:<key>`, `+=`... | Sets a world fact (`fact:<key>` alone sets `true`) |
 | `game:<key>=v` | Sets a kept game value |
 | `log:<kind>` | Writes a log entry of that kind about the person |
+| `skill.<id>=v`, `+=`, `-=`, `*=` | Sets or changes the person's level in a skill (kept within 0 and its `max`) |
+| `train:<id>=hours`, `train:<id>` | Practice: that many hours (1 if none given) at the person's own pace |
 
 ### Module effects
 

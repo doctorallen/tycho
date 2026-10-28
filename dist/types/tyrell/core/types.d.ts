@@ -176,10 +176,42 @@ export interface ActionDef {
     crime?: string;
     /** Planning cost override (Mentat). */
     cost?: number;
+    /** Skills it trains: hours of practice per hour spent doing it ({ cooking: 1 }). */
+    trains?: Record<Id, number>;
     /** Anything the game wants to attach. */
     data?: Record<string, unknown>;
 }
-/** A step in a task's method. */
+/**
+ * A skill: a level per person that rises with practice at their talent's
+ * pace, harder the nearer the top, and slips back slowly when let go.
+ */
+export interface SkillDef {
+    id: Id;
+    label?: string;
+    /** The top of the scale. Default 1. */
+    max?: number;
+    /** Level gained per hour of practice at talent 1, from nothing. Default 0.02 (about fifty hours to the top of 1). */
+    rate?: number;
+    /**
+     * How much harder each step is: progress is scaled by (1 - level / max) to
+     * this power. Default 1; 0 for none, 2 for much harder near the top.
+     */
+    diminish?: number;
+    /** Level lost per day without practice, once `grace` days have gone by. Default 0: never forgotten. */
+    decay?: number;
+    /** Days without practice before it starts to slip. Default 3. */
+    grace?: number;
+    /** Forgetting never takes a level below this. Default 0. */
+    floor?: number;
+    /** Where people start (a person's own `skills` in their definition wins). Default 0. */
+    start?: number;
+    /** Named levels, lowest first: [[0.25, 'competent'], [0.5, 'skilled']]. Reaching one emits 'skill'. */
+    levels?: Array<[number, string]>;
+    /** Effects when someone reaches a named level (ctx.data.level is its name). */
+    then?: Effect[];
+    /** More factors on how fast someone learns it (schooling, wit): considerations on the learner, multiplied. */
+    learn?: Consideration[];
+}
 export type Step = Id | `go:${string}` | `wait:${number}` | `get:${string}`
 /** An action at a place spec, aimed at someone, or taking these minutes instead of its own. */
  | {
@@ -264,6 +296,12 @@ export interface PersonDef {
     place?: Id;
     /** Born at this time in minutes (Cradle). */
     born?: number;
+    /** Starting skill levels. */
+    skills?: Record<Id, number>;
+    /** How fast they learn each skill: a multiplier on its rate (default 1). Delos fills these in from a genome. */
+    talents?: Record<Id, number>;
+    /** Inborn tastes: a standing multiplier on an action's (or task's) weight (default 1). Delos fills these in from a genome. */
+    instincts?: Record<Id, number>;
     /** Anything the game wants to keep: a look, a sprite id. */
     data?: Record<string, unknown>;
 }
@@ -347,6 +385,8 @@ export interface PersonState {
     born?: Minutes;
     /** Failures at one moment: [time, how many] (a guard against failing in a loop). */
     fails?: [Minutes, number];
+    /** Skill levels: [level, when last practiced]. Made on first practice. */
+    skills?: Record<Id, [number, Minutes]>;
 }
 /** An order from the story layer: overrides job and routine. */
 export interface Directive {

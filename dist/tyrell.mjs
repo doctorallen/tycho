@@ -979,6 +979,8 @@ var Bicameral = class {
       }
     }
     mul("habit", this.habit(p, c.id));
+    const instinct = p.def.instincts?.[c.id];
+    if (instinct !== void 0) mul("instinct", instinct);
     if (travel > 0) mul("travel", 1 / (1 + travel / w.config.travelScale));
     const sleepy = def.tags?.includes("sleep");
     if (!required && p.last === c.id && !sleepy && p.lastEnd !== void 0 && w.s.now - p.lastEnd < 90) mul("did it last", w.config.repeat);
@@ -1428,6 +1430,7 @@ var Entmoot = class {
       }
     }
     if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
+    if (a?.trains) w.skills.practiced(p, a.trains, d.start);
     if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
     p.last = d.action;
     p.lastEnd = w.s.now;
@@ -2082,6 +2085,11 @@ var Palantir = class {
     if (money !== void 0) lines.push(`money: ${money}`);
     const inv = Object.entries(p.inv).map(([k, v]) => `${w.ceres?.goods.get(k)?.label ?? k} x${v}`).join(", ");
     if (inv) lines.push(`carrying: ${inv}`);
+    const skills = Object.entries(w.skills.of(p)).map(([k, v]) => {
+      const named = w.skills.named(p, k);
+      return `${w.skills.defs.get(k)?.label ?? k} ${round(v, 2)}${named ? ` (${named})` : ""}`;
+    }).join(", ");
+    if (skills) lines.push(`skills: ${skills}`);
     const rv = w.reverie;
     if (rv) {
       lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);
@@ -2206,6 +2214,125 @@ var Strangers = class {
   }
 };
 
+// tyrell/src/core/skills.ts
+var Skills = class {
+  constructor(w) {
+    this.w = w;
+    this.defs = /* @__PURE__ */ new Map();
+  }
+  /** A skill's definition, or the defaults for one that was never declared. */
+  def(id) {
+    return this.defs.get(id) ?? { id };
+  }
+  /** A person's level in a skill at time t (default now), forgetting included. */
+  level(p, id, t = this.w.s.now) {
+    const rec = p.skills?.[id];
+    const def = this.defs.get(id);
+    if (!rec) return p.def.skills?.[id] ?? def?.start ?? 0;
+    const [v, since] = rec;
+    if (!def?.decay) return v;
+    const idle = (t - since) / DAY - (def.grace ?? 3);
+    if (idle <= 0) return v;
+    return round(Math.max(Math.min(v, def.floor ?? 0), v - def.decay * idle), 5);
+  }
+  /** How fast a person learns a skill: their talent for it (default 1). */
+  talent(p, id) {
+    return p.def.talents?.[id] ?? 1;
+  }
+  /** Every skill a person has practiced or started with, and its level now. */
+  of(p) {
+    const out = {};
+    const ids = /* @__PURE__ */ new Set([...Object.keys(p.def.skills || {}), ...Object.keys(p.skills || {})]);
+    for (const id of [...ids].sort()) out[id] = this.level(p, id);
+    return out;
+  }
+  /** The name of the highest level reached (from the skill's `levels`), or null. */
+  named(p, id) {
+    const v = this.level(p, id);
+    let out = null;
+    for (const [at, name] of this.def(id).levels || []) if (v >= at - 1e-9) out = name;
+    return out;
+  }
+  /**
+   * Practice, inside the simulation: `hours` of it at the person's pace,
+   * times `mul`. The progress is worked out exactly over the hours (eight
+   * hours at once is the same as eight one-hour goes). Returns the new level.
+   */
+  applyTrain(p, id, hours, mul = 1) {
+    const before = this.level(p, id);
+    if (!(hours > 0) || !(mul > 0)) return before;
+    const def = this.def(id);
+    const max = def.max ?? 1;
+    let rate = (def.rate ?? 0.02) * this.talent(p, id) * mul;
+    if (def.learn?.length) {
+      const ctx = this.w.ctx(p);
+      for (const k2 of def.learn) rate *= this.w.mind.consider(k2, ctx);
+    }
+    const d = def.diminish ?? 1;
+    const u0 = clamp(1 - before / max);
+    const k = rate * hours / max;
+    let u;
+    if (d === 1) u = u0 * Math.exp(-k);
+    else {
+      const b = Math.pow(u0, 1 - d) - (1 - d) * k;
+      u = b <= 0 || !isFinite(b) ? 0 : Math.pow(b, 1 / (1 - d));
+    }
+    const after = round(Math.max(before, clamp(max * (1 - u), 0, max)), 5);
+    this.store(p, id, after, before);
+    return after;
+  }
+  /** Sets a level outright, inside the simulation. */
+  applySet(p, id, level) {
+    const before = this.level(p, id);
+    const max = this.def(id).max ?? 1;
+    this.store(p, id, round(clamp(level, 0, max), 5), before);
+  }
+  /** Keeps a new level, and marks any named level reached on the way up. */
+  store(p, id, after, before) {
+    const w = this.w;
+    (p.skills || (p.skills = {}))[id] = [after, w.s.now];
+    const def = this.def(id);
+    for (const [at, name] of def.levels || []) {
+      if (before < at - 1e-9 && after >= at - 1e-9) {
+        w.log("skill", p.id, { skill: id, level: name });
+        w.emit("skill", { id: p.id, skill: id, level: name, value: after });
+        if (def.then) w.lang.applyAll(def.then, w.ctx(p, { data: { skill: id, level: name } }));
+      }
+    }
+  }
+  /** An action ended: the skills it trains get the time spent on it. */
+  practiced(p, trains, start) {
+    const hours = Math.max(0, this.w.s.now - start) / HOUR;
+    if (hours <= 0) return;
+    for (const id of Object.keys(trains).sort()) this.applyTrain(p, id, hours, trains[id]);
+  }
+  /** The terms, effects and inputs (World calls this once). */
+  register() {
+    const w = this.w, L = w.lang;
+    L.term("skill", (c, a) => c.person ? this.level(c.person, a) : 0);
+    L.term("talent", (c, a) => c.person ? this.talent(c.person, a) : 1);
+    L.term("instinct", (c, a) => c.person?.def.instincts?.[a || c.action || ""] ?? 1);
+    L.effect("skill", (c, a, op, v) => {
+      if (!c.person) return;
+      const id = a.startsWith("skill.") ? a.slice(6) : a;
+      const cur = this.level(c.person, id);
+      const next = op === "+=" ? cur + Number(v) : op === "-=" ? cur - Number(v) : op === "*=" ? cur * Number(v) : Number(v);
+      this.applySet(c.person, id, next);
+    });
+    L.effect("train", (c, a, _op, v) => {
+      if (c.person) this.applyTrain(c.person, a, v === null || v === true ? 1 : Number(v));
+    });
+    w.defineInput("train", (id, skill, hours) => {
+      const p = w.s.people[id];
+      return p ? this.applyTrain(p, skill, hours) : 0;
+    });
+    w.defineInput("skill", (id, skill, level) => {
+      const p = w.s.people[id];
+      if (p) this.applySet(p, skill, level);
+    });
+  }
+};
+
 // tyrell/src/core/world.ts
 var SCHEMA = 2;
 var DEFAULT_CONFIG = {
@@ -2285,7 +2412,9 @@ var World = class {
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
     this.strangers = new Strangers(this);
+    this.skills = new Skills(this);
     this.registerCore();
+    this.skills.register();
     for (const m of modules) {
       this.modules.set(m.name, m);
       this.hooks.push(m);
@@ -2444,6 +2573,11 @@ var World = class {
     this.deeds.set(verb, def);
     return this;
   }
+  /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
+  skill(def) {
+    this.skills.defs.set(def.id, def);
+    return this;
+  }
   /**
    * Adds a person, or returns them if they already exist (after a load the
    * saved person wins, so declaring everyone on every start is safe).
@@ -2553,6 +2687,19 @@ var World = class {
   /** Gives (or with a negative count, takes) goods. */
   give(id, item, count = 1) {
     this.input("give", [id, item, count]);
+  }
+  /** Practice from outside the simulation (a lesson, a book): hours of it at the person's own pace. */
+  train(id, skill, hours) {
+    this.input("train", [id, skill, hours]);
+  }
+  /** Sets a skill's level outright. */
+  setSkill(id, skill, level) {
+    this.input("skill", [id, skill, level]);
+  }
+  /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
+  skillOf(id, skill) {
+    const p = this.s.people[id];
+    return p ? this.skills.level(p, skill) : 0;
   }
   /** Sends someone away until a time (dormant): they come back with a summary of what they did. */
   away(id, until, summary = "", place) {

@@ -361,6 +361,7 @@ export class Entmoot {
       }
     }
     if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
+    if (a?.trains) w.skills.practiced(p, a.trains, d.start);
     if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
     p.last = d.action;
     p.lastEnd = w.s.now;

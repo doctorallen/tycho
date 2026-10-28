@@ -49,7 +49,7 @@
   w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
   w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
-  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'] });
+  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 } });
   w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'] });
   w.action({ id: 'eat_home', label: 'eating at home', at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
   w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
@@ -63,8 +63,8 @@
   w.action({ id: 'sulk', label: 'sulking', at: 'home', minutes: 120, pose: 'sit', rank: -1 });
   w.action({ id: 'bender', label: 'a bender', at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
   // work: only done on shift (rank -1 means "only when required")
-  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, job: 'baker', rank: -1, pose: 'work', tags: ['work'] });
-  w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'] });
+  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 } });
+  w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'], trains: { repair: 1 } });
   w.action({ id: 'serve', label: 'serving drinks', at: 'bar', slot: 'bar', minutes: 60, job: 'bartender', rank: -1, pose: 'work', tags: ['work'], relieves: { company: 0.15 } });
   w.action({ id: 'sell', label: 'minding the till', at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work', tags: ['work'] });
   w.action({ id: 'treat', label: 'seeing patients', at: 'clinic', slot: 'desk', minutes: 60, job: 'doctor', rank: -1, pose: 'work', tags: ['work'] });
@@ -74,6 +74,11 @@
   w.action({ id: 'buy_radio', label: 'buying a radio', at: 'market', minutes: 10, price: 40, buys: { radio: 1 }, pose: 'stand' });
   w.action({ id: 'listen', label: 'listening to the radio', at: 'home', minutes: 60, relieves: { fun: 0.35 }, if: ['has:radio'], pose: 'sit', tags: ['comfort'] });
   w.action({ id: 'shrug', label: 'giving up on the radio', minutes: 1, then: ['take:broken_radio'] });
+
+  // ---- skills: levels that grow with practice, at each person's own pace -----
+  w.skill({ id: 'baking', label: 'Baking', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']] });
+  w.skill({ id: 'repair', label: 'Repair', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']], decay: 0.004, floor: 0.2 });
+  w.skill({ id: 'lore', label: 'Lore', rate: 0.03, diminish: 2 });
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({
@@ -98,12 +103,14 @@
   w.person('mara', {
     name: 'Mara', home: 'apt_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
     traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6 }, values: { honesty: 0.8, family: 0.9 },
+    skills: { baking: 0.62 }, talents: { baking: 1.2 },
     job: { id: 'baker', place: 'cafe', action: 'bake', shifts: [[6, 14]], wage: 0 },
     routine: [[5.5, 'home', 'shower'], [6, null, '*'], [14.25, 'market', 'buy_food'], [14.5, null, '*'], [22, 'home', 'sleep']],
   });
   w.person('tomas', {
     name: 'Tomas', home: 'apt_1', groups: ['h_okafor'], vars: { money: 60 },
     traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7 }, values: { honesty: 0.6, craft: 0.9 },
+    skills: { repair: 0.74 }, talents: { repair: 1.3 },
     job: { id: 'mechanic', place: 'workshop', action: 'fix', shifts: [[8, 17]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: [[7, null, '*'], [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
   });
@@ -136,6 +143,7 @@
   w.person('kofi', {
     name: 'Kofi', home: 'apt_5', vars: { money: 25 },
     traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5 }, values: { honesty: 0.5 },
+    talents: { lore: 1.5 }, instincts: { walk: 1.25, read: 1.2 },   // a student who'd rather be outdoors
   });
   w.person('lena', {
     name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],

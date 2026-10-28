@@ -504,6 +504,9 @@ export class Bicameral {
       }
     }
     mul('habit', this.habit(p, c.id));
+    // an inborn taste (Delos fills these in from a genome)
+    const instinct = p.def.instincts?.[c.id];
+    if (instinct !== undefined) mul('instinct', instinct);
     if (travel > 0) mul('travel', 1 / (1 + travel / w.config.travelScale));
     const sleepy = def.tags?.includes('sleep');
     if (!required && p.last === c.id && !sleepy && p.lastEnd !== undefined && w.s.now - p.lastEnd < 90) mul('did it last', w.config.repeat);

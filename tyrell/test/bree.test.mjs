@@ -590,3 +590,169 @@ test('a fight between people of two households can set the households feuding', 
   assert.equal(feuds.length, 1);
   assert.deepEqual([feuds[0].a, feuds[0].b, r3(feuds[0].strength), feuds[0].why], ['h1', 'h2', 0.4, 'fight']);
 });
+
+// ---------------------------------------------------------------------------
+// Conversations over turns, on topics, in each one's manner, round a table
+// ---------------------------------------------------------------------------
+
+/** A table to talk at, with plain topics and a conversation kind. */
+function talky(opts = {}) {
+  const w = table({ ...opts, bree: { turnsJitter: 0, ...(opts.bree || {}) } });
+  w.bree.topic({ id: 'weather' });
+  w.bree.topic({ id: 'work' });
+  w.bree.topic({ id: 'family' });
+  w.bree.kind({ id: 'chat', topics: ['*'], group: true, turns: 8 });
+  w.advance(10);
+  return w;
+}
+
+test('a conversation goes topic by topic: it\'s opened, answered, followed up and capped, then another, and a goodbye', () => {
+  const w = talky();
+  const turns = record(w, 'bree:turn');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  assert.deepEqual(turns.map((t) => [t.who, t.step]), [
+    ['a', 'open'], ['b', 'reply'], ['a', 'more'], ['b', 'back'],
+    ['b', 'open'], ['a', 'reply'], ['b', 'more'], ['a', 'back'],
+    ['a', 'bye'],
+  ]);
+  assert.equal(new Set(turns.slice(0, 4).map((t) => t.topic)).size, 1, 'one topic at a time');
+  assert.notEqual(turns[0].topic, turns[4].topic, 'then another');
+  assert.equal(turns[8].topic, null);
+  assert.ok(turns[8].end);
+  assert.equal(turns[1].line, `${turns[1].topic}.reply`, 'the words are the game\'s to look up');
+  assert.equal(turns[8].line, 'chat.bye');
+  // nothing left to say: they part
+  const short = talky();
+  const st = record(short, 'bree:turn');
+  short.bree.kind({ id: 'chat', topics: ['*'], turns: 12 });
+  short.bree.start('chat', 'a', 'b');
+  short.advance(2 * HOUR);
+  assert.equal(st.filter((t) => t.step === 'open').length, 3, 'three topics, each once');
+  assert.equal(st.at(-1).step, 'bye');
+});
+
+test('topics come from what\'s true for both: news one has, a memory they share, what they love doing, what they\'re at, where they are', () => {
+  const w = talky({ defs: { a: { instincts: { fish: 1.5 } } } });
+  w.bree.topic({ id: 'news', from: 'beliefs' });
+  w.bree.topic({ id: 'old_times', from: 'memories' });
+  w.bree.topic({ id: 'pastimes', from: 'likes' });
+  w.bree.topic({ id: 'the_moment', from: 'doing' });
+  w.bree.topic({ id: 'here', from: 'place' });
+  w.bree.topic({ id: 'grievance', from: 'grudge' });
+  const bree = w.bree;
+  const subj = (id, s = 'a', l = 'b') => bree.subject(id, s, l);
+  assert.equal(subj('news'), undefined, 'no news yet');
+  w.reverie.believe('a', 'did:c:theft', true, 'saw');
+  assert.equal(subj('news'), 'did:c:theft');
+  w.reverie.believe('b', 'did:c:theft', true, 'told');
+  assert.equal(subj('news'), undefined, 'b knows it already');
+  w.reverie.believe('a', 'did:b:theft', true, 'saw');
+  assert.equal(subj('news'), undefined, 'not to their face');
+  w.reverie.remember('a', { k: 'flood' });
+  assert.equal(subj('old_times'), undefined, 'only a\'s');
+  w.reverie.remember('b', { k: 'flood' });
+  assert.equal(subj('old_times'), 'flood', 'a memory they share');
+  assert.equal(subj('pastimes'), 'fish');
+  assert.equal(subj('pastimes', 'b', 'a'), undefined, 'b has no passion to speak of');
+  assert.equal(subj('the_moment'), 'sit');
+  assert.equal(subj('here'), 'cafe');
+  assert.equal(subj('grievance'), undefined);
+  w.bree.grudgeAgainst('a', 'b', 0.3, 'the noise');
+  assert.equal(subj('grievance'), 'the noise');
+  // a topic they share is more to the listener's taste
+  assert.ok(w.bree.weigh('chat', 'a', 'b', { topic: 'old_times', subject: 'flood' }).parts.some(([k, v]) => k === 'topic' && v === 0.5));
+});
+
+test('news told in talk passes on, heard out (through Wormtongue, or without it)', () => {
+  for (const modules of [['reverie', 'fellowship', 'wormtongue', 'bree'], ['reverie', 'fellowship', 'bree']]) {
+    const w = table({ modules, bree: { compatWeight: 0, moodWeight: 0 } });
+    w.bree.topic({ id: 'news', from: 'beliefs' });
+    w.bree.kind({ id: 'chat', topics: ['news'], turns: 2, base: 1 });
+    w.advance(10);
+    w.reverie.believe('a', 'did:c:theft', true, 'saw');
+    w.bree.start('chat', 'a', 'b');
+    const b = w.reverie.beliefRecord('b', 'did:c:theft');
+    assert.equal(b?.src, 'told', modules.join());
+    assert.equal(b.from, 'a');
+    assert.ok(b.str < 1 && b.hops === 1);
+  }
+  // a teller who doesn't gossip tells nothing
+  const q = table({ bree: { compatWeight: 0, moodWeight: 0 }, defs: { a: { tune: { wormtongue: { gossip: 0 } } } } });
+  q.bree.topic({ id: 'news', from: 'beliefs' });
+  q.bree.kind({ id: 'chat', topics: ['news'], turns: 2, base: 1 });
+  q.advance(10);
+  q.reverie.believe('a', 'did:c:theft', true, 'saw');
+  q.bree.start('chat', 'a', 'b');
+  assert.equal(q.reverie.belief('b', 'did:c:theft'), undefined);
+});
+
+test('each one talks in their manner: the best fit for their nature, and it colors how their words land', () => {
+  const w = talky({ defs: { a: { traits: { temper: 0.95 } } } });
+  for (const m of Tyrell.breeStarter().manners) w.bree.manner(m);
+  assert.equal(w.bree.mannerOf('a'), 'ornery');
+  assert.equal(w.bree.mannerOf('b'), 'plain');
+  assert.equal(w.lang.value('manner', w.ctx(w.get('a'))), 'ornery');
+  const turns = record(w, 'bree:turn');
+  w.bree.start('chat', 'a', 'b');
+  assert.equal(turns[0].manner, 'ornery');
+  assert.deepEqual(w.bree.exchange('a').manners, { a: 'ornery', b: 'plain' });
+  assert.ok(w.bree.weigh('chat', 'a', 'b').parts.some(([k, v]) => k === 'manner' && v === -0.75), 'an ornery word lands badly');
+});
+
+test('round a table, everyone takes a turn: each answers the opener; someone happening by joins in', () => {
+  const w = talky({ people: ['a', 'b', 'c'], bree: { joinChance: 1 } });
+  w.bree.kind({ id: 'chat', topics: ['*'], group: true, turns: 5 });
+  const turns = record(w, 'bree:turn'), joined = record(w, 'bree:joined');
+  w.bree.start('chat', 'a', 'b');
+  assert.deepEqual(w.bree.exchange('a').who, ['a', 'b'], 'the game says who\'s in it');
+  w.bree.end('a');
+  // struck up at the table, the third joins in
+  w.tune('bree', { strike: 1 });
+  w.advance(3 * HOUR);
+  const ex = w.bree.history().find((f) => f.who.length === 3);
+  assert.ok(ex, 'a table of three');
+  const steps = turns.filter((t) => t.id === ex.id).slice(0, 5).map((t) => t.step);
+  assert.deepEqual(steps, ['open', 'reply', 'reply', 'more', 'back'], 'two answers to the opener');
+  // regard runs between every pair, at a share
+  const g = talky({ people: ['a', 'b', 'c'], bree: { compatWeight: 0, moodWeight: 0, roomWeight: 0 } });
+  g.bree.kind({ id: 'chat', topics: ['*'], group: true, turns: 5, base: 3 });
+  g.bree.start('chat', 'a', ['b', 'c']);
+  g.advance(HOUR);
+  assert.equal(g.fellowship.regard('b', 'c'), 0.02, 'half of warm\'s 0.04');
+  assert.equal(g.fellowship.regard('c', 'a'), 0.02);
+  // someone arriving where a group talks can join it as it goes on
+  const late = talky({ people: ['a', 'b'], bree: { joinChance: 1 } });
+  late.bree.kind({ id: 'chat', topics: ['*'], group: true, turns: 12 });
+  late.bree.start('chat', 'a', 'b');
+  late.person('c', { home: 'cafe' });
+  late.advance(5);
+  assert.deepEqual(late.bree.exchange('a').who, ['a', 'b', 'c']);
+});
+
+test('the words: Cityspeak\'s most specific line for the topic and the step, by manner and how the turn landed', () => {
+  const w = talky({ defs: { b: { traits: { temper: 0.95 } } } });
+  for (const m of Tyrell.breeStarter().manners) w.bree.manner(m);
+  w.bree.kind({ id: 'chat', topics: ['weather'], turns: 2 });
+  w.cityspeak.addLines([
+    { key: 'w_open', topic: 'weather.open', text: 'Some weather we\'re having.' },
+    { key: 'w_reply', topic: 'weather.reply', text: 'Isn\'t it.' },
+    { key: 'w_reply_ornery', topic: 'weather.reply', when: ['manner:ornery'], text: 'It\'s weather. It happens.' },
+    { key: 'bye_any', topic: 'bree.bye', text: 'Well, good day.' },
+  ]);
+  const turns = record(w, 'bree:turn');
+  w.bree.start('chat', 'a', 'b');
+  w.advance(HOUR);
+  assert.deepEqual(turns.map((t) => [t.step, t.key, t.line]), [['open', 'w_open', 'weather.open'], ['reply', 'w_reply_ornery', 'weather.reply'], ['bye', 'bye_any', 'bree.bye']]);
+  assert.equal(turns[1].text, 'It\'s weather. It happens.');
+});
+
+test('talk 0: an exchange begun by an action is a word and no more', () => {
+  const w = talky({ bree: { talk: 0 } });
+  w.action({ id: 'natter', target: 'person', at: 'here', minutes: 20, rank: -1, interact: 'chat' });
+  w.direct('a', { do: 'natter', target: 'b' });
+  w.advance(30);
+  const done = w.bree.history().at(-1);
+  assert.equal(done.why, 'done');
+  assert.ok(done.n <= 2, 'a word, and goodbye');
+});

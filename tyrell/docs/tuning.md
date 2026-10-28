@@ -431,6 +431,7 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `trust` | 0.7 | Without Wormtongue, the share of a belief's strength a telling keeps |
 | `shareWindow` | 60 | Two memories of the same kind this many minutes apart count as shared |
 | `likeAbove` | 1.1 | A taste (an instinct or a habit) above this counts as something they love doing |
+| `shareFit` | 0.5 | A topic they share (the same doing, a memory both hold) is this much more to the listener's taste |
 | `mannerJitter` | 0.1 | Up to this much added to each manner's fit, the same for each person always |
 | `groupMax` | 5 | Most people in one exchange |
 | `joinChance` | 0.5 | The chance someone at the same place joins a group exchange, times their `talk` |

@@ -13,6 +13,16 @@
 //                  regard, compatibility and attraction, the topic, the place
 //                  and their history (Prom Week's social exchanges, The Sims'
 //                  social interactions)
+//   conversations  over turns on the clock, topic by topic: opened, answered,
+//                  followed up and capped, on what's true for the two of them
+//                  (news one has, a memory they share, what they love doing,
+//                  what they're at, where they are, the game's own), each in
+//                  their own manner; friends talk long and strangers briefly;
+//                  round a table everyone answers, and someone happening by
+//                  joins in (Merryfolk's natters and table talk). Each turn
+//                  is told to the game as it comes, with the words left to it
+//                  (or Cityspeak's most specific line), and off screen it all
+//                  happens the same
 //   escalation     a sour turn can turn talk into an argument and an argument
 //                  into a fight, unless the other keeps their patience or
 //                  someone there steps in, or the one hurt walks off; whoever
@@ -30,7 +40,7 @@
 import type { Module } from '../core/module';
 import type { Candidate, Consideration, Cond, Ctx, Doing, Effect, Id, PersonState, QueueItem, Value } from '../core/types';
 import type { World } from '../core/world';
-import { DAY, HOUR, Stream, clamp, round } from '../core/util';
+import { DAY, HOUR, Stream, clamp, hash01, round } from '../core/util';
 import { landing } from './landing';
 import type { LandRules } from './landing';
 
@@ -278,6 +288,8 @@ export interface BreeConfig {
   shareWindow: number;
   /** A taste (instinct, or habit) above this counts as something they like doing. Default 1.1. */
   likeAbove: number;
+  /** A topic they share (the same doing, a memory both hold) is this much more to the listener's taste. Default 0.5. */
+  shareFit: number;
   /** Up to this much is added to how well each manner fits someone, the same for them always. Default 0.1. */
   mannerJitter: number;
 
@@ -386,7 +398,7 @@ export const DEFAULT_BREE: BreeConfig = {
   turns: { partner: 8, kin: 6, close: 8, friend: 5, acquaintance: 3, stranger: 2, rival: 4, sour: 2 },
   bonds: [0.6, 0.3, 0.05, -0.15], rivalAt: 0.3,
   talkativeTurns: 2, lowMood: 0.35, lowMoodTurns: 2, turnsJitter: 1, minTurns: 2, maxTurns: 12, quickTurns: 2, groupTurns: 3, turnGap: [2, 4],
-  topicPull: 0.5, topicCooldown: DAY, topicMemory: 8, tellAt: 'fine', trust: 0.7, shareWindow: HOUR, likeAbove: 1.1, mannerJitter: 0.1,
+  topicPull: 0.5, topicCooldown: DAY, topicMemory: 8, tellAt: 'fine', trust: 0.7, shareWindow: HOUR, likeAbove: 1.1, shareFit: 0.5, mannerJitter: 0.1,
   groupMax: 5, joinChance: 0.5, joinRegard: 0,
   escalateAt: 'sour', escalateBase: 0.25, escalateTemper: 0.5, escalateStress: 0.5, escalateGrudge: 0.6, escalateRegard: 0.5,
   calmBase: 0.1, calmPatience: 0.6, calmRegard: 0.3,
@@ -440,8 +452,10 @@ export interface Exchange {
   sour: number;
   /** Each one's manner. */
   manners: Record<Id, Id>;
-  /** The topic on now: its subject, who opened it, its steps and how far through. */
-  topic?: { id: Id; subject?: Value; by: Id; steps: string[]; i: number };
+  /** The topic on now: its subject, who opened it, its steps ([step, who, to]) and how far through. */
+  topic?: { id: Id; subject?: Value; by: Id; steps: Array<[string, Id, Id]>; i: number };
+  /** Who opened the last topic. */
+  opener?: Id;
   /** Topics talked of so far. */
   topics: string[];
   /** Line keys said, so lines aren't said twice. */
@@ -694,6 +708,8 @@ export class Bree implements Module {
       return a ? o === a : o;
     });
     L.term('turn', (c, a) => { const o = (c.person ? this.exOf(c.person.id)?.last : undefined) ?? null; return a ? o === a : o; });
+    L.term('manner', (c, a) => { const m = c.person ? this.mannerOf(c.person.id) : null; return a ? m === a : m; });
+    L.term('subject', (c) => (c.person ? this.exOf(c.person.id)?.topic?.subject ?? null : null));
     L.effect('exchange', (c, a) => { if (c.person && c.target && this.kinds.has(a) && !this.exOf(c.person.id) && !this.exOf(c.target)) this.begin(a, [c.person.id, c.target], 'game'); });
     w.defineInput('bree.start', (kind: Id, a: Id, others: Id[], opts: { minutes?: number; turns?: number } | null) => this.applyStart(kind, a, others, opts ?? {}));
     w.defineInput('bree.end', (which: number | Id) => this.applyEnd(which));
@@ -992,10 +1008,13 @@ export class Bree implements Module {
     };
     if (minutes !== undefined && isFinite(minutes)) ex.until = round(w.s.now + Math.max(0, minutes), 4);
     if (def.tags?.includes('hostile')) ex.by = who[0];
-    ex.turns = turns !== undefined ? Math.max(1, Math.round(turns)) : this.plan(def, who, r, minutes);
+    // round a table, others there may join in
+    if (def.group && def.topics?.length && why !== 'game') for (const id of this.joiners(ex, r)) ex.who.push(id);
+    for (const id of ex.who) { const m = this.mannerOf(id); if (m) ex.manners[id] = m; }
+    ex.turns = turns !== undefined ? Math.max(1, Math.round(turns)) : this.plan(def, ex.who, r, minutes);
     st.ex[ex.id] = ex;
-    for (const id of who) st.of[id] = ex.id;
-    w.log('exchange', who[0], { id: ex.id, kind, with: who.slice(1), why });
+    for (const id of ex.who) st.of[id] = ex.id;
+    w.log('exchange', who[0], { id: ex.id, kind, with: ex.who.slice(1), why });
     w.emit('bree:start', this.view(ex));
     // a fight from the first blow: seen as it starts
     if (def.crime) this.breaksOut(ex, def);
@@ -1073,6 +1092,191 @@ export class Bree implements Module {
     return best;
   }
 
+  /** Who at the same place joins a group exchange as it starts: free, fond enough of one of them, by chance and their talk. */
+  private joiners(ex: Exchange, r: Stream): Id[] {
+    const w = this.w, c = this.c;
+    if (!ex.place || c.groupMax <= ex.who.length) return [];
+    const out: Id[] = [];
+    for (const id of r.shuffle(w.ring.present(ex.place).filter((x) => !ex.who.includes(x)).sort())) {
+      if (ex.who.length + out.length >= c.groupMax) break;
+      if (!this.joins(ex, id, r)) continue;
+      out.push(id);
+    }
+    return out;
+  }
+
+  /** Would someone join an exchange now? */
+  private joins(ex: Exchange, id: Id, r: Stream): boolean {
+    const w = this.w, c = this.c, fs = w.fellowship;
+    const p = w.s.people[id];
+    if (!this.free(p) || this.exOf(id)) return false;
+    if (fs && !ex.who.some((m) => fs.regard(id, m) >= c.joinRegard)) return false;
+    return r.chance(clamp(c.joinChance * this.talkOf([id])));
+  }
+
+  /** Someone joins a group exchange in progress. */
+  private join(ex: Exchange, id: Id): void {
+    const st = this.mut();
+    ex.who.push(id);
+    st.of[id] = ex.id;
+    const m = this.mannerOf(id);
+    if (m) ex.manners[id] = m;
+    ex.turns += this.c.groupTurns;
+    this.w.log('joined', id, { id: ex.id });
+    this.w.emit('bree:joined', { id: ex.id, who: id });
+  }
+
+  /** The manner that fits someone best now (or null, with none declared): its base, rules, their nature, and a little of their own. */
+  mannerOf(id: Id): Id | null {
+    const w = this.w, c = this.c;
+    const p = w.s.people[id];
+    if (!p || !this.manners.size) return null;
+    const ex = this.exOf(id);
+    if (ex?.manners[id]) return ex.manners[id];
+    const ctx = w.ctx(p);
+    let best: Id | null = null, top = -Infinity;
+    w.peek(() => {
+      for (const m of this.manners.values()) {
+        if (m.if && !w.lang.all(m.if, ctx)) continue;
+        let v = landing(w.lang, m.base ?? 0, m.fits, ctx);
+        for (const role in m.traits || {}) v += (m.traits as Record<string, number>)[role] * (this.nature(p, role) - 0.5) * 2;
+        v += hash01(w.s.seed, 'manner', id, m.id) * c.mannerJitter;
+        if (v > top) { top = v; best = m.id; }
+      }
+    });
+    return best;
+  }
+
+  /** Is a kind a conversation, topic by topic? (One with topics, in a world that declares some; without any, it goes turn about.) */
+  private talks(def: KindDef): boolean { return !!def.topics?.length && this.topics.size > 0; }
+
+  /** Does a topic fit a kind? */
+  private fits(t: TopicDef, def: KindDef): boolean {
+    const list = def.topics;
+    if (!list?.length) return false;
+    if (list.includes(t.id)) return true;
+    if (t.tags && list.some((x) => x.startsWith('tag:') && t.tags?.includes(x.slice(4)))) return true;
+    if (!list.includes('*')) return false;
+    return !t.kinds || t.kinds.some((k) => k === def.id || (k.startsWith('tag:') && !!def.tags?.includes(k.slice(4))));
+  }
+
+  /** How much someone (they love doing it) likes an action: instinct times habit. */
+  private taste(p: PersonState, action: Id): number { return (p.def.instincts?.[action] ?? 1) * this.w.mind.habit(p, action); }
+
+  /** What a topic would be about, raised by the speaker to the listener now: undefined if it can't be raised, null if it needs nothing. A look. */
+  subject(topic: Id, speaker: Id, listener: Id): Value | undefined {
+    const t = this.topics.get(topic), s = this.w.s.people[speaker], l = this.w.s.people[listener];
+    return t && s && l ? this.w.peek(() => this.subjectOf(t, s, l)) : undefined;
+  }
+
+  private subjectOf(t: TopicDef, s: PersonState, l: PersonState): Value | undefined {
+    const w = this.w, c = this.c, rv = w.reverie;
+    switch (t.from) {
+      case undefined: return null;
+      case 'beliefs': {
+        if (!rv) return undefined;
+        const wt = w.wormtongue;
+        if (wt) {
+          // a teller whose gossip knob is 0 tells nobody anything
+          if (!(Number(w.tuning('wormtongue', s.id).gossip) > 0)) return undefined;
+          return wt.news(s.id, l.id)?.key;
+        }
+        const best = rv.beliefs(s.id).find((b) => !b.silenced && !b.key.startsWith('@') && !b.key.startsWith(`did:${l.id}:`) && rv.belief(l.id, b.key) !== b.v);
+        return best?.key;
+      }
+      case 'memories': {
+        if (!rv) return undefined;
+        const theirs = rv.memories(l.id);
+        const m = rv.memories(s.id).find((x) => x.about === l.id || theirs.some((y) => y.k === x.k && Math.abs(y.t - x.t) <= c.shareWindow));
+        return m?.k;
+      }
+      case 'likes': {
+        let best: Id | undefined, top = c.likeAbove;
+        for (const a of [...new Set([...Object.keys(s.def.instincts || {}), ...Object.keys(s.habits)])].sort()) {
+          const v = this.taste(s, a);
+          if (v > top) { top = v; best = a; }
+        }
+        return best;
+      }
+      case 'doing': return s.doing?.kind === 'act' ? s.doing.action : undefined;
+      case 'place': return s.place ? w.ring.root(s.place) : undefined;
+      case 'grudge': return this.st?.g[s.id]?.[l.id]?.[2] ?? undefined;
+    }
+    return undefined;
+  }
+
+  /** How much a topic is to someone's taste: its rules, and what they share of it. */
+  private fitOf(t: TopicDef, p: PersonState, other: PersonState, subject: Value | undefined): number {
+    const w = this.w, c = this.c;
+    let v = t.fit ? landing(w.lang, 0, t.fit, w.ctx(p, { target: other.id, topic: t.id, data: { subject: subject ?? null } })) : 0;
+    if (typeof subject === 'string') {
+      if (t.from === 'likes') v += this.taste(p, subject) - 1;
+      if (t.from === 'doing' && p.doing?.kind === 'act' && p.doing.action === subject) v += c.shareFit;
+      if (t.from === 'memories' && w.reverie?.memories(p.id).some((m) => m.k === subject)) v += c.shareFit;
+    }
+    return round(v, 4);
+  }
+
+  /** The topic someone opens next: one that fits the kind, not talked of yet, with something to it, drawn by weight, taste and how fresh it is between them. */
+  private pickTopic(ex: Exchange, def: KindDef, s: PersonState, l: PersonState, r: Stream): { t: TopicDef; subject: Value | undefined } | null {
+    const w = this.w, c = this.c, now = w.s.now;
+    const pair = this.st?.pairs[pairKey(s.id, l.id)];
+    const out: Array<{ t: TopicDef; subject: Value | undefined; weight: number }> = [];
+    w.peek(() => {
+      for (const t of this.topics.values()) {
+        if (ex.topics.includes(t.id) || !this.fits(t, def)) continue;
+        const subject = this.subjectOf(t, s, l);
+        if (subject === undefined) continue;
+        const ctx = w.ctx(s, { target: l.id, place: ex.place, topic: t.id, data: { subject } });
+        if (t.if && !w.lang.all(t.if, ctx)) continue;
+        let weight = 1;
+        if (typeof t.weight === 'number') weight = t.weight;
+        else if (typeof t.weight === 'function') weight = Number(t.weight(ctx)) || 0;
+        else if (t.weight) for (const k of t.weight) weight *= w.mind.consider(k, ctx);
+        const seen = pair?.topics?.[t.id];
+        if (seen !== undefined) weight *= 1 - Math.exp(-(now - seen) / Math.max(1, c.topicCooldown));
+        weight *= Math.max(0, 1 + this.fitOf(t, s, l, subject) * c.topicPull);
+        if (weight > 0) out.push({ t, subject, weight: round(weight, 6) });
+      }
+    });
+    const pick = r.weighted(out, (x) => x.weight);
+    return pick && pick.weight > 0 ? { t: pick.t, subject: pick.subject } : null;
+  }
+
+  /** A topic's steps, round the group: the opener opens it, each of the others answers, the opener follows it up, and one has the last word. */
+  private stepsOf(t: TopicDef, ex: Exchange, opener: Id, r: Stream): Array<[string, Id, Id]> {
+    const others = ex.who.filter((id) => id !== opener);
+    const first = others[0];
+    const out: Array<[string, Id, Id]> = [['open', opener, first]];
+    for (const o of others) out.push(['reply', o, opener]);
+    const n = clamp(Math.round(t.steps ?? 4), 2, 4);
+    if (n >= 3) out.push(['more', opener, first]);
+    if (n >= 4) out.push(['back', (others.length > 1 ? r.pick(others) : first) as Id, opener]);
+    return out;
+  }
+
+  /** A topic talked through: when it came up between them, and its effects for each. */
+  private topicDone(ex: Exchange): void {
+    const w = this.w, c = this.c, st = this.mut();
+    const tp = ex.topic;
+    if (!tp) return;
+    delete ex.topic;
+    const def = this.topics.get(tp.id);
+    const others = ex.who.filter((id) => id !== tp.by);
+    if (others[0]) {
+      const pair = (st.pairs[pairKey(tp.by, others[0])] ||= { n: 0, last: w.s.now });
+      const topics = (pair.topics ||= {});
+      delete topics[tp.id];
+      topics[tp.id] = w.s.now;
+      const keys = Object.keys(topics);
+      for (let i = 0; i < keys.length - c.topicMemory; i++) delete topics[keys[i]];
+    }
+    if (def?.then) for (const id of ex.who) {
+      const p = w.s.people[id];
+      if (p) w.lang.applyAll(def.then, w.ctx(p, { target: id === tp.by ? others[0] ?? null : tp.by, topic: tp.id, data: { subject: tp.subject ?? null } }));
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Exchanges: how a turn lands
   // -------------------------------------------------------------------------
@@ -1086,13 +1290,13 @@ export class Bree implements Module {
     const def = this.kinds.get(kind);
     const s = this.w.s.people[speaker], l = this.w.s.people[listener];
     if (!def || !s || !l) return null;
-    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner));
+    const parts = this.w.peek(() => this.parts(def, s, l, opts.place ?? s.place, opts.topic, opts.subject, opts.manner ?? this.mannerOf(speaker) ?? undefined));
     const score = round(parts.reduce((a, [, v]) => a + v, 0), 4);
     return { score, outcome: this.outcome(score), parts };
   }
 
   /** The parts of how words land with the listener (the speaker is the target), each a setting's weight. */
-  private parts(def: KindDef, s: PersonState, l: PersonState, place: Id | null | undefined, _topic?: Id, _subject?: Value, _manner?: Id): Array<[string, number]> {
+  private parts(def: KindDef, s: PersonState, l: PersonState, place: Id | null | undefined, topic?: Id, subject?: Value, manner?: Id): Array<[string, number]> {
     const w = this.w, c = this.c, L = w.lang;
     const out: Array<[string, number]> = [];
     const add = (name: string, v: number) => { if (v && isFinite(v)) out.push([name, round(v, 4)]); };
@@ -1128,6 +1332,10 @@ export class Bree implements Module {
     if (row !== undefined) add('row', -c.rowWeight * Math.exp(-(w.s.now - row) / Math.max(1, c.rowMinutes)));
     const cs = w.cityspeak;
     if (cs && place) add('room', c.roomWeight * (cs.room(place) - 0.5) * 2);
+    const t = topic ? this.topics.get(topic) : undefined;
+    if (t) add('topic', c.topicWeight * this.fitOf(t, l, s, subject));
+    const m = manner ? this.manners.get(manner) : undefined;
+    if (m?.lands) add('manner', c.mannerWeight * landing(L, 0, m.lands, lctx));
     return out;
   }
 
@@ -1150,8 +1358,38 @@ export class Bree implements Module {
     return null;
   }
 
-  /** Who speaks to whom next, and the step: turn about, the one who leads first. */
-  private nextStep(ex: Exchange): { who: Id; to: Id; step: string } {
+  /**
+   * Who speaks to whom next, and the step. A conversation (a kind with
+   * topics) goes topic by topic: the next opener raises one, the others
+   * answer, and when the turns they have are done (or there's nothing left
+   * to say), whoever's turn it is takes their leave. Anything else goes turn
+   * about, the one who leads first.
+   */
+  private nextStep(ex: Exchange, def: KindDef, r: Stream): { who: Id; to: Id; step: string; topic?: TopicDef } {
+    const w = this.w;
+    if (this.talks(def)) {
+      const tp = ex.topic;
+      const rot = (after: Id | undefined): Id => (after === undefined ? ex.lead ?? ex.who[0] : ex.who[(ex.who.indexOf(after) + 1) % ex.who.length] ?? ex.who[0]);
+      if (tp && tp.i < tp.steps.length) {
+        // out of time, but not before the first answer (unless they've time for only a word)
+        if (ex.n >= ex.turns && (tp.i !== 1 || ex.turns <= 1)) { const who = rot(tp.by); return { who, to: who === tp.by ? rot(who) : tp.by, step: 'bye' }; }
+        const [step, who, to] = tp.steps[tp.i];
+        return { who, to, step, topic: this.topics.get(tp.id) };
+      }
+      if (tp) this.topicDone(ex);
+      const opener = rot(ex.opener);
+      const to = opener === ex.who[0] ? ex.who[1] : ex.who[0];
+      if (ex.n >= ex.turns) return { who: opener, to: ex.opener ?? to, step: 'bye' };
+      const s = w.s.people[opener], l = w.s.people[to];
+      const pick = s && l ? this.pickTopic(ex, def, s, l, r) : null;
+      if (!pick) return { who: opener, to, step: 'bye' };
+      ex.topic = { id: pick.t.id, by: opener, steps: this.stepsOf(pick.t, ex, opener, r), i: 0 };
+      if (pick.subject !== null && pick.subject !== undefined) ex.topic.subject = pick.subject;
+      ex.opener = opener;
+      ex.topics.push(pick.t.id);
+      const [step, who, too] = ex.topic.steps[0];
+      return { who, to: too, step, topic: pick.t };
+    }
     const steps = ['open', 'reply', 'more', 'back'];
     const lead = ex.lead ?? ex.who[0];
     const other = (id: Id): Id => (id === ex.who[0] ? ex.who[1] : ex.who[0]);
@@ -1168,22 +1406,28 @@ export class Bree implements Module {
     if (gone !== null) { this.finish(ex, 'parted', gone); return; }
     if (ex.until !== undefined && w.s.now > ex.until + 1e-6) { this.finish(ex, 'parted'); return; }
     const r = this.stream();
-    const { who, to, step } = this.nextStep(ex);
+    const { who, to, step, topic } = this.nextStep(ex, def, r);
+    if (step === 'bye') { ex.n++; this.tell(ex, { who, to, step, landed: null, end: true }); this.finish(ex, 'done'); return; }
     const s = w.s.people[who], l = w.s.people[to];
-    const parts = this.parts(def, s, l, ex.place);
+    const subject = topic ? ex.topic?.subject : undefined;
+    const parts = this.parts(def, s, l, ex.place, topic?.id, subject, ex.manners[who]);
     const score = round(parts.reduce((acc, [, v]) => acc + v, 0) + this.luck(r), 4);
     const landed = this.outcome(score);
     ex.heard[to] = ex.heard[to] === undefined ? score : round(ex.heard[to] + (score - ex.heard[to]) * c.sway, 4);
     ex.score = ex.score === null ? score : round(ex.score + (score - ex.score) * c.sway, 4);
     ex.last = landed;
     ex.lastWho = who;
-    ex.i = (ex.i ?? 0) + 1;
+    if (topic && ex.topic) ex.topic.i++; else ex.i = (ex.i ?? 0) + 1;
     ex.n++;
+    // opening a topic: news is passed on if it's heard out, old times are brought to mind
+    if (topic && step === 'open' && typeof subject === 'string') this.opened(ex, topic, s, subject, landed, r);
     // words that land badly: the one hurt may answer back harder, or walk off
     let act: Reaction = { act: 'none' };
     if (this.bad(landed)) { ex.sour++; ex.sourBy = who; act = this.react(ex, def, s, l, r); }
     const ends = act.act === 'leave' || act.act === 'step_in';
-    const over = ends || (act.act !== 'escalate' && ex.n >= ex.turns);
+    // (a conversation takes its leave on a turn of its own)
+    const kd = this.kinds.get(ex.kind);
+    const over = ends || (act.act !== 'escalate' && !(kd && this.talks(kd)) && ex.n >= ex.turns);
     this.tell(ex, { who, to, step, landed, end: over && !ends });
     if (act.act === 'calm') { ex.n++; ex.lastWho = who; this.tell(ex, { who, to, step: 'calm', landed: null, end: over }); }
     else if (act.act === 'step_in' && act.by) { ex.n++; ex.mediator = act.by; this.tell(ex, { who: act.by, to, step: 'step_in', landed: null, end: true }); }
@@ -1191,6 +1435,22 @@ export class Bree implements Module {
     else if (act.act === 'escalate') this.escalate(ex, def, l, s, r);
     if (over) { this.finish(ex, act.act === 'leave' ? 'left' : act.act === 'step_in' ? 'stepped in' : 'done', act.act === 'leave' ? to : undefined); return; }
     this.schedule(ex, r);
+  }
+
+  /** A topic is opened: news told to everyone in it who'd hear it (through Wormtongue's telling, when it's on), or a memory brought to mind. */
+  private opened(ex: Exchange, topic: TopicDef, s: PersonState, subject: string, landed: Outcome, r: Stream): void {
+    const w = this.w, c = this.c, rv = w.reverie;
+    if (!rv) return;
+    if (topic.from === 'beliefs' && this.atLeast(landed, c.tellAt)) {
+      const wt = w.wormtongue;
+      for (const id of ex.who) {
+        if (id === s.id || subject.startsWith(`did:${id}:`)) continue;
+        if (wt) { const news = wt.news(s.id, id, subject); if (news) wt.applyTell(s.id, id, news, r); continue; }
+        const b = rv.beliefRecord(s.id, subject);
+        if (b && rv.belief(id, subject) !== b.v) rv.applyBelieve(id, subject, b.v, 'told', s.id, round(b.str * c.trust, 4), b.hops + 1);
+      }
+    }
+    if (topic.from === 'memories') for (const id of ex.who) if (id === s.id || rv.memories(id).some((m) => m.k === subject)) rv.applyRecall(id, { k: subject }, 1);
   }
 
   /**
@@ -1248,6 +1508,7 @@ export class Bree implements Module {
     ex.i = 0;
     delete ex.lastWho;
     delete ex.topic;
+    delete ex.opener;
     const left = ex.until !== undefined ? ex.until - w.s.now : undefined;
     ex.turns = ex.n + this.plan(next, ex.who, r, left);
     w.log('escalated', angry.id, { id: ex.id, from, to: next.id, against: other.id });
@@ -1337,12 +1598,30 @@ export class Bree implements Module {
 
   /** Tells the game about a turn. */
   private tell(ex: Exchange, t: { who: Id; to: Id; step: string; landed: Outcome | null; end: boolean }): void {
-    const line = `${this.kinds.get(ex.kind)?.line ?? ex.kind}.${t.step}`;
+    const w = this.w;
+    const tp = ex.topic && ['open', 'reply', 'more', 'back'].includes(t.step) ? ex.topic : undefined;
+    // the words: the most specific line there is, the topic's, then the kind's, then any exchange's
+    const tries = [...(tp ? [`${tp.id}.${t.step}`] : []), `${this.kinds.get(ex.kind)?.line ?? ex.kind}.${t.step}`, `bree.${t.step}`];
     const turn: Turn = {
-      id: ex.id, kind: ex.kind, n: ex.n, who: t.who, to: t.to, step: t.step, topic: null,
-      landed: t.landed, outcome: ex.score === null ? null : this.outcome(ex.score), line, end: t.end,
+      id: ex.id, kind: ex.kind, n: ex.n, who: t.who, to: t.to, step: t.step, topic: tp?.id ?? null,
+      landed: t.landed, outcome: ex.score === null ? null : this.outcome(ex.score), line: tries[0], end: t.end,
     };
-    this.w.emit('bree:turn', turn);
+    if (tp && tp.subject !== undefined) turn.subject = tp.subject;
+    if (ex.manners[t.who]) turn.manner = ex.manners[t.who];
+    const cs = w.cityspeak;
+    if (cs && w.s.people[t.who]) {
+      for (const topic of tries) {
+        const said = cs.choose(t.who, { to: t.to, topic, exact: true, salt: [ex.id, ex.n], avoid: (key) => ex.said.includes(key) });
+        if (!said) continue;
+        turn.line = topic;
+        turn.key = said.key;
+        if (said.text !== undefined) turn.text = said.text;
+        ex.said.push(said.key);
+        if (ex.said.length > 24) ex.said.shift();
+        break;
+      }
+    }
+    w.emit('bree:turn', turn);
   }
 
   /** The exchange as the game sees it. */
@@ -1564,9 +1843,19 @@ export class Bree implements Module {
   met(a: PersonState, b: PersonState, _place: Id, minutes: number): void {
     if (!this.kinds.size) return;
     const c = this.c;
+    if (!this.free(a) || !this.free(b)) return;
+    // someone happening by a group talking: room for one more
+    const ea = this.exOf(a.id), eb = this.exOf(b.id);
+    if (ea || eb) {
+      const ex = (ea ?? eb) as Exchange, newcomer = ea ? b : a;
+      if ((ea && eb) || !this.kinds.get(ex.kind)?.group || !this.talks(this.kinds.get(ex.kind) as KindDef) || ex.who.length >= c.groupMax || !ex.place || !this.w.ring.within(newcomer.place, ex.place)) return;
+      if (!(c.joinChance * this.talkOf([newcomer.id]) > 0)) return;
+      if (this.joins(ex, newcomer.id, this.stream())) this.join(ex, newcomer.id);
+      return;
+    }
     // the headline knob: how readily people strike one up (the world's, times both people's own)
     const k = c.strike * this.talkOf([a.id, b.id]);
-    if (!(k > 0) || this.exOf(a.id) || this.exOf(b.id) || !this.free(a) || !this.free(b)) return;
+    if (!(k > 0)) return;
     const r = this.stream();
     if (!r.chance(k)) return;
     // the chattier is likelier to start

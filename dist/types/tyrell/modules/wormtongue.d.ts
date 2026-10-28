@@ -1,6 +1,7 @@
 import type { Module } from '../core/module';
 import type { Id, PersonState, Stimulus, Value } from '../core/types';
 import type { World } from '../core/world';
+import type { Stream } from '../core/util';
 export interface CrimeDef {
     kind: string;
     /** 0..1: how bad. */
@@ -159,6 +160,32 @@ export declare class Wormtongue implements Module {
     met(a: PersonState, b: PersonState): void;
     /** a may tell b one thing worth telling. */
     private gossip;
+    /**
+     * What a would most want to tell b now (gossip's pick): a belief not
+     * silenced, not too many tellings on, not private ('@'), not something b
+     * already believes, not about b, a secret only out of spite; scored by
+     * how juicy, how strong and how fresh. With `key`, that belief alone, if
+     * it could be told. Null if there's nothing. A look: it changes nothing.
+     */
+    news(a: Id, b: Id, key?: string): {
+        key: string;
+        v: Value;
+        str: number;
+        hops: number;
+        score: number;
+    } | null;
+    /**
+     * a tells b something they believe (inside the simulation; gossip, and
+     * Bree's talk): a liar may shift the blame, b believes it as far as they
+     * trust a, a secret spreads, and a member of the authority takes a crime
+     * as a report. `r` is the stream its draws come from.
+     */
+    applyTell(teller: Id, listener: Id, best: {
+        key: string;
+        v: Value;
+        str: number;
+        hops: number;
+    }, r: Stream): void;
     /** Declares a secret: a belief that only some people hold, which they pass on reluctantly. */
     secret(id: string, s: Secret): void;
     secrets(): Record<string, Secret>;

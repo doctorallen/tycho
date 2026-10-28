@@ -234,6 +234,8 @@ export interface BreeConfig {
     shareWindow: number;
     /** A taste (instinct, or habit) above this counts as something they like doing. Default 1.1. */
     likeAbove: number;
+    /** A topic they share (the same doing, a memory both hold) is this much more to the listener's taste. Default 0.5. */
+    shareFit: number;
     /** Up to this much is added to how well each manner fits someone, the same for them always. Default 0.1. */
     mannerJitter: number;
     /** Most people in one exchange. Default 5. */
@@ -336,14 +338,16 @@ export interface Exchange {
     sour: number;
     /** Each one's manner. */
     manners: Record<Id, Id>;
-    /** The topic on now: its subject, who opened it, its steps and how far through. */
+    /** The topic on now: its subject, who opened it, its steps ([step, who, to]) and how far through. */
     topic?: {
         id: Id;
         subject?: Value;
         by: Id;
-        steps: string[];
+        steps: Array<[string, Id, Id]>;
         i: number;
     };
+    /** Who opened the last topic. */
+    opener?: Id;
     /** Topics talked of so far. */
     topics: string[];
     /** Line keys said, so lines aren't said twice. */
@@ -590,6 +594,31 @@ export declare class Bree implements Module {
     private choices;
     /** The skill a teacher could teach someone: their best, well enough over the other's. */
     private lesson;
+    /** Who at the same place joins a group exchange as it starts: free, fond enough of one of them, by chance and their talk. */
+    private joiners;
+    /** Would someone join an exchange now? */
+    private joins;
+    /** Someone joins a group exchange in progress. */
+    private join;
+    /** The manner that fits someone best now (or null, with none declared): its base, rules, their nature, and a little of their own. */
+    mannerOf(id: Id): Id | null;
+    /** Is a kind a conversation, topic by topic? (One with topics, in a world that declares some; without any, it goes turn about.) */
+    private talks;
+    /** Does a topic fit a kind? */
+    private fits;
+    /** How much someone (they love doing it) likes an action: instinct times habit. */
+    private taste;
+    /** What a topic would be about, raised by the speaker to the listener now: undefined if it can't be raised, null if it needs nothing. A look. */
+    subject(topic: Id, speaker: Id, listener: Id): Value | undefined;
+    private subjectOf;
+    /** How much a topic is to someone's taste: its rules, and what they share of it. */
+    private fitOf;
+    /** The topic someone opens next: one that fits the kind, not talked of yet, with something to it, drawn by weight, taste and how fresh it is between them. */
+    private pickTopic;
+    /** A topic's steps, round the group: the opener opens it, each of the others answers, the opener follows it up, and one has the last word. */
+    private stepsOf;
+    /** A topic talked through: when it came up between them, and its effects for each. */
+    private topicDone;
     /**
      * How words of a kind from the speaker land with the listener now: the
      * score from the listener's side with its parts, and where it falls,
@@ -611,10 +640,18 @@ export declare class Bree implements Module {
     private luck;
     /** Are they all still together and awake, where it began? */
     private together;
-    /** Who speaks to whom next, and the step: turn about, the one who leads first. */
+    /**
+     * Who speaks to whom next, and the step. A conversation (a kind with
+     * topics) goes topic by topic: the next opener raises one, the others
+     * answer, and when the turns they have are done (or there's nothing left
+     * to say), whoever's turn it is takes their leave. Anything else goes turn
+     * about, the one who leads first.
+     */
     private nextStep;
     /** One turn: who speaks, how it lands, what it changes, and when the next comes. */
     private turn;
+    /** A topic is opened: news told to everyone in it who'd hear it (through Wormtongue's telling, when it's on), or a memory brought to mind. */
+    private opened;
     /**
      * Words landed badly with the one who heard them (l): do they answer back
      * harder (and does the other keep their patience, or someone step in), or

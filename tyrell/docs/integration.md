@@ -293,6 +293,14 @@ world.on('bark', ({ a, b, lines }) => {
 
 `choose` changes nothing; `say` is an input: it remembers the line was said (for `once` and `cooldown`), applies the line's `then` effects, and emits `say`. Barks are short exchanges between two people who meet while one of them is near; they never change the world. For a language-model voice, see [Joi](modules/joi.md).
 
+For conversations the player takes part in, with choices, use [Voice](modules/voice.md): a talk of threads and beats whose words are the same Cityspeak lines, chosen by topic:
+
+```js
+let view = world.voice.start('ruth');                 // an input: recorded, replayed
+show(view.lines, view.answers);                       // { who, key, text } lines; answers with i, kind, label or say, ok
+view = world.voice.answer(chosen.i);                  // the next beat (an input too)
+```
+
 ## Directing the story
 
 ```js

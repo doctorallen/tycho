@@ -68,11 +68,19 @@ Conditions are compiled once and cached, so using them is cheap.
 | `RoutineVariant.when` (strings only) | The person |
 | `SlotDef.who` | The person deciding or claiming, the place |
 | `LineDef.who`, `when`, `to` (Cityspeak) | The speaker; `target` is the listener; `topic`; `place` is the speaker's place |
+| `WishDef.if`, `weight`, `about` | The person |
+| `WishDef.when`, `progress`, `then`, `fades` | The person; `target` is who it's about, if a person; `data.x` is what it's about |
+| `SkillDef.then` (effects) | The person; `data.skill`, `data.level` |
 | `LineDef.then` (effects) | The speaker; `target` is the listener; `topic` |
 | `PracticeDef` role `who` | The person, their place |
 | `SocialActDef.acceptIf`, `accept` | The target of the act as `person`; the asker as `target` |
 | `SocialActDef.onAccept`, `onRefuse` (effects) | The asker as `person`; the target as `target` |
 | `StoryletDef.when` (Gaff) | No person: world terms only |
+| `CoursePhase.scale`, `then` (Athelas) | The person |
+| `CourseDef.contagion.resist` (Athelas) | The one who might catch it; `target` is the carrier |
+| `ThreadDef.if`, `weight`, `label`; `AnswerDef.if`, `to[].if`; beats', answers' and threads' `then` (Voice) | The person talked to; `target` is the speaker |
+| `ApproachDef.lands` (Voice) | The listener; `target` is the speaker |
+| `PromiseDef.kept`, `broken`, `onKept`... (Voice) | The one promised to; `target` is the one who promised |
 | `Consideration.input` | A term (not a condition), read in the option's context |
 
 ## Core terms
@@ -109,6 +117,14 @@ Always available. "The person" is the context's person.
 | `home` | The person's home id |
 | `habit`, `habit:<action>` | The person's habit weight for the context's action (or the one named): 1 with none, 0.25 to 4 |
 | `crowd`, `crowd:<place>` | How full a place is: the share of its slots taken, 0..1 (the context's place, else where the person is) |
+| `skill.<id>` | The person's level in a skill now, forgetting included (their starting level, or the skill's `start`, if they've never practiced) |
+| `talent.<id>` | How fast they learn the skill: their `talents` entry, 1 if unset |
+| `instinct.<action>` | Their inborn taste for an action or task: their `instincts` entry, 1 if unset (the context's action with no name) |
+| `tolerance:<kind>` | How much of a pastime that palls they've had lately, 0..1 |
+| `wish:<id>` | While they hold the wish: what it's about, or `true`; else `false` |
+| `wishes` | How many wishes they hold (not counting a dream) |
+| `dream` | The id of their dream, or `null` |
+| `granted:<id>` | How many times the wish has come true for them |
 | any other word | The world fact of that name |
 
 ## Module terms
@@ -195,6 +211,37 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `stage` | Life stage (`'child'`, `'adult'`...); `stage:<name>` is true if it's that |
 | `married` | They have a partner (needs Fellowship) |
 
+### Athelas
+
+| Term | Value |
+|---|---|
+| `under:<course>` | The phase the course is in (its id), or `false` when it isn't running: `under:ale=sore_head` |
+| `under:tag:<tag>` | Any running course has the tag (`under:tag:illness`) |
+| `under` | How many courses are running |
+| `immune:<course>` | Immune to it now |
+
+### Delos
+
+| Term | Value |
+|---|---|
+| `gene:<id>` | What the gene shows for the person (`null` without a genome) |
+| `carries:<gene>.<allele>` | They carry the allele, showing or not |
+
+### Voice
+
+The person talked to is the person, and the speaker (`'player'`) the target.
+
+| Term | Value |
+|---|---|
+| `talks` | How many talks they've had with the target (counted as each ends) |
+| `familiar` | Half a point a talk, a point for each thing learned |
+| `talking`, `talking:<by>` | The person is in a talk (with anyone, or with that speaker) |
+| `warmth`, `patience`, `landed` | The talk in progress with the target: its warmth, patience left, how the last approach landed (`'well'`, `'badly'`, `'even'`, or `null`) |
+| `learned:<key>` | What the target has learned about them (`false` if nothing) |
+| `sore:<thread>` | The subject is sore just now |
+| `talked:<thread>` | They've talked of it; `talked` alone is minutes since their last talk ended (`null` if never) |
+| `promise:<id>` | The state of the latest promise of that kind to them: `'open'`, `'kept'`, `'broken'`, `'lapsed'`, or `null` |
+
 ## Effects
 
 Effects change state directly. They're meant to run inside the simulation: an action's `then`, a line said with `cityspeak.say`, a social act's outcome. There, they're replayed along with everything else.
@@ -212,6 +259,10 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `fact:<key>=v`, `fact:<key>`, `+=`... | Sets a world fact (`fact:<key>` alone sets `true`) |
 | `game:<key>=v` | Sets a kept game value |
 | `log:<kind>` | Writes a log entry of that kind about the person |
+| `skill.<id>=v`, `+=`, `-=`, `*=` | Sets or changes the person's level in a skill (kept within 0 and its `max`) |
+| `train:<id>=hours`, `train:<id>` | Practice: that many hours (1 if none given) at the person's own pace |
+| `wish:<id>` | Gives the person a wish (or dream), if they can wish it now |
+| `grant:<id>` | Makes a wish they hold come true |
 
 ### Module effects
 
@@ -225,6 +276,13 @@ Effects change state directly. They're meant to run inside the simulation: an ac
 | `fame:<group>.<subject>+=n` | Fellowship | Standing; `-=` lowers it, any other operator adds. Without `.subject`, the person (or `'player'` with no person), as for the term |
 | `infamy:<group>.<subject>+=n` | Fellowship | The same for infamy |
 | `pay:<to>=n`, `pay=n` | Ceres | Pays `n` from the person's purse to `to` (default `'world'`) |
+| `afflict:<course>` | Athelas | Afflicts the person (caught from the context's target, if any) |
+| `cure:<course>`, `cure` | Athelas | Ends the course, or every course |
+| `hasten:<course>=minutes` | Athelas | The phase they're in ends that much sooner |
+| `learn:<key>=v`, `learn:<key>` | Voice | The target (the speaker) learns something about the person (`true` without a value) |
+| `promise:<id>=days`, `promise:<id>` | Voice | A promise to the person, from the target |
+| `sore:<thread>=days`, `sore` | Voice | A subject best left a while (the current one, two days, by default) |
+| `warmth+=n`, `-=`, `=` | Voice | The warmth of the talk in progress |
 
 ## Functions
 

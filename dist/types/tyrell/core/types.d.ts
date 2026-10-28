@@ -164,6 +164,20 @@ export interface ActionDef {
     uses?: Record<Id, number>;
     /** Goods gained (Ceres and Mentat's 'get:' planning). */
     gives?: Record<Id, number>;
+    /**
+     * Goods made, added at the end to the stock of `store` (default: the place
+     * it's done), scaled by `yields`, and by how much was done if it's cut
+     * short (Ceres).
+     */
+    makes?: Record<Id, number>;
+    /**
+     * The place whose stock `makes` goes into: a place id, or 'here' (the place
+     * it's done, the default). With a store, `uses` comes out of that stock
+     * instead of the person's goods (Ceres).
+     */
+    store?: Id;
+    /** Factors on what `makes` makes (a skilled hand makes more): considerations, multiplied (Ceres). */
+    yields?: Consideration[];
     /** Wage paid per hour at the end (Ceres). */
     wage?: number;
     /** A social act resolved with the target at the end (Cityspeak). */
@@ -176,8 +190,112 @@ export interface ActionDef {
     crime?: string;
     /** Planning cost override (Mentat). */
     cost?: number;
+    /** Skills it trains: hours of practice per hour spent doing it ({ cooking: 1 }). */
+    trains?: Record<Id, number>;
+    /**
+     * A pastime that palls: each go adds to a tolerance that wears off by the
+     * hour, and the more of it they've had lately, the less it appeals. A kind
+     * shared with other actions ('drink' for the ale and the wine), or true for
+     * this action alone.
+     */
+    palls?: string | boolean;
     /** Anything the game wants to attach. */
     data?: Record<string, unknown>;
+}
+/**
+ * A skill: a level per person that rises with practice at their talent's
+ * pace, harder the nearer the top, and slips back slowly when let go.
+ */
+export interface SkillDef {
+    id: Id;
+    label?: string;
+    /** The top of the scale. Default 1. */
+    max?: number;
+    /** Level gained per hour of practice at talent 1, from nothing. Default 0.02 (about fifty hours to the top of 1). */
+    rate?: number;
+    /**
+     * How much harder each step is: progress is scaled by (1 - level / max) to
+     * this power. Default 1; 0 for none, 2 for much harder near the top.
+     */
+    diminish?: number;
+    /** Level lost per day without practice, once `grace` days have gone by. Default 0: never forgotten. */
+    decay?: number;
+    /** Days without practice before it starts to slip. Default 3. */
+    grace?: number;
+    /** Forgetting never takes a level below this. Default 0. */
+    floor?: number;
+    /** Where people start (a person's own `skills` in their definition wins). Default 0. */
+    start?: number;
+    /** Named levels, lowest first: [[0.25, 'competent'], [0.5, 'skilled']]. Reaching one emits 'skill'. */
+    levels?: Array<[number, string]>;
+    /** Effects when someone reaches a named level (ctx.data.level is its name). */
+    then?: Effect[];
+    /** More factors on how fast someone learns it (schooling, wit): considerations on the learner, multiplied. */
+    learn?: Consideration[];
+}
+/** A kind of pastime that palls (actions' `palls`): its label and how fast it palls and recovers. */
+export interface PastimeDef {
+    id: Id;
+    /** What they've had enough of, for the inspector: 'the ale'. */
+    label?: string;
+    /** Tolerance one go adds (0..1). Default config.pallGain. */
+    gain?: number;
+    /** Tolerance lost per hour. Default config.pallDecay. */
+    decay?: number;
+    /** The share of appeal lost at full tolerance. Default config.pallPenalty. */
+    penalty?: number;
+}
+/**
+ * A wish: a standing goal that pulls someone toward what would grant it
+ * until it comes true (or fades). A dream is a life's wish: one at a time,
+ * and it never fades.
+ */
+export interface WishDef {
+    id: Id;
+    label?: string;
+    /** Who may wish it, and when: conditions on the person. */
+    if?: Cond[];
+    /** How likely it is to be wished, against the others that fit: a number, considerations multiplied, or a function. Default 1. */
+    weight?: number | Consideration[] | ((ctx: Ctx) => number);
+    /**
+     * What it's about, worked out when it's wished (a favorite dish, a friend
+     * to see): a term, or a function. Undefined or null means it can't be
+     * wished now. Kept with the wish; when it's a person, the wish is aimed at
+     * them.
+     */
+    about?: string | ((ctx: Ctx) => Value | undefined);
+    /** What it pulls them toward while they hold it: action or task ids, or 'tag:<tag>'. */
+    toward?: string[];
+    /** How much more those weigh. Default config.wishPull (1.35). */
+    pull?: number;
+    /** What grants it: finishing one of these (ids or 'tag:<tag>'); aimed at its person, if it's about one. */
+    by?: string[];
+    /** Or these conditions coming true (checked each hour and whenever they finish something). */
+    when?: Cond[];
+    /** Or progress reaching 1: a term or a function, read each hour (a dream's progress). */
+    progress?: string | ((ctx: Ctx) => number);
+    /** A dream: a life's wish, held one at a time, and it never fades. */
+    dream?: boolean;
+    /** Minutes before it fades if it isn't granted. Default config.wishMinutes (1.5 days); 0 never fades. */
+    minutes?: number;
+    /** Wished at most once in a life (default: dreams yes, wishes no). */
+    once?: boolean;
+    /** Effects when it's granted, and when it fades. ctx.data.x is what it was about (and ctx.target, if a person). */
+    then?: Effect[];
+    fades?: Effect[];
+    /** A wish given at once when this one is granted (the next step of a dream). */
+    next?: Id;
+}
+/** A wish someone holds. */
+export interface HeldWish {
+    id: Id;
+    /** When it was wished. */
+    t: Minutes;
+    /** When it fades (none: never). */
+    until?: Minutes;
+    /** What it's about. */
+    x?: Value;
+    dream?: boolean;
 }
 /** A step in a task's method. */
 export type Step = Id | `go:${string}` | `wait:${number}` | `get:${string}`
@@ -264,6 +382,12 @@ export interface PersonDef {
     place?: Id;
     /** Born at this time in minutes (Cradle). */
     born?: number;
+    /** Starting skill levels. */
+    skills?: Record<Id, number>;
+    /** How fast they learn each skill: a multiplier on its rate (default 1). Delos fills these in from a genome. */
+    talents?: Record<Id, number>;
+    /** Inborn tastes: a standing multiplier on an action's (or task's) weight (default 1). Delos fills these in from a genome. */
+    instincts?: Record<Id, number>;
     /** Anything the game wants to keep: a look, a sprite id. */
     data?: Record<string, unknown>;
 }
@@ -347,6 +471,14 @@ export interface PersonState {
     born?: Minutes;
     /** Failures at one moment: [time, how many] (a guard against failing in a loop). */
     fails?: [Minutes, number];
+    /** Skill levels: [level, when last practiced]. Made on first practice. */
+    skills?: Record<Id, [number, Minutes]>;
+    /** Tolerance of pastimes that pall: [tolerance, when it was set]. */
+    tol?: Record<string, [number, Minutes]>;
+    /** Wishes and a dream held now. */
+    wishes?: HeldWish[];
+    /** How many times each wish has come true. */
+    granted?: Record<Id, number>;
 }
 /** An order from the story layer: overrides job and routine. */
 export interface Directive {
@@ -480,6 +612,19 @@ export interface Config {
     habitMax: number;
     /** Compensate for the number of considerations (IAUS). Default true. */
     compensate: boolean;
+    /** Pastimes that pall: tolerance one go adds, tolerance lost per hour, and the share of appeal lost at full tolerance. */
+    pallGain: number;
+    pallDecay: number;
+    pallPenalty: number;
+    /** Wishes held at once (not counting a dream). Default 2. */
+    wishMax: number;
+    /** The hours new wishes (and dreams) may come, each with config.wishChance. Default [8, 13, 17]. */
+    wishHours: number[];
+    wishChance: number;
+    /** Minutes before an unmet wish fades. Default 2160 (a day and a half). */
+    wishMinutes: number;
+    /** How much more a wish's `toward` actions weigh. Default 1.35. */
+    wishPull: number;
 }
 export interface Options {
     /** The world's seed: the same seed and the same calls give the same world. */

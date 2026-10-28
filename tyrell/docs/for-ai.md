@@ -31,7 +31,7 @@ This describes Tyrell 2.0.0 (save schema 2).
 5. **Constant definitions.** Don't change definitions or decision config during a run; Esper replays with whatever is current. `config.minutesPerSecond` and `config.budgetMs` are safe to change.
 6. **Stable order.** Custom module code iterates in a stable order.
 
-Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`.
+Public input methods (safe from game code): `world.person`, `fact(key, value)`, `sense`, `did`, `report`, `direct`, `reward`, `setVar`, `give`, `away`, `follow`, `remove`, `keep`, `at`, `log`, `train`, `setSkill`, `wishFor`, `grant`, `strangers.promote`; `reverie.feel`, `believe`, `remember`, `forget`, `recall`, `silence`; `fellowship.adjust`, `attract`, `sentiment`, `changeStanding`, `join`, `setPartner`; `wormtongue.silence`, `secret`, `owe`, `addHeat`; `cityspeak.say`, `resolve`; `gaff.trigger`, `bump`, `draw`; `ceres.pay`, `rent`, `income`, `restock`; `cradle.birth`, `pair`, `depart`; `athelas.afflict`, `cure`, `hasten`; `delos.set`; `voice.start`, `answer`, `end`.
 
 ## Procedure
 
@@ -40,13 +40,13 @@ Public input methods (safe from game code): `world.person`, `fact(key, value)`, 
 3. **Declare needs.** Vital needs (hunger, energy) with `urgent` at most 1 (default 0.85); soft needs (fun, company, hygiene) with `urgent: 1.1` so they never break a routine.
 4. **Declare places**, each with a `region` (one per loaded level; omit for a single map), tags, `hours`, `slots`, `owner`, and the game's coordinates in `data`. Then travel: `world.link(a, b, minutes)` between outermost places (links on nested places are ignored; nested places are reached for free), or `shell.travel` from the game's pathfinder (cached, in minutes matching walking speed).
 5. **Declare actions** (and tasks). Free-choice actions need `relieves` or `base`. Work actions get `job` and `rank: -1`. Sleep gets a night consideration and `rates`. Give actions `label` and `pose`.
-6. **Declare module content**: deeds, groups, crimes, feelings, lines, storylets, goods.
+6. **Declare module content**: deeds, groups, crimes, feelings, lines, storylets, goods; skills (`world.skill`), pastimes and wishes (`world.pastime`, `world.wish`), production chains (`ceres.chain`), courses (`athelas.course`), genes and blends (`delos.gene`, `trait`, `talent`, `instinct`; before anyone is added), and talks (`voice.approach`, `thread`, `promise`).
 7. **Add people** with `world.person(id, def)`: home, routine (entries covering the whole day), job, traits, values, money, groups, `data` for the sprite.
 8. **One-time setup inputs** (starting money in purses, incomes, rent, partners, secrets) guarded with `if (!world.kept('setup')) { ...; world.keep('setup', true); }`.
 9. **Load** a save if there is one: `world.load(saved)`.
 10. **Wire bodies**: `world.focus([level])` on start and on every level change (or `shell.near`); listeners for `embody`, `step`, `disembody`; position walkers from `travel.start`/`travel.end` and `world.now`; refresh a body from `world.body(id)` when `world.now >= body.end`.
 11. **Wire reports from the game**: `world.sense({ kind, actor: 'player', what, place, seenBy })` with `seenBy` from the game's geometry; `world.did('player', verb, { for: id, what })`; `world.report(id, 'failed', why)` when a body truly can't proceed (the action is then ruled out at that place for `config.backoff` minutes; if the obstacle lasts, change something, such as a `closed:<id>` fact, so it isn't tried again later).
-12. **Wire talk**: `world.cityspeak.choose` / `say`, the `bark` event; Joi only if asked for.
+12. **Wire talk**: `world.cityspeak.choose` / `say`, the `bark` event; for the player's conversations, `world.voice.start(id)`, then show `view.lines` and `view.answers` and call `voice.answer(i)` with the choice (each returns the next view); Joi only if asked for.
 13. **Save** with `world.save()` inside the game's save; restore with `world.load`. Keep game state that must rewind with `world.keep`.
 14. **Test**: run `Tyrell.VoightKampff.run({ build: (seed) => buildWorld(seed), days: 7 })` and require `passed` (in CI too).
 
@@ -170,7 +170,9 @@ console.log(world.describe('mo'));
 
 **Joi provider** `(req) => Promise<string | { text, flags? }>`: `req = { prompt, system, who, to?, line }`. Times out after 2500 ms by default and falls back to the written line.
 
-**Module** (custom, via `create({ extra })`): `{ name, attach(w), init?(), loaded?(), candidates?, consider?, block?, started?, ended?, arrived?, met?, hour?, day?, timer?, sensed?, did?, added?, removed?, failed? }`. State in `w.s.mod[name]` from `init()`. See [api.md](api.md#writing-a-module).
+**Module** (custom, via `create({ extra })`): `{ name, attach(w), init?(), loaded?(), candidates?, consider?, block?, rate?, started?, ended?, arrived?, met?, hour?, day?, timer?, sensed?, did?, added?, removed?, failed? }`. State in `w.s.mod[name]` from `init()` (or made on first use, so a module nobody uses leaves the state as it was). `rate(p, need)` multiplies how fast a need rises: call `w.mind.settleRise(p)` before its answer changes. See [api.md](api.md#writing-a-module).
+
+**Voice's definitions** `voice.warmth(ctx)` and `voice.patience(ctx)`: deterministic numbers (a talk's starting warmth and its beats), set on every start like Cradle's `namer`. Approaches' `lands`, threads' `weight` and `label`, wishes' `about` and `progress` functions: deterministic, from `ctx`.
 
 ## Pitfalls
 
@@ -197,6 +199,11 @@ console.log(world.describe('mo'));
 | Inputs inside `seek`/`embody` handlers after a rewind | Each one branches the timeline, dropping the recorded future | Read state there; don't write |
 | `world.did` data in TypeScript | `seenBy: string[]` isn't a `Value` | Cast the data object |
 | A directive that's done | It stays on the person, marked `done` | `world.direct(id, null)` to clear, or use `until` |
+| A job or routine action that `makes` goods, left to fill the shift | It makes its goods once a shift | `fill: false`: it makes them once per its own minutes, again and again |
+| Delos's genes and traits declared after the people | Founders have no genome (they get one only when a birth needs it) | Declare Delos's definitions before `world.person` |
+| A wish `about` a person, granted by an action with no target | Never granted: an action must be aimed at them | Give the `by` action `target: 'person'`, or grant it with `when` |
+| Changing what a module's `rate` returns without settling | Needs jump, as if the new rate had applied all along | `world.mind.settleRise(p)` first |
+| Expecting `voice.answer(i)` to work after the talk changed | The answers are those of the beat on show | Read `voice.current()` (or the view the last call returned) for the indices |
 
 ## Verify
 

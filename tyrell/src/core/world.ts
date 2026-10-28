@@ -15,6 +15,7 @@ import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
 import { Strangers } from './strangers';
+import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
 import type { Fellowship } from '../modules/fellowship';
 import type { Wormtongue } from '../modules/wormtongue';
@@ -24,9 +25,12 @@ import type { Gaff } from '../modules/gaff';
 import type { Ceres } from '../modules/ceres';
 import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
+import type { Athelas } from '../modules/athelas';
+import type { Delos } from '../modules/delos';
+import type { Voice } from '../modules/voice';
 import type {
-  ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState,
-  PlaceDef, Shell, Stimulus, TaskDef, Value, WorldState,
+  ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState,
+  PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState,
 } from './types';
 import { DAY, HOUR, Stream, clamp, clone, dayOf, hash, hourOf, stableStringify } from './util';
 
@@ -55,6 +59,14 @@ export const DEFAULT_CONFIG: Config = {
   habitMin: 0.25,
   habitMax: 4,
   compensate: true,
+  pallGain: 0.35,
+  pallDecay: 0.08,
+  pallPenalty: 0.6,
+  wishMax: 2,
+  wishHours: [8, 13, 17],
+  wishChance: 0.5,
+  wishMinutes: 2160,
+  wishPull: 1.35,
 };
 
 /** A saved world: what world.save() returns and world.load() takes. */
@@ -77,6 +89,8 @@ export class World {
   readonly actions = new Map<Id, ActionDef>();
   readonly tasks = new Map<Id, TaskDef>();
   readonly deeds = new Map<string, DeedDef>();
+  readonly pastimes = new Map<Id, PastimeDef>();
+  readonly wishes = new Map<Id, WishDef>();
   readonly ring: Ring;
   readonly mind: Bicameral;
   readonly clock: Entmoot;
@@ -84,6 +98,8 @@ export class World {
   readonly westmarch: Westmarch;
   readonly palantir: Palantir;
   readonly strangers: Strangers;
+  /** Skills: levels that grow with practice. */
+  readonly skills: Skills;
   readonly modules = new Map<string, Module>();
   /** The modules in the order their hooks run. */
   readonly hooks: Module[] = [];
@@ -121,7 +137,10 @@ export class World {
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
     this.strangers = new Strangers(this);
+    this.skills = new Skills(this);
     this.registerCore();
+    this.skills.register();
+    this.mind.register();
     for (const m of modules) {
       this.modules.set(m.name, m);
       this.hooks.push(m);
@@ -237,6 +256,12 @@ export class World {
   task(def: TaskDef): this { this.tasks.set(def.id, def); return this; }
   /** Says what a deed (world.did) means: feelings, memories, regard, standing, crime. */
   deed(verb: string, def: DeedDef): this { this.deeds.set(verb, def); return this; }
+  /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
+  skill(def: SkillDef): this { this.skills.defs.set(def.id, def); return this; }
+  /** A kind of pastime that palls (actions' `palls`): its label, and how fast it palls and recovers. */
+  pastime(def: PastimeDef): this { this.pastimes.set(def.id, def); return this; }
+  /** A wish (or, with `dream`, a dream) people may come to hold. */
+  wish(def: WishDef): this { this.wishes.set(def.id, def); return this; }
 
   /**
    * Adds a person, or returns them if they already exist (after a load the
@@ -274,6 +299,12 @@ export class World {
   get cradle(): Cradle | undefined { return this.modules.get('cradle') as Cradle | undefined; }
   /** The optional language-model voice. */
   get joi(): Joi | undefined { return this.modules.get('joi') as Joi | undefined; }
+  /** Conditions that run a course: ale, colds, toxins. */
+  get athelas(): Athelas | undefined { return this.modules.get('athelas') as Athelas | undefined; }
+  /** Genomes: looks, traits, talents and instincts, inherited. */
+  get delos(): Delos | undefined { return this.modules.get('delos') as Delos | undefined; }
+  /** Branching conversations: threads of beats, answers with approaches, promises. */
+  get voice(): Voice | undefined { return this.modules.get('voice') as Voice | undefined; }
 
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
@@ -316,6 +347,24 @@ export class World {
 
   /** Gives (or with a negative count, takes) goods. */
   give(id: Id, item: Id, count = 1): void { this.input('give', [id, item, count]); }
+
+  /** Practice from outside the simulation (a lesson, a book): hours of it at the person's own pace. */
+  train(id: Id, skill: Id, hours: number): void { this.input('train', [id, skill, hours]); }
+
+  /** Sets a skill's level outright. */
+  setSkill(id: Id, skill: Id, level: number): void { this.input('skill', [id, skill, level]); }
+
+  /** Gives someone a wish (or a dream), about something if it's given (a dish, a friend's id). */
+  wishFor(id: Id, wish: Id, about?: Value): void { this.input('wish', [id, wish, about ?? null]); }
+
+  /** Makes a wish someone holds come true. */
+  grant(id: Id, wish: Id): void { this.input('grant', [id, wish]); }
+
+  /** The wishes (and the dream) someone holds now. */
+  wishesOf(id: Id): Array<HeldWish & { label: string; progress?: number }> { const p = this.s.people[id]; return p ? this.mind.wishesOf(p) : []; }
+
+  /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
+  skillOf(id: Id, skill: Id): number { const p = this.s.people[id]; return p ? this.skills.level(p, skill) : 0; }
 
   /** Sends someone away until a time (dormant): they come back with a summary of what they did. */
   away(id: Id, until: number, summary = '', place?: Id): void { this.input('away', [id, until, summary, place ?? null]); }
@@ -713,7 +762,7 @@ export class World {
 }
 
 /** Inputs that return a value, so they can't wait for an event to finish. */
-const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw']);
+const IMMEDIATE = new Set(['person', 'promote', 'say', 'birth', 'recollect', 'social', 'draw', 'afflict', 'voice.start', 'voice.answer']);
 
 /** Save migrations: MIGRATIONS[v] turns a version-v state into version v+1. */
 export const MIGRATIONS: Record<number, (s: any) => any> = {

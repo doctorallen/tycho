@@ -22,11 +22,13 @@ var Tyrell = (() => {
   // tyrell/src/index.ts
   var index_exports = {};
   __export(index_exports, {
+    Athelas: () => Athelas,
     Ceres: () => Ceres,
     Cityspeak: () => Cityspeak,
     Cradle: () => Cradle,
     DAY: () => DAY,
     DEFAULT_CONFIG: () => DEFAULT_CONFIG,
+    Delos: () => Delos,
     Fellowship: () => Fellowship,
     Gaff: () => Gaff,
     HOUR: () => HOUR,
@@ -38,6 +40,7 @@ var Tyrell = (() => {
     SCHEMA: () => SCHEMA,
     Stream: () => Stream,
     VERSION: () => VERSION,
+    Voice: () => Voice,
     VoightKampff: () => VoightKampff,
     World: () => World,
     Wormtongue: () => Wormtongue,
@@ -624,6 +627,15 @@ var Tyrell = (() => {
   var Bicameral = class {
     constructor(w) {
       this.w = w;
+      /** The modules that change how fast needs rise (found on first use). */
+      this.rateHooks = null;
+    }
+    /** How fast a need rises for someone now, as a multiplier on its `rise` (modules' `rate`; 1 with none). */
+    riseMul(p, need) {
+      const hooks = this.rateHooks ?? (this.rateHooks = this.w.hooks.filter((m2) => m2.rate));
+      let m = 1;
+      for (const h of hooks) m *= h.rate(p, need);
+      return m;
     }
     // -------------------------------------------------------------------------
     // Needs
@@ -636,11 +648,12 @@ var Tyrell = (() => {
       const d = p.doing;
       const a = d && d.kind === "act" ? this.w.actions.get(d.action) : void 0;
       const rate = a?.rates?.[need];
+      const rise = def.rise * this.riseMul(p, need);
       let v;
       if (rate !== void 0 && d && t > d.start) {
         const from = Math.max(ns.t, d.start);
-        v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * rate * (t - from) / HOUR;
-      } else v = ns.v + def.rise * (t - ns.t) / HOUR;
+        v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * rate * (t - from) / HOUR;
+      } else v = ns.v + rise * (t - ns.t) / HOUR;
       if (a && d) {
         const r = a.relieves?.[need];
         if (r !== void 0 && t > d.start) {
@@ -662,8 +675,31 @@ var Tyrell = (() => {
       for (const need in a.rates) {
         const ns = p.needs[need], def = this.w.needs.get(need);
         if (!ns || !def) continue;
+        const rise = def.rise * this.riseMul(p, need);
         const from = Math.max(ns.t, d.start);
-        const v = ns.v + def.rise * Math.max(0, d.start - ns.t) / HOUR + def.rise * a.rates[need] * Math.max(0, now2 - from) / HOUR;
+        const v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * a.rates[need] * Math.max(0, now2 - from) / HOUR;
+        p.needs[need] = { v: clamp(v), t: now2 };
+      }
+    }
+    /**
+     * Keeps the rise so far in every need's stored level (relief in progress
+     * aside), so how fast needs rise can change from now on. Modules call it
+     * before their `rate` answer changes.
+     */
+    settleRise(p) {
+      const now2 = this.w.s.now;
+      const d = p.doing;
+      const a = d && d.kind === "act" ? this.w.actions.get(d.action) : void 0;
+      for (const [need, def] of this.w.needs) {
+        const ns = p.needs[need];
+        if (!ns || ns.t >= now2) continue;
+        const rise = def.rise * this.riseMul(p, need);
+        const rate = a?.rates?.[need];
+        let v;
+        if (rate !== void 0 && d && now2 > d.start) {
+          const from = Math.max(ns.t, d.start);
+          v = ns.v + rise * Math.max(0, d.start - ns.t) / HOUR + rise * rate * (now2 - from) / HOUR;
+        } else v = ns.v + rise * (now2 - ns.t) / HOUR;
         p.needs[need] = { v: clamp(v), t: now2 };
       }
     }
@@ -694,7 +730,7 @@ var Tyrell = (() => {
       for (const [id, def] of this.w.needs) {
         if (relieving && relieving[id] !== void 0) continue;
         const u = def.urgent ?? this.w.config.urgent;
-        const rise = def.rise * (a?.rates?.[id] ?? 1);
+        const rise = def.rise * this.riseMul(p, id) * (a?.rates?.[id] ?? 1);
         if (u > 1 || rise <= 0) continue;
         const v = this.level(p, id);
         for (const line of [u, Math.max(u, 0.97), 1]) {
@@ -731,7 +767,7 @@ var Tyrell = (() => {
       const ns = p.needs[need];
       const def = this.w.needs.get(need);
       if (!ns || !def) return 0;
-      return clamp(ns.v + def.rise * (this.w.s.now - ns.t) / HOUR);
+      return clamp(ns.v + def.rise * this.riseMul(p, need) * (this.w.s.now - ns.t) / HOUR);
     }
     urgencyAt(need, v) {
       return curveAt(this.w.needs.get(need)?.curve ?? "pow1.5", v);
@@ -1030,9 +1066,20 @@ var Tyrell = (() => {
         }
       }
       mul("habit", this.habit(p, c.id));
+      const instinct = p.def.instincts?.[c.id];
+      if (instinct !== void 0) mul("instinct", instinct);
+      const kind = isTask ? null : this.pallKind(def);
+      if (kind) {
+        const tol = this.tolerance(p, kind);
+        if (tol > 0.05) {
+          const pd = w.pastimes.get(kind);
+          mul(`had enough of ${pd?.label ?? kind}`, round(1 - (pd?.penalty ?? w.config.pallPenalty) * tol, 4));
+        }
+      }
+      if (p.wishes?.length) for (const [name, f] of this.wishPull(p, c, def.tags)) mul(name, f);
       if (travel > 0) mul("travel", 1 / (1 + travel / w.config.travelScale));
       const sleepy = def.tags?.includes("sleep");
-      if (!required && p.last === c.id && !sleepy && p.lastEnd !== void 0 && w.s.now - p.lastEnd < 90) mul("did it last", w.config.repeat);
+      if (!required && p.last === c.id && !sleepy && !kind && p.lastEnd !== void 0 && w.s.now - p.lastEnd < 90) mul("did it last", w.config.repeat);
       if (p.doing && p.doing.action === c.id && p.doing.place === c.place) mul("carrying on", w.config.inertia);
       for (const m of w.hooks) {
         const parts = m.consider?.(p, c);
@@ -1059,6 +1106,240 @@ var Tyrell = (() => {
       const y = curveAt(k.curve, nx);
       const [o0, o1] = k.out || [0, 1];
       return lerp(o0, o1, y);
+    }
+    // -------------------------------------------------------------------------
+    // Pastimes that pall
+    // -------------------------------------------------------------------------
+    /** The kind of pastime an action is (its `palls`), or null. */
+    pallKind(a) {
+      if (!a?.palls) return null;
+      return a.palls === true ? a.id : a.palls;
+    }
+    /** How much of a pastime someone has had lately, 0..1 (it wears off by the hour). */
+    tolerance(p, kind, t = this.w.s.now) {
+      const rec = p.tol?.[kind];
+      if (!rec) return 0;
+      const decay = this.w.pastimes.get(kind)?.decay ?? this.w.config.pallDecay;
+      return round(Math.max(0, rec[0] - decay * Math.max(0, t - rec[1]) / HOUR), 4);
+    }
+    /** One more go at a pastime (inside the simulation). */
+    applyPall(p, kind) {
+      const now2 = this.w.s.now;
+      const tol = p.tol || (p.tol = {});
+      const before = this.tolerance(p, kind);
+      for (const k of Object.keys(tol)) if (this.tolerance(p, k) <= 0) delete tol[k];
+      tol[kind] = [round(Math.min(1, before + (this.w.pastimes.get(kind)?.gain ?? this.w.config.pallGain)), 4), now2];
+    }
+    // -------------------------------------------------------------------------
+    // Wishes and dreams
+    // -------------------------------------------------------------------------
+    matches(list, id, tags) {
+      for (const x of list) {
+        if (x === id) return true;
+        if (x.startsWith("tag:") && tags?.includes(x.slice(4))) return true;
+      }
+      return false;
+    }
+    isPerson(x) {
+      return typeof x === "string" && !!this.w.s.people[x];
+    }
+    /** The context a held wish's conditions and effects see: what it's about in data.x (and as the target, if a person). */
+    wishCtx(p, h) {
+      return this.w.ctx(p, { target: this.isPerson(h.x) ? h.x : null, data: { x: h.x ?? null, wish: h.id } });
+    }
+    aboutOf(def, ctx) {
+      if (def.about === void 0) return void 0;
+      const v = typeof def.about === "function" ? def.about(ctx) : this.w.lang.value(def.about, ctx);
+      return v === void 0 ? void 0 : v;
+    }
+    /** How far along a wish with `progress` is (0..1). */
+    progressOf(p, h) {
+      const def = this.w.wishes.get(h.id);
+      if (!def || def.progress === void 0) return null;
+      const ctx = this.wishCtx(p, h);
+      const v = typeof def.progress === "function" ? def.progress(ctx) : Number(this.w.lang.value(def.progress, ctx) ?? 0);
+      return round(clamp(Number(v) || 0), 4);
+    }
+    /** The wishes (and the dream) someone holds now, with what they're about. */
+    wishesOf(p) {
+      const now2 = this.w.s.now;
+      const out = [];
+      for (const h of p.wishes || []) {
+        if (h.until !== void 0 && h.until <= now2) continue;
+        const def = this.w.wishes.get(h.id);
+        const e = { ...h, label: def?.label ?? h.id };
+        const pr = this.progressOf(p, h);
+        if (pr !== null) e.progress = pr;
+        out.push(e);
+      }
+      return out;
+    }
+    /** The pull of the wishes someone holds on an option: at most one wish and one dream count. */
+    wishPull(p, c, tags) {
+      const out = [];
+      const now2 = this.w.s.now;
+      let wish = false, dream = false;
+      for (const h of p.wishes || []) {
+        if (h.until !== void 0 && h.until <= now2) continue;
+        if (h.dream ? dream : wish) continue;
+        const def = this.w.wishes.get(h.id);
+        if (!def?.toward || !this.matches(def.toward, c.id, tags)) continue;
+        if (this.isPerson(h.x) && c.target && c.target !== h.x) continue;
+        out.push([`${h.dream ? "dream" : "wish"}: ${def.label ?? def.id}`, def.pull ?? this.w.config.wishPull]);
+        if (h.dream) dream = true;
+        else wish = true;
+      }
+      return out;
+    }
+    /** Gives someone a wish (inside the simulation). Returns false if they can't wish it now. */
+    applyWish(p, id, about2) {
+      const w = this.w;
+      const def = w.wishes.get(id);
+      if (!def) return false;
+      const held = p.wishes || [];
+      if (held.some((h2) => h2.id === id)) return false;
+      let x = about2 === null ? void 0 : about2;
+      if (x === void 0 && def.about !== void 0) {
+        x = this.aboutOf(def, w.ctx(p));
+        if (x === void 0 || x === null) return false;
+      }
+      const now2 = w.s.now;
+      const h = { id, t: now2 };
+      const minutes = def.dream ? 0 : def.minutes ?? w.config.wishMinutes;
+      if (minutes > 0) h.until = now2 + minutes;
+      if (x !== void 0) h.x = x;
+      if (def.dream) h.dream = true;
+      p.wishes = [...held.filter((o) => !(def.dream && o.dream)), h];
+      w.log("wished", p.id, { wish: id, ...x !== void 0 ? { x } : {} });
+      w.emit("wished", { id: p.id, wish: id, x: x ?? null, label: def.label ?? id, dream: !!def.dream });
+      return true;
+    }
+    dropWish(p, h) {
+      p.wishes = (p.wishes || []).filter((o) => o !== h);
+      if (!p.wishes.length) delete p.wishes;
+    }
+    /** A wish comes true (inside the simulation). */
+    applyGrant(p, h) {
+      const w = this.w;
+      const def = w.wishes.get(h.id);
+      this.dropWish(p, h);
+      (p.granted || (p.granted = {}))[h.id] = (p.granted[h.id] || 0) + 1;
+      w.log("granted", p.id, { wish: h.id, ...h.x !== void 0 ? { x: h.x } : {} });
+      w.emit("granted", { id: p.id, wish: h.id, x: h.x ?? null, label: def?.label ?? h.id, dream: !!h.dream });
+      if (def?.then) w.lang.applyAll(def.then, this.wishCtx(p, h));
+      if (def?.next) this.applyWish(p, def.next);
+    }
+    fade(p, h) {
+      const w = this.w;
+      const def = w.wishes.get(h.id);
+      this.dropWish(p, h);
+      w.log("faded", p.id, { wish: h.id });
+      w.emit("faded", { id: p.id, wish: h.id, x: h.x ?? null, label: def?.label ?? h.id });
+      if (def?.fades) w.lang.applyAll(def.fades, this.wishCtx(p, h));
+    }
+    /** Grants any wish whose `by` the doing was, or whose `when` holds now. */
+    checkWishes(p, d, hourly) {
+      const w = this.w, now2 = w.s.now;
+      for (const h of (p.wishes || []).slice()) {
+        const def = w.wishes.get(h.id);
+        if (!def) continue;
+        if (h.until !== void 0 && h.until <= now2) {
+          if (hourly) this.fade(p, h);
+          continue;
+        }
+        if (d && d.kind === "act" && def.by && this.matches(def.by, d.action, w.actions.get(d.action)?.tags) && (!this.isPerson(h.x) || d.target === h.x)) {
+          this.applyGrant(p, h);
+          continue;
+        }
+        if (def.when?.length && w.lang.all(def.when, this.wishCtx(p, h))) {
+          this.applyGrant(p, h);
+          continue;
+        }
+        if (hourly && def.progress !== void 0 && (this.progressOf(p, h) ?? 0) >= 1) this.applyGrant(p, h);
+      }
+    }
+    /** The wishes someone could wish now, each with its weight and what it would be about. */
+    wishable(p, dream) {
+      const w = this.w;
+      const held = p.wishes || [];
+      const ctx = w.ctx(p);
+      const out = [];
+      for (const id of [...w.wishes.keys()].sort()) {
+        const def = w.wishes.get(id);
+        if (!!def.dream !== dream || held.some((h) => h.id === id)) continue;
+        if ((def.once ?? !!def.dream) && p.granted?.[id]) continue;
+        if (def.if && !w.lang.all(def.if, ctx)) continue;
+        const x = this.aboutOf(def, ctx);
+        if (def.about !== void 0 && (x === void 0 || x === null)) continue;
+        let weight = 1;
+        if (typeof def.weight === "number") weight = def.weight;
+        else if (typeof def.weight === "function") weight = Number(def.weight(ctx)) || 0;
+        else if (def.weight) for (const k of def.weight) weight *= this.consider(k, ctx);
+        if (weight > 0) out.push({ id, x, w: weight });
+      }
+      return out;
+    }
+    /** Now and then, a new wish (and a dream, for someone without one). */
+    rollWishes(p) {
+      const w = this.w, c = w.config;
+      const held = p.wishes || [];
+      for (const dream of [false, true]) {
+        if (dream ? held.some((h) => h.dream) : held.filter((h) => !h.dream).length >= c.wishMax) continue;
+        const pool = this.wishable(p, dream);
+        if (!pool.length) continue;
+        const r = w.stream(p);
+        if (!r.chance(c.wishChance)) continue;
+        const pick = r.weighted(pool, (o) => o.w);
+        if (pick) this.applyWish(p, pick.id, pick.x === void 0 ? void 0 : pick.x);
+      }
+    }
+    /** An action ended (Entmoot calls this): a pastime palls, and wishes it grants come true. */
+    finished(p, d, frac, interrupted) {
+      const kind = this.pallKind(this.w.actions.get(d.action));
+      if (kind && frac > 0.2) this.applyPall(p, kind);
+      if (!interrupted && p.wishes?.length) this.checkWishes(p, d, false);
+    }
+    /** Every hour (Entmoot calls this): wishes are checked, fade, and new ones come at the wish hours. */
+    hour(t) {
+      const w = this.w;
+      if (!w.wishes.size) return;
+      const h = hourOf(t);
+      const rolling = w.config.wishHours.some((x) => Math.abs(x - h) < 1e-6);
+      for (const id in w.s.people) {
+        const p = w.s.people[id];
+        if (p.status !== "active") continue;
+        if (p.wishes?.length) this.checkWishes(p, null, true);
+        if (rolling) this.rollWishes(p);
+      }
+    }
+    /** The terms, effects and inputs for pastimes and wishes (World calls this once). */
+    register() {
+      const w = this.w, L = w.lang;
+      const held = (p, id) => p?.wishes?.find((h) => h.id === id && (h.until === void 0 || h.until > w.s.now));
+      L.term("wish", (c, a) => {
+        const h = held(c.person, a);
+        return h ? h.x ?? true : false;
+      });
+      L.term("wishes", (c) => c.person ? this.wishesOf(c.person).filter((h) => !h.dream).length : 0);
+      L.term("dream", (c) => c.person ? this.wishesOf(c.person).find((h) => h.dream)?.id ?? null : null);
+      L.term("granted", (c, a) => c.person?.granted?.[a] ?? 0);
+      L.term("tolerance", (c, a) => c.person ? this.tolerance(c.person, a) : 0);
+      L.effect("wish", (c, a) => {
+        if (c.person) this.applyWish(c.person, a);
+      });
+      L.effect("grant", (c, a) => {
+        const h = held(c.person, a);
+        if (c.person && h) this.applyGrant(c.person, h);
+      });
+      w.defineInput("wish", (id, wish, x) => {
+        const p = w.s.people[id];
+        return p ? this.applyWish(p, wish, x === null ? void 0 : x) : false;
+      });
+      w.defineInput("grant", (id, wish) => {
+        const p = w.s.people[id];
+        const h = held(p, wish);
+        if (p && h) this.applyGrant(p, h);
+      });
     }
     // -------------------------------------------------------------------------
     // The pick
@@ -1222,6 +1503,7 @@ var Tyrell = (() => {
         }
         case "hour": {
           const t = ev.t;
+          w.mind.hour(t);
           for (const m of w.hooks) m.hour?.(t);
           if (Math.round(hourOf(t) * 60) % (24 * 60) === 0) {
             const day = Math.round(t / DAY);
@@ -1479,6 +1761,8 @@ var Tyrell = (() => {
         }
       }
       if (a && frac > 0.2) w.mind.learn(p, a.id, got, expected);
+      if (a?.trains) w.skills.practiced(p, a.trains, d.start);
+      w.mind.finished(p, d, frac, interrupted);
       if (a?.cooldown) p.cool[a.id] = w.s.now + a.cooldown;
       p.last = d.action;
       p.lastEnd = w.s.now;
@@ -2133,6 +2417,17 @@ var Tyrell = (() => {
       if (money !== void 0) lines.push(`money: ${money}`);
       const inv = Object.entries(p.inv).map(([k, v]) => `${w.ceres?.goods.get(k)?.label ?? k} x${v}`).join(", ");
       if (inv) lines.push(`carrying: ${inv}`);
+      const skills = Object.entries(w.skills.of(p)).map(([k, v]) => {
+        const named = w.skills.named(p, k);
+        return `${w.skills.defs.get(k)?.label ?? k} ${round(v, 2)}${named ? ` (${named})` : ""}`;
+      }).join(", ");
+      if (skills) lines.push(`skills: ${skills}`);
+      const wishes = w.mind.wishesOf(p).map((h) => `${h.dream ? "dream: " : ""}${h.label}${h.x !== void 0 && h.x !== null ? ` (${String(h.x)})` : ""}${h.progress !== void 0 ? ` ${Math.round(h.progress * 100)}%` : ""}`).join(", ");
+      if (wishes) lines.push(`wishes: ${wishes}`);
+      const tol = Object.keys(p.tol || {}).sort().map((k) => [k, w.mind.tolerance(p, k)]).filter(([, v]) => v > 0.05).map(([k, v]) => `${w.pastimes.get(k)?.label ?? k} ${round(v, 2)}`).join(", ");
+      if (tol) lines.push(`had enough of: ${tol}`);
+      const under = w.athelas?.of(id).map((c) => `${c.label} (${c.phaseLabel || c.phase}, until ${clock(c.until)})`).join(", ");
+      if (under) lines.push(`under: ${under}`);
       const rv = w.reverie;
       if (rv) {
         lines.push(`mood: ${round(rv.mood(id), 2)} (${rv.emotion(id)}), stress ${round(rv.stress(id), 2)}`);
@@ -2257,6 +2552,125 @@ var Tyrell = (() => {
     }
   };
 
+  // tyrell/src/core/skills.ts
+  var Skills = class {
+    constructor(w) {
+      this.w = w;
+      this.defs = /* @__PURE__ */ new Map();
+    }
+    /** A skill's definition, or the defaults for one that was never declared. */
+    def(id) {
+      return this.defs.get(id) ?? { id };
+    }
+    /** A person's level in a skill at time t (default now), forgetting included. */
+    level(p, id, t = this.w.s.now) {
+      const rec = p.skills?.[id];
+      const def = this.defs.get(id);
+      if (!rec) return p.def.skills?.[id] ?? def?.start ?? 0;
+      const [v, since] = rec;
+      if (!def?.decay) return v;
+      const idle = (t - since) / DAY - (def.grace ?? 3);
+      if (idle <= 0) return v;
+      return round(Math.max(Math.min(v, def.floor ?? 0), v - def.decay * idle), 5);
+    }
+    /** How fast a person learns a skill: their talent for it (default 1). */
+    talent(p, id) {
+      return p.def.talents?.[id] ?? 1;
+    }
+    /** Every skill a person has practiced or started with, and its level now. */
+    of(p) {
+      const out = {};
+      const ids = /* @__PURE__ */ new Set([...Object.keys(p.def.skills || {}), ...Object.keys(p.skills || {})]);
+      for (const id of [...ids].sort()) out[id] = this.level(p, id);
+      return out;
+    }
+    /** The name of the highest level reached (from the skill's `levels`), or null. */
+    named(p, id) {
+      const v = this.level(p, id);
+      let out = null;
+      for (const [at, name] of this.def(id).levels || []) if (v >= at - 1e-9) out = name;
+      return out;
+    }
+    /**
+     * Practice, inside the simulation: `hours` of it at the person's pace,
+     * times `mul`. The progress is worked out exactly over the hours (eight
+     * hours at once is the same as eight one-hour goes). Returns the new level.
+     */
+    applyTrain(p, id, hours, mul = 1) {
+      const before = this.level(p, id);
+      if (!(hours > 0) || !(mul > 0)) return before;
+      const def = this.def(id);
+      const max = def.max ?? 1;
+      let rate = (def.rate ?? 0.02) * this.talent(p, id) * mul;
+      if (def.learn?.length) {
+        const ctx = this.w.ctx(p);
+        for (const k2 of def.learn) rate *= this.w.mind.consider(k2, ctx);
+      }
+      const d = def.diminish ?? 1;
+      const u0 = clamp(1 - before / max);
+      const k = rate * hours / max;
+      let u;
+      if (d === 1) u = u0 * Math.exp(-k);
+      else {
+        const b = Math.pow(u0, 1 - d) - (1 - d) * k;
+        u = b <= 0 || !isFinite(b) ? 0 : Math.pow(b, 1 / (1 - d));
+      }
+      const after = round(Math.max(before, clamp(max * (1 - u), 0, max)), 5);
+      this.store(p, id, after, before);
+      return after;
+    }
+    /** Sets a level outright, inside the simulation. */
+    applySet(p, id, level) {
+      const before = this.level(p, id);
+      const max = this.def(id).max ?? 1;
+      this.store(p, id, round(clamp(level, 0, max), 5), before);
+    }
+    /** Keeps a new level, and marks any named level reached on the way up. */
+    store(p, id, after, before) {
+      const w = this.w;
+      (p.skills || (p.skills = {}))[id] = [after, w.s.now];
+      const def = this.def(id);
+      for (const [at, name] of def.levels || []) {
+        if (before < at - 1e-9 && after >= at - 1e-9) {
+          w.log("skill", p.id, { skill: id, level: name });
+          w.emit("skill", { id: p.id, skill: id, level: name, value: after });
+          if (def.then) w.lang.applyAll(def.then, w.ctx(p, { data: { skill: id, level: name } }));
+        }
+      }
+    }
+    /** An action ended: the skills it trains get the time spent on it. */
+    practiced(p, trains, start) {
+      const hours = Math.max(0, this.w.s.now - start) / HOUR;
+      if (hours <= 0) return;
+      for (const id of Object.keys(trains).sort()) this.applyTrain(p, id, hours, trains[id]);
+    }
+    /** The terms, effects and inputs (World calls this once). */
+    register() {
+      const w = this.w, L = w.lang;
+      L.term("skill", (c, a) => c.person ? this.level(c.person, a) : 0);
+      L.term("talent", (c, a) => c.person ? this.talent(c.person, a) : 1);
+      L.term("instinct", (c, a) => c.person?.def.instincts?.[a || c.action || ""] ?? 1);
+      L.effect("skill", (c, a, op, v) => {
+        if (!c.person) return;
+        const id = a.startsWith("skill.") ? a.slice(6) : a;
+        const cur = this.level(c.person, id);
+        const next = op === "+=" ? cur + Number(v) : op === "-=" ? cur - Number(v) : op === "*=" ? cur * Number(v) : Number(v);
+        this.applySet(c.person, id, next);
+      });
+      L.effect("train", (c, a, _op, v) => {
+        if (c.person) this.applyTrain(c.person, a, v === null || v === true ? 1 : Number(v));
+      });
+      w.defineInput("train", (id, skill, hours) => {
+        const p = w.s.people[id];
+        return p ? this.applyTrain(p, skill, hours) : 0;
+      });
+      w.defineInput("skill", (id, skill, level) => {
+        const p = w.s.people[id];
+        if (p) this.applySet(p, skill, level);
+      });
+    }
+  };
+
   // tyrell/src/core/world.ts
   var SCHEMA = 2;
   var DEFAULT_CONFIG = {
@@ -2281,7 +2695,15 @@ var Tyrell = (() => {
     habitSlow: 0.05,
     habitMin: 0.25,
     habitMax: 4,
-    compensate: true
+    compensate: true,
+    pallGain: 0.35,
+    pallDecay: 0.08,
+    pallPenalty: 0.6,
+    wishMax: 2,
+    wishHours: [8, 13, 17],
+    wishChance: 0.5,
+    wishMinutes: 2160,
+    wishPull: 1.35
   };
   var World = class {
     constructor(opts, modules) {
@@ -2290,6 +2712,8 @@ var Tyrell = (() => {
       this.actions = /* @__PURE__ */ new Map();
       this.tasks = /* @__PURE__ */ new Map();
       this.deeds = /* @__PURE__ */ new Map();
+      this.pastimes = /* @__PURE__ */ new Map();
+      this.wishes = /* @__PURE__ */ new Map();
       this.modules = /* @__PURE__ */ new Map();
       /** The modules in the order their hooks run. */
       this.hooks = [];
@@ -2336,7 +2760,10 @@ var Tyrell = (() => {
       this.esper = new Esper(this, opts.esper);
       this.palantir = new Palantir(this);
       this.strangers = new Strangers(this);
+      this.skills = new Skills(this);
       this.registerCore();
+      this.skills.register();
+      this.mind.register();
       for (const m of modules) {
         this.modules.set(m.name, m);
         this.hooks.push(m);
@@ -2495,6 +2922,21 @@ var Tyrell = (() => {
       this.deeds.set(verb, def);
       return this;
     }
+    /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
+    skill(def) {
+      this.skills.defs.set(def.id, def);
+      return this;
+    }
+    /** A kind of pastime that palls (actions' `palls`): its label, and how fast it palls and recovers. */
+    pastime(def) {
+      this.pastimes.set(def.id, def);
+      return this;
+    }
+    /** A wish (or, with `dream`, a dream) people may come to hold. */
+    wish(def) {
+      this.wishes.set(def.id, def);
+      return this;
+    }
     /**
      * Adds a person, or returns them if they already exist (after a load the
      * saved person wins, so declaring everyone on every start is safe).
@@ -2554,6 +2996,18 @@ var Tyrell = (() => {
     get joi() {
       return this.modules.get("joi");
     }
+    /** Conditions that run a course: ale, colds, toxins. */
+    get athelas() {
+      return this.modules.get("athelas");
+    }
+    /** Genomes: looks, traits, talents and instincts, inherited. */
+    get delos() {
+      return this.modules.get("delos");
+    }
+    /** Branching conversations: threads of beats, answers with approaches, promises. */
+    get voice() {
+      return this.modules.get("voice");
+    }
     // -------------------------------------------------------------------------
     // Talking to the world while it runs
     // -------------------------------------------------------------------------
@@ -2604,6 +3058,32 @@ var Tyrell = (() => {
     /** Gives (or with a negative count, takes) goods. */
     give(id, item, count = 1) {
       this.input("give", [id, item, count]);
+    }
+    /** Practice from outside the simulation (a lesson, a book): hours of it at the person's own pace. */
+    train(id, skill, hours) {
+      this.input("train", [id, skill, hours]);
+    }
+    /** Sets a skill's level outright. */
+    setSkill(id, skill, level) {
+      this.input("skill", [id, skill, level]);
+    }
+    /** Gives someone a wish (or a dream), about something if it's given (a dish, a friend's id). */
+    wishFor(id, wish, about2) {
+      this.input("wish", [id, wish, about2 ?? null]);
+    }
+    /** Makes a wish someone holds come true. */
+    grant(id, wish) {
+      this.input("grant", [id, wish]);
+    }
+    /** The wishes (and the dream) someone holds now. */
+    wishesOf(id) {
+      const p = this.s.people[id];
+      return p ? this.mind.wishesOf(p) : [];
+    }
+    /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
+    skillOf(id, skill) {
+      const p = this.s.people[id];
+      return p ? this.skills.level(p, skill) : 0;
     }
     /** Sends someone away until a time (dormant): they come back with a summary of what they did. */
     away(id, until, summary = "", place) {
@@ -3059,7 +3539,7 @@ var Tyrell = (() => {
       });
     }
   };
-  var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw"]);
+  var IMMEDIATE = /* @__PURE__ */ new Set(["person", "promote", "say", "birth", "recollect", "social", "draw", "afflict", "voice.start", "voice.answer"]);
   var MIGRATIONS = {
     // 1 -> 2: Cityspeak remembers lines said by their key, not their index. The
     // old records are kept apart (it takes the line definitions to read them).
@@ -4255,7 +4735,12 @@ var Tyrell = (() => {
     }
     /**
      * What a person would say now, without saying it (nothing changes). The
-     * most specific matching line wins; ties go by weight.
+     * most specific matching line wins; ties go by weight. Options: `to` (the
+     * listener), `topic`; `exact` leaves out lines without a topic; `avoid`
+     * passes over lines by key (said lately) unless every line at the most
+     * specific level is avoided, when the most specific fresh line at any
+     * level wins, and only then a repeat; `salt` varies the draw among equals
+     * (Voice passes the talk's counter).
      */
     choose(who, opts = {}) {
       return this.pick(who, opts)?.said ?? null;
@@ -4272,11 +4757,13 @@ var Tyrell = (() => {
       const now2 = w.s.now;
       let best = [];
       let bestSpec = -1;
+      const all = opts.avoid ? [] : null;
       this.lines.forEach((l, i) => {
         if (opts.topic !== void 0 && l.topic !== void 0 && l.topic !== opts.topic) return;
         if (opts.topic === void 0 && l.topic !== void 0) return;
+        if (opts.exact && l.topic === void 0) return;
         if (opts.skip?.(l, i)) return;
-        let spec = l.topic !== void 0 ? 1 : 0;
+        let spec = (l.topic !== void 0 ? 1 : 0) + (l.pri ?? 0);
         if (l.who !== void 0) {
           if (typeof l.who === "string") {
             if (!this.whoMatches(p, l.who)) return;
@@ -4300,13 +4787,25 @@ var Tyrell = (() => {
         const last = this.lastSaid(who, l, i);
         if (l.once && last !== void 0) return;
         if (l.cooldown && last !== void 0 && now2 - last < l.cooldown) return;
+        if (all) all.push({ l, i, spec });
         if (spec > bestSpec) {
           bestSpec = spec;
           best = [{ l, i }];
         } else if (spec === bestSpec) best.push({ l, i });
       });
       if (!best.length) return null;
-      const r = w.worldStreamPeek(who, "line", now2);
+      if (all && opts.avoid) {
+        const avoid = opts.avoid;
+        const levels = [...new Set(all.map((x) => x.spec))].sort((a, b) => b - a);
+        for (const lv of levels) {
+          const fresh = all.filter((x) => x.spec === lv && !avoid(lineKey(x.l, x.i)));
+          if (fresh.length) {
+            best = fresh.map(({ l, i }) => ({ l, i }));
+            break;
+          }
+        }
+      }
+      const r = w.worldStreamPeek(who, "line", now2, ...opts.salt || []);
       const pick = r.weighted(best, (x) => x.l.weight ?? 1) || best[0];
       const out = { who, key: pick.l.key };
       if (pick.l.text !== void 0) out.text = Array.isArray(pick.l.text) ? r.pick(pick.l.text) : pick.l.text;
@@ -5010,6 +5509,9 @@ var Tyrell = (() => {
     constructor() {
       this.name = "ceres";
       this.goods = /* @__PURE__ */ new Map();
+      this.chains = /* @__PURE__ */ new Map();
+      /** Whether anything makes goods or works from a store (worked out from the definitions, kept until they change). */
+      this.producingCache = null;
     }
     init() {
       return { purses: {}, pantry: {}, rent: {}, ledger: [] };
@@ -5041,11 +5543,19 @@ var Tyrell = (() => {
       w.defineInput("stock", (place, item, n) => {
         const st = w.ring.state(place);
         st.stock || (st.stock = {});
-        st.stock[item] = Math.max(0, (st.stock[item] || 0) + n);
+        const before = st.stock[item] || 0;
+        st.stock[item] = Math.max(0, before + n);
+        this.flow(place, item, st.stock[item] - before);
       });
     }
     good(def) {
       this.goods.set(def.id, def);
+      return this;
+    }
+    /** A production chain, for the daily report's bottlenecks. */
+    chain(def) {
+      this.chains.set(def.id, def);
+      this.producingCache = null;
       return this;
     }
     /** How many goods of a kind a person can use (their own and their household's pantry). */
@@ -5144,6 +5654,105 @@ var Tyrell = (() => {
       this.w.input("stock", [place, item, n]);
     }
     // -------------------------------------------------------------------------
+    // Production
+    // -------------------------------------------------------------------------
+    /** Does anything make goods or work from a store, or is there a chain? Then stock flows are counted. */
+    producing() {
+      const w = this.w;
+      const n = w.actions.size * 1e3 + this.chains.size;
+      if (this.producingCache && this.producingCache.n === n) return this.producingCache.on;
+      let on = this.chains.size > 0;
+      if (!on) {
+        for (const a of w.actions.values()) if (a.makes || a.store) {
+          on = true;
+          break;
+        }
+      }
+      this.producingCache = { n, on };
+      return on;
+    }
+    /** The place an action's `store` names, from the place it's done. */
+    storeOf(a, place) {
+      if (!a.store || a.store === "here") return place ?? null;
+      return a.store;
+    }
+    /** Counts a change in a place's stock as made (more) or used (less), when production is on. */
+    flow(place, item, n) {
+      var _a;
+      if (!n || !this.producing()) return;
+      const st = this.st;
+      const prod = st.prod || (st.prod = { day: Math.floor(this.w.s.now / DAY), today: {}, yesterday: {} });
+      const f = (_a = prod.today)[place] || (_a[place] = {});
+      const side = n > 0 ? f.made || (f.made = {}) : f.used || (f.used = {});
+      side[item] = round((side[item] || 0) + Math.abs(n), 4);
+    }
+    /** Takes goods out of a place's stock (not below none), counting them as used. */
+    takeStock(place, item, n) {
+      const st = this.w.ring.state(place);
+      const before = st.stock?.[item] ?? 0;
+      if (!st.stock) return;
+      st.stock[item] = round(Math.max(0, before - n), 4);
+      this.flow(place, item, st.stock[item] - before);
+    }
+    /** Adds goods to a place's stock, counting them as made. */
+    addStock(place, item, n) {
+      const st = this.w.ring.state(place);
+      st.stock || (st.stock = {});
+      st.stock[item] = round((st.stock[item] || 0) + n, 4);
+      this.flow(place, item, n);
+    }
+    stockAt(item, store) {
+      if (store) return this.stock(store, item);
+      let n = 0;
+      for (const id in this.w.s.places) n += this.w.s.places[id].stock?.[item] ?? 0;
+      return round(n, 4);
+    }
+    flowAt(side, item, store) {
+      const y = this.st.prod?.yesterday;
+      if (!y) return 0;
+      if (store) return y[store]?.[side]?.[item] ?? 0;
+      let n = 0;
+      for (const id in y) n += y[id][side]?.[item] ?? 0;
+      return round(n, 4);
+    }
+    /**
+     * The production report: for each store (or the one asked for), every good
+     * with its stock now, what was made and used yesterday, and how many days
+     * it would last if yesterday repeated; and the bottleneck links of every
+     * chain, where a good piles up while the next one runs short.
+     */
+    production(place) {
+      const w = this.w;
+      const prod = this.st.prod;
+      const y = prod?.yesterday ?? {};
+      const out = { day: Math.floor(w.s.now / DAY) - 1, places: {}, bottlenecks: [] };
+      const places = new Set(place ? [place] : Object.keys(y));
+      if (!place) {
+        for (const c of this.chains.values()) if (c.store) places.add(c.store);
+      }
+      for (const pl of [...places].sort()) {
+        const items = /* @__PURE__ */ new Set([...Object.keys(w.s.places[pl]?.stock || {}), ...Object.keys(y[pl]?.made || {}), ...Object.keys(y[pl]?.used || {})]);
+        const goods = {};
+        for (const item of [...items].sort()) {
+          const stock = this.stock(pl, item), made = y[pl]?.made?.[item] ?? 0, used = y[pl]?.used?.[item] ?? 0;
+          const net = round(made - used, 4);
+          goods[item] = { stock, made, used, net, days: net < 0 && stock > 0 ? round(stock / -net, 2) : null };
+        }
+        out.places[pl] = goods;
+      }
+      for (const c of this.chains.values()) {
+        if (place && c.store !== place) continue;
+        for (let i = 0; i + 1 < c.goods.length; i++) {
+          const from = c.goods[i], to = c.goods[i + 1];
+          const fromStock = this.stockAt(from, c.store), toStock = this.stockAt(to, c.store);
+          const plenty = c.plenty ?? Math.max(2, 2 * this.flowAt("used", from, c.store));
+          const short = c.short !== void 0 ? toStock <= c.short : toStock < Math.max(1, this.flowAt("used", to, c.store));
+          if (fromStock >= plenty && short) out.bottlenecks.push({ chain: c.id, from, to, store: c.store ?? null, fromStock, toStock });
+        }
+      }
+      return out;
+    }
+    // -------------------------------------------------------------------------
     // Hooks
     // -------------------------------------------------------------------------
     block(p, c) {
@@ -5156,7 +5765,10 @@ var Tyrell = (() => {
         for (const item in a.buys) if (this.stock(c.place, item) < a.buys[item]) return `${item} sold out`;
       }
       if (a.uses) {
-        for (const item in a.uses) if (this.w.have(p, item) < a.uses[item]) return `needs ${item}`;
+        const store = a.store ? this.storeOf(a, c.place ?? p.place) : null;
+        if (store) {
+          for (const item in a.uses) if (this.stock(store, item) < a.uses[item]) return `no ${item} left at ${store}`;
+        } else for (const item in a.uses) if (this.w.have(p, item) < a.uses[item]) return `needs ${item}`;
       }
       return null;
     }
@@ -5181,11 +5793,18 @@ var Tyrell = (() => {
         const st = w.ring.state(d.place);
         for (const item in a.buys) {
           const n = a.buys[item];
-          if (st.stock) st.stock[item] = Math.max(0, (st.stock[item] || 0) - n);
+          if (st.stock) {
+            const before = st.stock[item] || 0;
+            st.stock[item] = Math.max(0, before - n);
+            this.flow(d.place, item, st.stock[item] - before);
+          }
           this.store(p, item, n);
         }
       }
-      if (a.uses) {
+      const store = a.store ? this.storeOf(a, d.place) : null;
+      if (a.uses && store) {
+        for (const item in a.uses) this.takeStock(store, item, a.uses[item]);
+      } else if (a.uses) {
         for (const item in a.uses) {
           w.takeItem(p, item, a.uses[item]);
           const g = this.goods.get(item);
@@ -5206,6 +5825,20 @@ var Tyrell = (() => {
         if (payer !== p.id) this.applyPay(payer, p.id, round(wage * hours, 2), "wages");
       }
       if (a.gives && !interrupted) for (const item in a.gives) p.inv[item] = (p.inv[item] || 0) + a.gives[item];
+      if (a.makes && frac > 0) {
+        let f = interrupted ? frac : 1;
+        if (a.yields?.length) {
+          const ctx = w.ctx(p, { place: d.place, action: a.id });
+          for (const k of a.yields) f *= w.mind.consider(k, ctx);
+        }
+        const place = this.storeOf(a, d.place);
+        for (const item of Object.keys(a.makes)) {
+          const n = round(a.makes[item] * f, 4);
+          if (n <= 0) continue;
+          if (place) this.addStock(place, item, n);
+          else this.store(p, item, n);
+        }
+      }
     }
     hour(t) {
       const w = this.w;
@@ -5218,13 +5851,22 @@ var Tyrell = (() => {
           const [n, every] = def.restock[item];
           if (every > 0 && hourIndex % every === 0) {
             const cap = def.stock?.[item] ?? n;
-            st.stock[item] = Math.min(cap, (st.stock[item] || 0) + n);
+            const before = st.stock[item] || 0;
+            st.stock[item] = Math.min(cap, before + n);
+            this.flow(def.id, item, st.stock[item] - before);
           }
         }
       }
     }
     day() {
       const w = this.w, now2 = w.s.now;
+      const prod = this.st.prod;
+      if (prod) {
+        prod.yesterday = prod.today;
+        prod.today = {};
+        prod.day = Math.floor(now2 / DAY);
+        w.emit("production", this.production());
+      }
       for (const id in this.st.income || {}) {
         const inc = this.st.income[id];
         if (inc.next > now2 + 1e-6) continue;
@@ -5340,9 +5982,11 @@ var Tyrell = (() => {
       const parents = parentIds.map((id2) => w.s.people[id2]).filter(Boolean);
       const id = given ?? `born${++this.st.next}`;
       const r = new Stream(w.s.seed, "birth", id);
-      const traits = {};
+      const delos = w.delos;
+      const genome = delos?.active() ? delos.applyInherit(parents.map((p) => p.id), id) : null;
+      const traits = genome ? { ...genome.traits } : {};
       const keys = /* @__PURE__ */ new Set();
-      for (const p of parents) for (const k in p.def.traits || {}) keys.add(k);
+      for (const p of parents) for (const k in p.def.traits || {}) if (!genome || genome.traits[k] === void 0) keys.add(k);
       for (const k of [...keys].sort()) {
         const vals = parents.map((p) => p.def.traits?.[k]).filter((v) => v !== void 0);
         const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
@@ -5362,6 +6006,10 @@ var Tyrell = (() => {
         place: home,
         tags: [...tpl.tags || [], ...def.tags || [], "born"]
       };
+      if (genome) {
+        child.talents = { ...genome.talents, ...tpl.talents || {}, ...def.talents || {} };
+        child.instincts = { ...genome.instincts, ...tpl.instincts || {}, ...def.instincts || {} };
+      }
       w.input("person", [id, child]);
       this.st.parents[id] = parents.map((p) => p.id);
       this.st.stage[id] = this.stage(id);
@@ -5551,6 +6199,1126 @@ var Tyrell = (() => {
     }
   };
 
+  // tyrell/src/modules/athelas.ts
+  var Athelas = class {
+    constructor() {
+      this.name = "athelas";
+      this.courses = /* @__PURE__ */ new Map();
+    }
+    /** The state for reading: undefined until someone is first afflicted. */
+    get st() {
+      return this.w.s.mod.athelas;
+    }
+    /** The state for writing (inside the simulation): made when first needed. */
+    mut() {
+      var _a;
+      return (_a = this.w.s.mod).athelas || (_a.athelas = { on: {}, immune: {}, k: 0 });
+    }
+    attach(w) {
+      this.w = w;
+      const L = w.lang;
+      L.term("under", (c, a) => {
+        if (!c.person) return a ? false : 0;
+        const on = this.st?.on[c.person.id];
+        if (!a) return on ? Object.keys(on).length : 0;
+        if (a.startsWith("tag:")) return !!on && Object.keys(on).some((id) => this.courses.get(id)?.tags?.includes(a.slice(4)));
+        const r = on?.[a];
+        return r ? this.courses.get(a)?.phases[r.p]?.id ?? true : false;
+      });
+      L.term("immune", (c, a) => c.person ? this.immune(c.person.id, a) : false);
+      L.effect("afflict", (c, a) => {
+        if (c.person) this.applyAfflict(c.person.id, a, c.target ?? void 0);
+      });
+      L.effect("cure", (c, a) => {
+        if (c.person) this.applyCure(c.person.id, a || void 0);
+      });
+      L.effect("hasten", (c, a, _op, v) => {
+        if (c.person) this.applyHasten(c.person.id, a, Number(v ?? 0));
+      });
+      w.defineInput("afflict", (id, course, from) => this.applyAfflict(id, course, from ?? void 0));
+      w.defineInput("cure", (id, course) => this.applyCure(id, course ?? void 0));
+      w.defineInput("hasten", (id, course, minutes) => this.applyHasten(id, course, minutes));
+    }
+    // -------------------------------------------------------------------------
+    // Declaring and asking
+    // -------------------------------------------------------------------------
+    course(def) {
+      this.courses.set(def.id, def);
+      return this;
+    }
+    /** The courses running for someone: which phase, since and until when. */
+    of(id) {
+      const on = this.st?.on[id];
+      if (!on) return [];
+      return Object.keys(on).map((course) => {
+        const r = on[course], def = this.courses.get(course), ph = def?.phases[r.p];
+        const out = {
+          course,
+          label: def?.label ?? course,
+          phase: ph?.id ?? String(r.p),
+          phaseLabel: ph?.label ?? ph?.id ?? "",
+          since: r.since,
+          until: r.until
+        };
+        if (r.from) out.from = r.from;
+        return out;
+      });
+    }
+    /** Is someone immune to a course now? */
+    immune(id, course) {
+      return (this.st?.immune[id]?.[course] ?? -Infinity) > this.w.s.now;
+    }
+    /** Afflicts someone with a course (from the game: recorded). Returns whether it took. */
+    afflict(id, course, from) {
+      return this.w.input("afflict", [id, course, from ?? null]) === true;
+    }
+    /** Cures someone of a course, or of every course (from the game: recorded). */
+    cure(id, course) {
+      this.w.input("cure", [id, course ?? null]);
+    }
+    /** Brings the end of the phase someone's in sooner by some minutes (a visit, a remedy that helps): recorded. */
+    hasten(id, course, minutes) {
+      this.w.input("hasten", [id, course, minutes]);
+    }
+    // -------------------------------------------------------------------------
+    // Running a course
+    // -------------------------------------------------------------------------
+    phaseMinutes(p, ph) {
+      let m = Array.isArray(ph.minutes) ? this.w.stream(p).range(ph.minutes[0], ph.minutes[1]) : ph.minutes;
+      if (ph.scale?.length) {
+        const ctx = this.w.ctx(p);
+        for (const k of ph.scale) m *= this.w.mind.consider(k, ctx);
+      }
+      return round(Math.max(1, m), 4);
+    }
+    schedule(id, course, r) {
+      r.k = ++this.mut().k;
+      this.w.clock.schedule({ t: r.until, k: "module", ref: this.name, who: id, data: { c: course, k: r.k } });
+    }
+    label(def, ph) {
+      return (def.label ?? def.id) + (ph?.label ? `: ${ph.label}` : "");
+    }
+    /** Afflicts someone, inside the simulation. */
+    applyAfflict(id, course, from) {
+      var _a;
+      const w = this.w;
+      const p = w.s.people[id];
+      const def = this.courses.get(course);
+      if (!p || p.status === "gone" || !def || !def.phases.length) return false;
+      const now2 = w.s.now;
+      const cur = this.st?.on[id]?.[course];
+      if (cur) {
+        const again = def.again ?? "ignore";
+        if (again === "ignore") return false;
+        if (again === "extend") {
+          cur.until = round(cur.until + this.phaseMinutes(p, def.phases[cur.p]), 4);
+          this.schedule(id, course, cur);
+        } else {
+          w.mind.settleRise(p);
+          this.enter(p, course, 0);
+        }
+        w.log("afflicted", id, { course, again });
+        w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course, again });
+        return true;
+      }
+      if (this.immune(id, course)) return false;
+      const st = this.mut();
+      if (st.immune[id]) {
+        delete st.immune[id][course];
+        if (!Object.keys(st.immune[id]).length) delete st.immune[id];
+      }
+      w.mind.settleRise(p);
+      const r = { p: 0, since: now2, until: now2, k: 0 };
+      if (from) r.from = from;
+      ((_a = st.on)[id] || (_a[id] = {}))[course] = r;
+      w.log("afflicted", id, { course, ...from ? { from } : {} });
+      w.emit("afflicted", { id, course, from: from ?? null, label: def.label ?? course });
+      this.enter(p, course, 0);
+      return true;
+    }
+    /** Starts a phase (needs settled by the caller). */
+    enter(p, course, i) {
+      const w = this.w;
+      const def = this.courses.get(course);
+      const r = this.st.on[p.id][course];
+      const ph = def.phases[i];
+      r.p = i;
+      r.since = w.s.now;
+      r.until = round(w.s.now + this.phaseMinutes(p, ph), 4);
+      this.schedule(p.id, course, r);
+      w.log("course", p.id, { course, phase: ph.id });
+      w.emit("course", { id: p.id, course, phase: ph.id, label: this.label(def, ph) });
+      if (ph.feel && w.reverie) w.reverie.applyFeel(p.id, ph.feel, def.label ?? course);
+      if (ph.then) w.lang.applyAll(ph.then, w.ctx(p));
+      if (p.doing) w.clock.scheduleChecks(p);
+      if (ph.stop) w.clock.schedule({ t: w.s.now, k: "module", ref: this.name, who: p.id, data: { c: course, stop: true } });
+    }
+    /** A course passes, or is cured (needs settled by the caller). */
+    end(p, course, cured) {
+      var _a, _b;
+      const w = this.w;
+      const st = this.st;
+      const def = this.courses.get(course);
+      delete st.on[p.id][course];
+      if (!Object.keys(st.on[p.id]).length) delete st.on[p.id];
+      if (def?.immunity) ((_a = st.immune)[_b = p.id] || (_a[_b] = {}))[course] = w.s.now + def.immunity;
+      w.log("recovered", p.id, { course, ...cured ? { cured } : {} });
+      w.emit("recovered", { id: p.id, course, cured, label: def?.label ?? course });
+      if (def?.then && !cured) w.lang.applyAll(def.then, w.ctx(p));
+      if (p.doing) w.clock.scheduleChecks(p);
+    }
+    /** Brings a phase's end sooner (or, with a negative number, later), inside the simulation. */
+    applyHasten(id, course, minutes) {
+      const r = this.st?.on[id]?.[course];
+      if (!r || !minutes) return;
+      r.until = round(Math.max(this.w.s.now, r.until - minutes), 4);
+      this.schedule(id, course, r);
+    }
+    /** Cures someone of a course (or all of them), inside the simulation. */
+    applyCure(id, course) {
+      const p = this.w.s.people[id];
+      const on = this.st?.on[id];
+      if (!p || !on) return;
+      const which = course ? on[course] ? [course] : [] : Object.keys(on);
+      if (!which.length) return;
+      this.w.mind.settleRise(p);
+      for (const c of which) this.end(p, c, true);
+    }
+    timer(item) {
+      const w = this.w;
+      const p = item.who ? w.s.people[item.who] : void 0;
+      if (!p || p.status === "gone") return;
+      const course = String(item.data?.c ?? "");
+      if (item.data?.stop) {
+        if (p.status === "active" && this.st?.on[p.id]?.[course]) {
+          const def2 = this.courses.get(course);
+          w.clock.rethink(p, this.label(def2, def2?.phases[this.st.on[p.id][course].p]));
+        }
+        return;
+      }
+      const r = this.st?.on[p.id]?.[course];
+      if (!r || r.k !== item.data?.k) return;
+      w.mind.settleRise(p);
+      const def = this.courses.get(course);
+      if (def && r.p + 1 < def.phases.length) this.enter(p, course, r.p + 1);
+      else this.end(p, course, false);
+    }
+    // -------------------------------------------------------------------------
+    // Hooks
+    // -------------------------------------------------------------------------
+    rate(p, need) {
+      const on = this.st?.on[p.id];
+      if (!on) return 1;
+      let m = 1;
+      for (const course in on) {
+        const r = this.courses.get(course)?.phases[on[course].p]?.rates?.[need];
+        if (r !== void 0) m *= r;
+      }
+      return m;
+    }
+    /** The phase's `weigh` entry for an option: its id, else a tag it has, else '*'. */
+    weighFor(weigh, c) {
+      if (weigh[c.id] !== void 0) return weigh[c.id];
+      const tags = (c.kind === "task" ? this.w.tasks.get(c.id)?.tags : this.w.actions.get(c.id)?.tags) || [];
+      for (const key2 of Object.keys(weigh)) if (key2.startsWith("tag:") && tags.includes(key2.slice(4))) return weigh[key2];
+      return weigh["*"];
+    }
+    consider(p, c) {
+      const on = this.st?.on[p.id];
+      if (!on) return;
+      const out = [];
+      for (const course in on) {
+        const def = this.courses.get(course);
+        const ph = def?.phases[on[course].p];
+        if (!def || !ph?.weigh) continue;
+        const f = this.weighFor(ph.weigh, c);
+        if (f !== void 0) out.push([this.label(def, ph), f]);
+      }
+      return out;
+    }
+    block(p, c) {
+      const on = this.st?.on[p.id];
+      if (!on) return null;
+      for (const course in on) {
+        const def = this.courses.get(course);
+        const ph = def?.phases[on[course].p];
+        if (!def || !ph?.blocks) continue;
+        const tags = (c.kind === "task" ? this.w.tasks.get(c.id)?.tags : this.w.actions.get(c.id)?.tags) || [];
+        if (ph.blocks.some((b) => b === c.id || b.startsWith("tag:") && tags.includes(b.slice(4)))) return this.label(def, ph);
+      }
+      return null;
+    }
+    /** Someone with a catching course passes it on, now and then, to whoever they spend time with. */
+    spread(from, to, minutes) {
+      const on = this.st?.on[from.id];
+      if (!on || to.status !== "active") return;
+      for (const course of Object.keys(on)) {
+        const def = this.courses.get(course);
+        const cg = def?.contagion;
+        if (!def || !cg || def.phases[on[course].p]?.spreads === false) continue;
+        if (this.st?.on[to.id]?.[course] || this.immune(to.id, course)) continue;
+        let chance = 1 - Math.pow(1 - Math.min(1, Math.max(0, cg.chance)), minutes / 60);
+        if (cg.resist?.length) {
+          const ctx = this.w.ctx(to, { target: from.id });
+          for (const k of cg.resist) chance *= this.w.mind.consider(k, ctx);
+        }
+        if (chance > 0 && this.w.stream(to).chance(chance)) this.applyAfflict(to.id, course, from.id);
+      }
+    }
+    met(a, b, _place, minutes) {
+      if (!this.st) return;
+      this.spread(a, b, minutes);
+      this.spread(b, a, minutes);
+    }
+    /** Immunities that have run out are let go. */
+    day() {
+      const st = this.st;
+      if (!st) return;
+      const now2 = this.w.s.now;
+      for (const id of Object.keys(st.immune)) {
+        for (const c of Object.keys(st.immune[id])) if (st.immune[id][c] <= now2) delete st.immune[id][c];
+        if (!Object.keys(st.immune[id]).length) delete st.immune[id];
+      }
+    }
+    removed(p) {
+      const st = this.st;
+      if (!st) return;
+      delete st.on[p.id];
+      delete st.immune[p.id];
+    }
+  };
+
+  // tyrell/src/modules/delos.ts
+  var DEFAULTS = {
+    traits: { founders: [0.1, 0.9], bounds: [0, 1], cross: 0.65, noise: 0.1 },
+    talents: { founders: [0.6, 1.4], bounds: [0.2, 2], cross: 0.7, noise: 0.08 },
+    instincts: { founders: [0.8, 1.25], bounds: [0.5, 1.5], cross: 0, noise: 0.1 },
+    looks: { founders: [0, 1], bounds: [0, 1], cross: 0.65, noise: 0.1 }
+  };
+  var DEFAULT_DELOS = { jump: { chance: 0.12, by: 0.35 }, gift: { chance: 0.1, by: 0.4 } };
+  var Delos = class {
+    constructor(cfg = {}) {
+      this.name = "delos";
+      this.genes = /* @__PURE__ */ new Map();
+      this.blends = { traits: /* @__PURE__ */ new Map(), talents: /* @__PURE__ */ new Map(), instincts: /* @__PURE__ */ new Map(), looks: /* @__PURE__ */ new Map() };
+      this.config = { ...DEFAULT_DELOS, ...cfg };
+    }
+    get st() {
+      return this.w.s.mod.delos;
+    }
+    mut() {
+      var _a;
+      return (_a = this.w.s.mod).delos || (_a.delos = { g: {} });
+    }
+    attach(w) {
+      this.w = w;
+      w.lang.term("gene", (c, a) => c.person ? this.express(c.person.id, a) ?? null : null);
+      w.lang.term("carries", (c, a) => {
+        if (!c.person) return false;
+        const i = a.indexOf(".");
+        return i > 0 ? this.carries(c.person.id, a.slice(0, i), a.slice(i + 1)) : false;
+      });
+      w.defineInput("genome", (id, part) => this.applySet(id, part));
+    }
+    // -------------------------------------------------------------------------
+    // Declaring
+    // -------------------------------------------------------------------------
+    gene(def) {
+      this.genes.set(def.id, def);
+      return this;
+    }
+    /** A personality trait carried in the genome (written to PersonDef.traits). */
+    trait(def) {
+      this.blends.traits.set(def.id, def);
+      return this;
+    }
+    /** A talent for a skill: how fast it's learned (written to PersonDef.talents). */
+    talent(def) {
+      this.blends.talents.set(def.id, def);
+      return this;
+    }
+    /** An inborn taste for an action or task (written to PersonDef.instincts). */
+    instinct(def) {
+      this.blends.instincts.set(def.id, def);
+      return this;
+    }
+    /** A continuous look, like a skin tone (read with looks()). */
+    look(def) {
+      this.blends.looks.set(def.id, def);
+      return this;
+    }
+    /** Is anything declared? Without, Delos does nothing (and Cradle blends traits its own way). */
+    active() {
+      return this.genes.size > 0 || this.blends.traits.size > 0 || this.blends.talents.size > 0 || this.blends.instincts.size > 0 || this.blends.looks.size > 0;
+    }
+    // -------------------------------------------------------------------------
+    // Asking
+    // -------------------------------------------------------------------------
+    /** Someone's genome (a copy), or undefined if they have none. */
+    genome(id) {
+      const g = this.st?.g[id];
+      return g ? JSON.parse(JSON.stringify(g)) : void 0;
+    }
+    /** What a gene shows for someone (undefined without a genome or the gene). */
+    express(id, gene) {
+      const copies = this.st?.g[id]?.genes[gene];
+      const def = this.genes.get(gene);
+      if (!copies || !def) return void 0;
+      if (def.express) return def.express(copies.slice());
+      for (const a of def.alleles) if (copies.includes(a)) return a;
+      return copies[0];
+    }
+    /** Does someone carry an allele (showing or not)? */
+    carries(id, gene, allele) {
+      return !!this.st?.g[id]?.genes[gene]?.includes(allele);
+    }
+    /** Everything someone looks like: each gene as it shows, and the continuous looks. */
+    looks(id) {
+      const g = this.st?.g[id];
+      const out = {};
+      if (!g) return out;
+      for (const gene of [...this.genes.keys()].sort()) {
+        const v = this.express(id, gene);
+        if (v !== void 0) out[gene] = v;
+      }
+      for (const k of [...this.blends.looks.keys()].sort()) if (g.looks[k] !== void 0) out[k] = this.expressed("looks", k, g.looks[k]);
+      return out;
+    }
+    // -------------------------------------------------------------------------
+    // Making genomes
+    // -------------------------------------------------------------------------
+    settings(kind, def) {
+      const d = DEFAULTS[kind];
+      return { founders: def.founders ?? d.founders, bounds: def.bounds ?? d.bounds, cross: def.cross ?? d.cross, noise: def.noise ?? d.noise };
+    }
+    fit(kind, def, v) {
+      const { bounds } = this.settings(kind, def);
+      const x = clamp(v, bounds[0], bounds[1]);
+      return def.round ? Math.round(x) : round(x, 4);
+    }
+    expressed(kind, id, v) {
+      const def = this.blends[kind].get(id);
+      return def?.express ? round(def.express(v), 4) : v;
+    }
+    allele(def, r) {
+      const w = def.weights;
+      return w && w.length === def.alleles.length ? r.weighted(def.alleles, (a) => w[def.alleles.indexOf(a)]) : r.pick(def.alleles);
+    }
+    /** A founder's genome: drawn from the founders' ranges, keeping any value their definition already gives. */
+    founder(p, id) {
+      const r = new Stream(this.w.s.seed, "delos", id);
+      const g = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
+      for (const gid of [...this.genes.keys()].sort()) {
+        const def = this.genes.get(gid);
+        const n = def.copies === 1 ? 1 : 2;
+        g.genes[gid] = Array.from({ length: n }, () => this.allele(def, r));
+      }
+      const given = { traits: p?.def.traits, talents: p?.def.talents, instincts: p?.def.instincts, looks: void 0 };
+      for (const kind of ["traits", "talents", "instincts", "looks"]) {
+        for (const k of [...this.blends[kind].keys()].sort()) {
+          const def = this.blends[kind].get(k);
+          const { founders } = this.settings(kind, def);
+          const drawn = r.range(founders[0], founders[1]);
+          const have = given[kind]?.[k];
+          g[kind][k] = have !== void 0 ? have : this.fit(kind, def, drawn);
+        }
+      }
+      return g;
+    }
+    /** Writes what a genome means (traits, talents, instincts) into the person's definition, keeping what it already says. */
+    writeDef(p, g, overwrite) {
+      const set = (field) => {
+        var _a;
+        const keys = Object.keys(g[field]).sort();
+        if (!keys.length) return;
+        const out = (_a = p.def)[field] || (_a[field] = {});
+        for (const k of keys) if (overwrite || out[k] === void 0) out[k] = this.expressed(field, k, g[field][k]);
+      };
+      set("traits");
+      set("talents");
+      set("instincts");
+    }
+    /** Gives someone a founder's genome if they have none (inside the simulation). Returns it. */
+    applyFounder(id) {
+      const st = this.mut();
+      const have = st.g[id];
+      if (have) return have;
+      const p = this.w.s.people[id];
+      const g = this.founder(p, id);
+      st.g[id] = g;
+      if (p) this.writeDef(p, g, false);
+      return g;
+    }
+    /**
+     * A child's genome from its parents' (inside the simulation; Cradle calls
+     * it for a birth before the child joins). Parents without a genome get a
+     * founder's first. Returns what it means for the child's definition.
+     */
+    applyInherit(parentIds, child) {
+      const w = this.w;
+      const ps = parentIds.filter((id) => w.s.people[id] || this.st?.g[id]).map((id) => this.applyFounder(id));
+      if (!ps.length) {
+        const g2 = this.applyFounder(child);
+        return this.meaning(g2);
+      }
+      const [a, b] = [ps[0], ps[1] ?? ps[0]];
+      const r = new Stream(w.s.seed, "delos", "birth", child);
+      const g = { genes: {}, traits: {}, talents: {}, instincts: {}, looks: {} };
+      const mut = [];
+      for (const gid of [...this.genes.keys()].sort()) {
+        const def = this.genes.get(gid);
+        const from = (x) => {
+          const c = x.genes[gid];
+          return c && c.length ? r.pick(c) : this.allele(def, r);
+        };
+        const copies = def.copies === 1 ? [from(r.chance(0.5) ? a : b)] : [from(a), from(b)];
+        if (def.mutate && r.chance(def.mutate)) {
+          const i = r.int(copies.length);
+          const to = this.allele(def, r);
+          if (to !== copies[i]) {
+            copies[i] = to;
+            mut.push({ kind: "gene", id: gid, to });
+          }
+        }
+        g.genes[gid] = copies;
+      }
+      for (const kind of ["traits", "talents", "instincts", "looks"]) {
+        for (const k of [...this.blends[kind].keys()].sort()) {
+          const def = this.blends[kind].get(k);
+          const { founders, cross, noise } = this.settings(kind, def);
+          const va = a[kind][k] ?? r.range(founders[0], founders[1]);
+          const vb = b[kind][k] ?? r.range(founders[0], founders[1]);
+          const one = r.chance(0.5) ? va : vb;
+          g[kind][k] = this.fit(kind, def, one * cross + (va + vb) / 2 * (1 - cross) + r.range(-noise, noise));
+        }
+      }
+      const traits = [...this.blends.traits.keys()].sort();
+      if (traits.length && r.chance(this.config.jump.chance)) {
+        const k = traits[r.int(traits.length)];
+        const by = r.chance(0.5) ? this.config.jump.by : -this.config.jump.by;
+        const before = g.traits[k];
+        g.traits[k] = this.fit("traits", this.blends.traits.get(k), before + by);
+        mut.push({ kind: "trait", id: k, by: round(g.traits[k] - before, 4) });
+      }
+      const talents = [...this.blends.talents.keys()].sort();
+      if (talents.length && r.chance(this.config.gift.chance)) {
+        const k = talents[r.int(talents.length)];
+        const before = g.talents[k];
+        g.talents[k] = this.fit("talents", this.blends.talents.get(k), before + this.config.gift.by);
+        mut.push({ kind: "talent", id: k, by: round(g.talents[k] - before, 4) });
+      }
+      if (mut.length) g.mut = mut;
+      this.mut().g[child] = g;
+      for (const m of mut) {
+        const d = { kind: m.kind, what: m.id, ...m.by !== void 0 ? { by: m.by } : {}, ...m.to !== void 0 ? { to: m.to } : {} };
+        w.log("mutated", child, d);
+        w.emit("mutated", { id: child, ...d });
+      }
+      return this.meaning(g);
+    }
+    /** What a genome means for a definition: its traits, talents and instincts, expressed. */
+    meaning(g) {
+      const out = { traits: {}, talents: {}, instincts: {} };
+      for (const kind of ["traits", "talents", "instincts"]) for (const k of Object.keys(g[kind]).sort()) out[kind][k] = this.expressed(kind, k, g[kind][k]);
+      return out;
+    }
+    /** Sets parts of someone's genome (an imported traveler, a game's own founders): from the game, recorded. */
+    set(id, part) {
+      this.w.input("genome", [id, JSON.parse(JSON.stringify(part))]);
+    }
+    /** Sets parts of a genome inside the simulation, and writes what they mean into the definition. */
+    applySet(id, part) {
+      var _a;
+      const g = this.applyFounder(id);
+      for (const gid in part.genes || {}) g.genes[gid] = part.genes[gid].slice();
+      for (const kind of ["traits", "talents", "instincts", "looks"]) for (const k in part[kind] || {}) g[kind][k] = part[kind][k];
+      const p = this.w.s.people[id];
+      if (!p) return;
+      const m = this.meaning(g);
+      for (const kind of ["traits", "talents", "instincts"]) {
+        const given = part[kind];
+        if (!given) continue;
+        const out = (_a = p.def)[kind] || (_a[kind] = {});
+        for (const k in given) out[k] = m[kind][k] ?? given[k];
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Hooks
+    // -------------------------------------------------------------------------
+    /** A founder gets a genome when they join (a child born through Cradle already has one). */
+    added(p) {
+      if (!this.active() || this.st?.g[p.id]) return;
+      this.applyFounder(p.id);
+    }
+  };
+
+  // tyrell/src/modules/voice.ts
+  var DEFAULT_VOICE = {
+    offers: 3,
+    choices: 3,
+    theirs: 0.3,
+    patience: 8,
+    fresh: 7 * DAY,
+    strong: 2,
+    onWell: [],
+    onBadly: [],
+    greet: "greet",
+    bye: "bye",
+    close: "close",
+    react: "react",
+    deed: null
+  };
+  var bondKey = (who, by) => who + ">" + by;
+  var Voice = class {
+    constructor(cfg = {}) {
+      this.name = "voice";
+      this.approaches = /* @__PURE__ */ new Map();
+      this.threads = /* @__PURE__ */ new Map();
+      this.promiseDefs = /* @__PURE__ */ new Map();
+      /** The warmth a talk starts with (a definition: set it on every start). Default: regard times 3, rounded, -1 to 3 (with Fellowship), else 0. */
+      this.warmth = (ctx) => {
+        const f = ctx.world.fellowship;
+        return f && ctx.person && ctx.target ? Math.round(clamp(f.regard(ctx.person.id, ctx.target) * 3, -1, 3)) : 0;
+      };
+      /** How many beats they'll talk for (a definition). Default config.patience. */
+      this.patience = () => this.config.patience;
+      /** The talk being worked on inside an input (effects add their notes to it). */
+      this.live = null;
+      this.config = { ...DEFAULT_VOICE, ...cfg };
+    }
+    get st() {
+      return this.w.s.mod.voice;
+    }
+    mut() {
+      var _a;
+      return (_a = this.w.s.mod).voice || (_a.voice = { talks: {}, bonds: {}, promises: [] });
+    }
+    bond(who, by) {
+      var _a, _b;
+      return (_a = this.mut().bonds)[_b = bondKey(who, by)] || (_a[_b] = { talks: 0, seen: {} });
+    }
+    peekBond(who, by) {
+      return this.st?.bonds[bondKey(who, by)];
+    }
+    attach(w) {
+      this.w = w;
+      const L = w.lang;
+      const by = (c) => c.target ?? null;
+      const talkOf = (c) => {
+        const t = by(c);
+        const talk = t ? this.st?.talks[t] : void 0;
+        return talk && c.person && talk.who === c.person.id ? talk : void 0;
+      };
+      L.term("talks", (c) => c.person && by(c) ? this.peekBond(c.person.id, by(c))?.talks ?? 0 : 0);
+      L.term("familiar", (c) => c.person && by(c) ? this.familiarity(c.person.id, by(c)) : 0);
+      L.term("talking", (c, a) => {
+        if (!c.person) return false;
+        const talks = this.st?.talks || {};
+        return a ? talks[a]?.who === c.person.id : Object.values(talks).some((t) => t.who === c.person?.id);
+      });
+      L.term("warmth", (c) => talkOf(c)?.warmth ?? 0);
+      L.term("patience", (c) => talkOf(c)?.patience ?? 0);
+      L.term("landed", (c) => talkOf(c)?.landed ?? null);
+      L.term("learned", (c, a) => c.person && by(c) ? this.peekBond(c.person.id, by(c))?.known?.[a] ?? false : false);
+      L.term("sore", (c, a) => c.person && by(c) ? (this.peekBond(c.person.id, by(c))?.sore?.[a] ?? -1) > w.s.now : false);
+      L.term("talked", (c, a) => {
+        if (!c.person || !by(c)) return a ? false : null;
+        const b = this.peekBond(c.person.id, by(c));
+        if (a) return b?.seen[a] !== void 0;
+        return b?.last !== void 0 ? round(w.s.now - b.last, 2) : null;
+      });
+      L.term("promise", (c, a) => {
+        if (!c.person) return null;
+        const list = (this.st?.promises || []).filter((x) => x.who === c.person?.id && x.id === a && (!by(c) || x.by === by(c)));
+        return list.length ? list[list.length - 1].state : null;
+      });
+      L.effect("learn", (c, a, _op, v) => {
+        if (c.person && c.target) this.applyLearn(c.person.id, c.target, a, v === null ? true : v);
+      });
+      L.effect("promise", (c, a, _op, v) => {
+        if (c.person && c.target) this.applyPromise(c.person.id, c.target, a, v === null || v === true ? void 0 : Number(v));
+      });
+      L.effect("sore", (c, a, _op, v) => {
+        if (!c.person || !c.target) return;
+        const talk = this.st?.talks[c.target];
+        const thread = a || talk?.thread?.id;
+        if (!thread) return;
+        const b = this.bond(c.person.id, c.target);
+        (b.sore || (b.sore = {}))[thread] = this.w.s.now + (v === null || v === true ? 2 : Number(v)) * DAY;
+      });
+      L.effect("warmth", (c, _a, op, v) => {
+        const talk = c.target ? this.st?.talks[c.target] : void 0;
+        if (!talk || !c.person || talk.who !== c.person.id) return;
+        const n = Number(v);
+        talk.warmth = round(op === "+=" ? talk.warmth + n : op === "-=" ? talk.warmth - n : op === "*=" ? talk.warmth * n : n, 4);
+      });
+      w.defineInput("voice.start", (who, by2) => this.applyStart(who, by2));
+      w.defineInput("voice.answer", (by2, i, id) => this.applyAnswer(by2, i, id));
+      w.defineInput("voice.end", (by2) => this.applyEnd(by2, "left"));
+    }
+    // -------------------------------------------------------------------------
+    // Declaring
+    // -------------------------------------------------------------------------
+    approach(def) {
+      this.approaches.set(def.id, def);
+      return this;
+    }
+    thread(def) {
+      this.threads.set(def.id, def);
+      return this;
+    }
+    promise(def) {
+      this.promiseDefs.set(def.id, def);
+      return this;
+    }
+    // -------------------------------------------------------------------------
+    // The game's side
+    // -------------------------------------------------------------------------
+    /** Starts a talk with someone (from the game: recorded). Returns what to show, or null if they can't talk. */
+    start(who, by = "player") {
+      return this.w.input("voice.start", [who, by]) ?? null;
+    }
+    /** Chooses one of the talk's answers by its index in current().answers (recorded). Returns what to show next. */
+    answer(i, by = "player") {
+      const opt = this.st?.talks[by]?.options[i];
+      return this.w.input("voice.answer", [by, i, opt?.id ?? null]) ?? null;
+    }
+    /** Ends a talk without a goodbye (walked off; recorded). */
+    end(by = "player") {
+      this.w.input("voice.end", [by]);
+    }
+    /** The talk in progress, as the game shows it, or null. */
+    current(by = "player") {
+      const talk = this.st?.talks[by];
+      return talk ? this.view(talk, false) : null;
+    }
+    /** How well someone knows the speaker: half a point a talk, a point for each thing learned about them. */
+    familiarity(who, by = "player") {
+      const b = this.peekBond(who, by);
+      return b ? round(b.talks * 0.5 + Object.keys(b.known || {}).length, 2) : 0;
+    }
+    /** What the speaker has learned about someone. */
+    learned(who, by = "player") {
+      return { ...this.peekBond(who, by)?.known || {} };
+    }
+    /** Talks so far between them, and when the last ended. */
+    history(who, by = "player") {
+      const b = this.peekBond(who, by);
+      return { talks: b?.talks ?? 0, last: b?.last ?? null, lastThread: b?.lastThread ?? null, seen: { ...b?.seen || {} } };
+    }
+    /** Promises made to someone (or everyone), newest last. */
+    promises(who) {
+      return (this.st?.promises || []).filter((p) => !who || p.who === who).map((p) => ({ ...p }));
+    }
+    // -------------------------------------------------------------------------
+    // Running a talk (inside inputs)
+    // -------------------------------------------------------------------------
+    ctx(talk) {
+      return this.w.ctx(this.w.s.people[talk.who], { target: talk.by });
+    }
+    /** A stream of this talk's own: the same talk draws the same on a replay. */
+    stream(talk) {
+      return new Stream(this.w.s.seed, "voice", talk.who, talk.by, talk.t, talk.n++);
+    }
+    applyStart(who, by) {
+      const w = this.w;
+      const p = w.s.people[who];
+      if (!p || p.status !== "active" || who === by) return null;
+      const st = this.mut();
+      const old = st.talks[by];
+      if (old && old.who === who) return this.view(old, false);
+      if (old) this.applyEnd(by, "left");
+      const talk = { who, by, t: w.s.now, n: 0, warmth: 0, patience: 0, done: [], said: [], lines: [], options: [] };
+      const ctx = this.ctx(talk);
+      talk.warmth = round(Number(this.warmth(ctx)) || 0, 4);
+      talk.patience = Math.max(1, Math.round(Number(this.patience(ctx)) || this.config.patience));
+      st.talks[by] = talk;
+      this.live = talk;
+      try {
+        w.log("talk", who, { by });
+        w.emit("voice:start", { who, by });
+        this.say(talk, "them", this.config.greet);
+        if (!this.theirTurn(talk)) this.refresh(talk);
+      } finally {
+        this.live = null;
+      }
+      return this.view(talk, false);
+    }
+    applyAnswer(by, i, id) {
+      const talk = this.st?.talks[by];
+      if (!talk) return null;
+      const opt = (id !== null ? talk.options.find((o) => o.id === id) : void 0) ?? talk.options[i];
+      if (!opt || !opt.ok) return this.view(talk, false);
+      talk.lines = [];
+      this.live = talk;
+      try {
+        if (opt.kind === "bye") return this.bye(talk);
+        if (opt.kind === "drop") this.finishThread(talk, false);
+        else if (opt.kind === "thread") {
+          const def = this.threads.get(opt.id);
+          if (def) this.enter(talk, def, false);
+        } else if (opt.kind === "answer") {
+          const where = this.chosen(talk, opt);
+          if (where === "bye") return this.bye(talk);
+        }
+        if (!this.st?.talks[by]) return this.view(talk, true);
+        if (!talk.thread && !talk.over && this.theirTurn(talk)) return this.view(talk, false);
+        this.refresh(talk);
+      } finally {
+        this.live = null;
+      }
+      return this.view(talk, false);
+    }
+    /** An answer is chosen: said, its approach lands, its effects, and where it leads. Returns where. */
+    chosen(talk, opt) {
+      const def = talk.thread ? this.threads.get(talk.thread.id) : void 0;
+      const beat = def && talk.thread ? def.beats[talk.thread.beat] : void 0;
+      const a = beat?.answers?.[Number(opt.id.slice(1))];
+      if (!def || !a) {
+        this.finishThread(talk, false);
+        return "end";
+      }
+      this.say(talk, "you", a.say, true);
+      if (a.approach) this.land(talk, a.approach);
+      const ctx = this.ctx(talk);
+      if (a.then) this.w.lang.applyAll(a.then, ctx);
+      let to = "end";
+      if (typeof a.to === "string") to = a.to;
+      else if (Array.isArray(a.to)) {
+        const pick = a.to.find((x) => (!x.if || this.w.lang.all(x.if, ctx)) && (!x.landed || x.landed === talk.landed) && (x.warmth === void 0 || talk.warmth >= x.warmth));
+        to = pick?.to ?? a.to[a.to.length - 1]?.to ?? "end";
+      }
+      if (to === "bye") return "bye";
+      if (to.startsWith("thread:")) {
+        this.finishThread(talk, true);
+        const next = this.threads.get(to.slice(7));
+        if (next && !talk.over) this.enter(talk, next, false, true);
+        return to;
+      }
+      if (to === "end" || !def.beats[to]) this.finishThread(talk, true);
+      else this.runBeat(talk, to);
+      return to;
+    }
+    /** Starts on a subject: the speaker opens it (unless it's theirs, or the answer before was the way in), then its first beat. */
+    enter(talk, def, theirs, door = false) {
+      const ctx = this.ctx(talk);
+      const label = typeof def.label === "function" ? def.label(ctx) : def.label ?? def.id;
+      talk.thread = { id: def.id, beat: def.start ?? "start", label };
+      if (theirs) talk.thread.theirs = true;
+      if (!talk.done.includes(def.id)) talk.done.push(def.id);
+      if (!theirs && !door) {
+        const open = typeof def.open === "string" ? def.open : def.open ? def.approach && def.open[def.approach] || def.open[Object.keys(def.open)[0]] : label;
+        if (open) this.say(talk, "you", open, true);
+        if (def.approach) this.land(talk, def.approach);
+      }
+      this.runBeat(talk, def.start ?? "start");
+    }
+    runBeat(talk, name) {
+      const def = talk.thread ? this.threads.get(talk.thread.id) : void 0;
+      const beat = def?.beats[name];
+      if (!def || !beat || !talk.thread) {
+        this.finishThread(talk, true);
+        return;
+      }
+      talk.thread.beat = name;
+      talk.patience--;
+      if (beat.then) this.w.lang.applyAll(beat.then, this.ctx(talk));
+      const who = beat.who ?? "them";
+      if (beat.line) this.say(talk, who, beat.line, false, beat.text);
+      else if (beat.text !== void 0) this.sayText(talk, who, beat.text);
+      if (beat.end || !beat.answers?.length) this.finishThread(talk, true);
+    }
+    /** A subject is done: talked through (its effects run) or let lie. */
+    finishThread(talk, reached) {
+      const th = talk.thread;
+      if (!th) return;
+      const def = this.threads.get(th.id);
+      const b = this.bond(talk.who, talk.by);
+      b.seen[th.id] = this.w.s.now;
+      b.lastThread = th.id;
+      talk.thread = void 0;
+      if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
+      if (talk.patience <= 0 && !talk.over) {
+        talk.over = true;
+        this.say(talk, "them", this.config.close);
+      }
+    }
+    /** How an approach lands: added to the warmth, and remembered for the lines and answers that follow. */
+    land(talk, id) {
+      const def = this.approaches.get(id);
+      if (!def) return 0;
+      const ctx = this.ctx(talk);
+      let d = def.base ?? 0;
+      if (typeof def.lands === "function") d += Number(def.lands(ctx)) || 0;
+      else for (const r of def.lands || []) if (!r.if || this.w.lang.all(r.if, ctx)) d += r.by;
+      d = round(d, 4);
+      talk.warmth = round(talk.warmth + d, 4);
+      talk.landed = d > 0 ? "well" : d < 0 ? "badly" : "even";
+      if (Math.abs(d) >= this.config.strong) {
+        this.w.lang.applyAll(d > 0 ? this.config.onWell : this.config.onBadly, ctx);
+        const how = d > 0 ? "well" : "badly";
+        if (!this.say(talk, "them", `${this.config.react}.${id}.${how}`, false, void 0, true)) this.say(talk, "them", `${this.config.react}.${how}`, false, void 0, true);
+      }
+      return d;
+    }
+    /** Now and then they raise something of their own. Returns whether they did. */
+    theirTurn(talk) {
+      if (talk.over || talk.thread) return false;
+      const w = this.w, now2 = w.s.now;
+      const b = this.peekBond(talk.who, talk.by);
+      const ctx = this.ctx(talk);
+      const cands = [...this.threads.values()].filter((def2) => {
+        if (!def2.theirs || talk.done.includes(def2.id)) return false;
+        const seen = b?.seen[def2.id];
+        if (seen !== void 0 && now2 - seen < (def2.cooldown ?? 3 * DAY)) return false;
+        return !def2.if || w.peek(() => w.lang.all(def2.if, ctx));
+      }).sort((x, y) => x.id < y.id ? -1 : 1);
+      if (!cands.length) return false;
+      const r = this.stream(talk);
+      if (!r.chance(this.config.theirs)) return false;
+      const def = r.weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
+      if (!def) return false;
+      this.enter(talk, def, true);
+      this.refresh(talk);
+      return true;
+    }
+    weightOf(def, ctx) {
+      return typeof def.weight === "function" ? Number(this.w.peek(() => def.weight(ctx))) || 0 : def.weight ?? 1;
+    }
+    /** The subjects worth raising now, best first. */
+    salient(talk) {
+      const w = this.w, now2 = w.s.now;
+      const b = this.peekBond(talk.who, talk.by);
+      const ctx = this.ctx(talk);
+      const scored = [];
+      for (const def of this.threads.values()) {
+        if (def.theirs || talk.done.includes(def.id)) continue;
+        if (def.if && !w.lang.all(def.if, ctx)) continue;
+        const seen = b?.seen[def.id];
+        const fresh = seen === void 0 ? 1 : 1 - Math.exp(-(now2 - seen) / Math.max(1, def.cooldown ?? 3 * DAY));
+        let s = this.weightOf(def, ctx) * fresh;
+        if ((b?.sore?.[def.id] ?? -1) > now2) s *= 0.1;
+        if (def.reveals && b?.known?.[def.reveals] === void 0) s *= 1.5;
+        if (s < 0.05) continue;
+        s += w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id).next() * 0.2;
+        scored.push([s, def]);
+      }
+      return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, this.config.offers).map(([, d]) => d);
+    }
+    /** Works out what can be said now (kept with the talk, so a replay offers the same). */
+    refresh(talk) {
+      const w = this.w;
+      w.peek(() => {
+        const out = [];
+        const ctx = this.ctx(talk);
+        if (talk.over) {
+          talk.options = [{ kind: "bye", id: "bye", ok: true }];
+          return;
+        }
+        if (talk.thread) {
+          const beat = this.threads.get(talk.thread.id)?.beats[talk.thread.beat];
+          (beat?.answers || []).forEach((a, i) => {
+            if (out.length >= this.config.choices) return;
+            const ok = (!a.if || w.lang.all(a.if, ctx)) && (a.warmth === void 0 || talk.warmth >= a.warmth);
+            if (!ok && !a.soft) return;
+            if (ok && !this.isTopic(talk.by, a.say) && talk.said.includes(a.say)) return;
+            const o = { kind: "answer", id: "a" + i, ok, say: a.say };
+            if (a.label) o.label = a.label;
+            if (a.approach) o.approach = a.approach;
+            out.push(o);
+          });
+          out.push({ kind: "drop", id: "drop", ok: true });
+        } else {
+          for (const def of this.salient(talk)) {
+            const o = { kind: "thread", id: def.id, ok: true, label: typeof def.label === "function" ? def.label(ctx) : def.label ?? def.id };
+            if (def.approach) o.approach = def.approach;
+            out.push(o);
+          }
+        }
+        out.push({ kind: "bye", id: "bye", ok: true });
+        talk.options = out;
+      });
+    }
+    bye(talk) {
+      this.say(talk, "them", this.config.bye);
+      const view = this.view(talk, true);
+      this.applyEnd(talk.by, "bye");
+      return view;
+    }
+    /** Ends a talk: what it leaves (a talk counted, when, a deed). */
+    applyEnd(by, why) {
+      const w = this.w;
+      const st = this.st;
+      const talk = st?.talks[by];
+      if (!st || !talk) return;
+      if (talk.thread) this.finishThread(talk, false);
+      delete st.talks[by];
+      const b = this.bond(talk.who, by);
+      b.talks++;
+      b.last = w.s.now;
+      w.log("talked", talk.who, { by, threads: talk.done.slice(), why });
+      w.emit("voice:end", { who: talk.who, by, threads: talk.done.slice(), why });
+      const deed = this.config.deed;
+      if (deed) {
+        const data = { for: talk.who };
+        w.log("did", by, { verb: deed, for: talk.who });
+        for (const m of w.hooks) m.did?.(by, deed, data);
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Words
+    // -------------------------------------------------------------------------
+    /** Does the speaker have lines on this topic (so it's a topic, not words)? */
+    isTopic(speaker, s) {
+      const cs = this.w.cityspeak;
+      return !!cs && !!this.w.s.people[speaker] && cs.lines.some((l) => l.topic === s);
+    }
+    /**
+     * Says something in the talk: a line on a topic, chosen by Cityspeak for
+     * the speaker (passing over what they've said to this listener lately), or
+     * the words given. Returns whether anything was said.
+     */
+    say(talk, who, topicOrWords, words = false, fallback, onlyLine = false) {
+      var _a;
+      const w = this.w;
+      const speaker = who === "them" ? talk.who : who === "you" ? talk.by : null;
+      const listener = who === "them" ? talk.by : talk.who;
+      const cs = w.cityspeak;
+      if (speaker && cs && w.s.people[speaker] && (!words || this.isTopic(speaker, topicOrWords))) {
+        const b = this.peekBond(talk.who, talk.by);
+        const now2 = w.s.now;
+        const said = cs.choose(speaker, {
+          to: listener,
+          topic: topicOrWords,
+          exact: true,
+          salt: [talk.t, talk.n++],
+          avoid: (key2) => talk.said.includes(key2) || b?.said?.[key2] !== void 0 && now2 - b.said[key2] < this.config.fresh
+        });
+        if (said) {
+          const line = { who, key: said.key };
+          if (said.text !== void 0) line.text = said.text;
+          talk.lines.push(line);
+          talk.said.push(said.key);
+          if (who === "them") ((_a = this.bond(talk.who, talk.by)).said || (_a.said = {}))[said.key] = now2;
+          return true;
+        }
+      }
+      if (onlyLine) return false;
+      if (fallback !== void 0) return this.sayText(talk, who, fallback);
+      if (words) {
+        talk.lines.push({ who, text: topicOrWords });
+        talk.said.push(topicOrWords);
+        return true;
+      }
+      if (topicOrWords) {
+        talk.lines.push({ who, key: topicOrWords });
+        return true;
+      }
+      return false;
+    }
+    sayText(talk, who, text) {
+      const list = (Array.isArray(text) ? text : [text]).filter((t2) => t2);
+      if (!list.length) return false;
+      const fresh = list.filter((t2) => !talk.said.includes(t2));
+      const t = this.stream(talk).pick(fresh.length ? fresh : list);
+      talk.lines.push({ who, text: t });
+      talk.said.push(t);
+      return true;
+    }
+    view(talk, ended) {
+      return {
+        who: talk.who,
+        by: talk.by,
+        thread: talk.thread ? { id: talk.thread.id, label: talk.thread.label, beat: talk.thread.beat, theirs: !!talk.thread.theirs } : null,
+        lines: talk.lines.map((l) => ({ ...l })),
+        answers: ended ? [] : talk.options.map((o, i) => ({ ...o, i })),
+        warmth: talk.warmth,
+        patience: talk.patience,
+        landed: talk.landed ?? null,
+        over: !!talk.over,
+        ended
+      };
+    }
+    // -------------------------------------------------------------------------
+    // What a talk leaves: things learned, sore subjects, promises
+    // -------------------------------------------------------------------------
+    /** The speaker learns something about someone (inside the simulation). */
+    applyLearn(who, by, key2, value) {
+      const b = this.bond(who, by);
+      const had = b.known?.[key2] !== void 0;
+      (b.known || (b.known = {}))[key2] = value;
+      const talk = this.live && this.live.who === who && this.live.by === by ? this.live : this.st?.talks[by]?.who === who ? this.st?.talks[by] : void 0;
+      if (talk && !had) talk.lines.push({ who: "note", learned: key2, value });
+      this.w.log("learned", who, { by, key: key2 });
+    }
+    /** A promise is made to someone (inside the simulation). */
+    applyPromise(who, by, id, days) {
+      const st = this.mut();
+      if (st.promises.some((p) => p.who === who && p.by === by && p.id === id && p.state === "open")) return;
+      const def = this.promiseDefs.get(id);
+      const now2 = this.w.s.now;
+      st.promises.push({ who, by, id, t: now2, due: now2 + (days ?? def?.days ?? 3) * DAY, state: "open" });
+      this.w.log("promised", who, { by, promise: id });
+      this.w.emit("promise", { who, by, id, state: "open" });
+    }
+    settle(p, state) {
+      const w = this.w;
+      p.state = state;
+      p.settled = w.s.now;
+      w.log("promise", p.who, { by: p.by, promise: p.id, state });
+      w.emit("promise", { who: p.who, by: p.by, id: p.id, state });
+      const def = this.promiseDefs.get(p.id);
+      const fx = state === "kept" ? def?.onKept : state === "broken" ? def?.onBroken : def?.onLapsed;
+      const person = w.s.people[p.who];
+      if (fx && person) w.lang.applyAll(fx, w.ctx(person, { target: p.by }));
+    }
+    /** Each hour, open promises are checked: kept, broken, or come due. */
+    hour() {
+      const st = this.st;
+      if (!st?.promises.length) return;
+      const w = this.w, now2 = w.s.now;
+      for (const p of st.promises) {
+        if (p.state !== "open") continue;
+        const person = w.s.people[p.who];
+        const def = this.promiseDefs.get(p.id);
+        if (person && def) {
+          const ctx = w.ctx(person, { target: p.by });
+          if (def.kept?.length && w.lang.all(def.kept, ctx)) {
+            this.settle(p, "kept");
+            continue;
+          }
+          if (def.broken?.length && w.lang.all(def.broken, ctx)) {
+            this.settle(p, "broken");
+            continue;
+          }
+        }
+        if (now2 >= p.due) this.settle(p, def?.lapse ?? "lapsed");
+      }
+    }
+    /** Each day, old marks are let go: lines said long ago, promises long settled. */
+    day() {
+      const st = this.st;
+      if (!st) return;
+      const now2 = this.w.s.now;
+      for (const k of Object.keys(st.bonds)) {
+        const said = st.bonds[k].said;
+        if (said) {
+          for (const key2 of Object.keys(said)) if (now2 - said[key2] > 2 * this.config.fresh) delete said[key2];
+        }
+        const sore = st.bonds[k].sore;
+        if (sore) {
+          for (const t of Object.keys(sore)) if (sore[t] <= now2) delete sore[t];
+        }
+      }
+      st.promises = st.promises.filter((p) => p.state === "open" || now2 - (p.settled ?? now2) < 30 * DAY);
+    }
+    removed(p) {
+      const st = this.st;
+      if (!st) return;
+      for (const by of Object.keys(st.talks)) if (st.talks[by].who === p.id || by === p.id) this.applyEnd(by, "gone");
+    }
+  };
+
   // tyrell/src/tools/voightkampff.ts
   var builtins = {
     "nobody-starves": {
@@ -5737,7 +7505,7 @@ var Tyrell = (() => {
 
   // tyrell/src/index.ts
   var VERSION = "2.0.0";
-  var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi"];
+  var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice"];
   function create(opts = {}) {
     const names = opts.modules ?? [...MODULES];
     const cfg = opts.moduleConfig || {};
@@ -5750,7 +7518,10 @@ var Tyrell = (() => {
       gaff: () => new Gaff(cfg.gaff),
       ceres: () => new Ceres(),
       cradle: () => new Cradle(cfg.cradle),
-      joi: () => new Joi()
+      joi: () => new Joi(),
+      athelas: () => new Athelas(),
+      delos: () => new Delos(cfg.delos),
+      voice: () => new Voice(cfg.voice)
     };
     const modules = [];
     for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());

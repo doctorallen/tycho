@@ -2,7 +2,7 @@
 
 The course of a life: ages and stages, couples, births with inherited traits, and departures with grief and inheritance. Named for Westworld's Cradle, where the hosts' minds are kept and new ones made.
 
-The ideas come from Merryfolk's genetics (children who blend their parents' traits with a little of their own) and life simulations generally.
+The ideas come from Merryfolk's genetics (children who blend their parents' traits with a little of their own) and life simulations generally. For genes with dominance, talents and instincts, add [Delos](delos.md).
 
 - [Ages and stages](#ages-and-stages)
 - [Couples](#couples)
@@ -47,7 +47,7 @@ Each midnight, every couple where both are within the fertile ages (20 to 42) ha
 A child:
 
 - gets an id: the one given, or `'born1'`, `'born2'`...;
-- inherits every trait either parent has: the parents' average plus a draw in ±0.12, clamped to 0..1;
+- inherits every trait either parent has: the parents' average plus a draw in ±0.12, clamped to 0..1. With [Delos](delos.md) in use (anything declared), it inherits a whole genome instead: the traits Delos carries, talents and instincts come from it, and only the parents' other traits are blended this way;
 - gets a name from `cradle.namer(r, parents)` and the rest of its definition from `cradle.template(r, parents)` (both take the child's own stream `r`); `def` overrides both;
 - lives at `def.home`, else the template's, else the first parent's home, and starts there;
 - belongs to the groups in `def` and the template, and to each parent's household;
@@ -138,6 +138,7 @@ Log entries: `paired`, `born`, `stage`.
 - **Fellowship** keeps partners, so couples, automatic pairing and daily births need it; so do grief (by regard) and children joining their parents' household. Without it, `cradle.birth` still works, without the sentiments and households.
 - **Reverie** gives grief and `loss` memories on a departure.
 - **Ceres**: with no heirs, a departed person's money goes to their household's purse.
+- **Delos**: births inherit a genome (looks, traits, talents, instincts) when anything is declared.
 
 ## Example
 

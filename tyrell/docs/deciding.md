@@ -1,6 +1,6 @@
 # Deciding (Bicameral)
 
-Bicameral is the core's decision maker, named for Westworld's bicameral mind: the voice that tells a host what to do until it becomes their own. It holds the needs, the layered priorities (story, job, routine, needs), the weighing of every option, the pick, and the habits people learn.
+Bicameral is the core's decision maker, named for Westworld's bicameral mind: the voice that tells a host what to do until it becomes their own. It holds the needs, the layered priorities (story, job, routine, needs), the weighing of every option, the pick, and the habits people learn. Beside it, the core keeps the skills people grow by practice.
 
 - [Needs](#needs)
 - [Actions](#actions)
@@ -14,6 +14,9 @@ Bicameral is the core's decision maker, named for Westworld's bicameral mind: th
 - [The pick](#the-pick)
 - [When people think](#when-people-think)
 - [Habits and rewards](#habits-and-rewards)
+- [Skills and talents](#skills-and-talents)
+- [Pastimes that pall](#pastimes-that-pall)
+- [Wishes and dreams](#wishes-and-dreams)
 - [Config](#config)
 - [Asking why](#asking-why)
 
@@ -80,12 +83,17 @@ Every field of `ActionDef`:
 | `buys` | `{ item: n }` | none | Goods bought from the place's stock when it starts (Ceres) |
 | `uses` | `{ item: n }` | none | Goods used up when it starts; blocks it if they don't have them (Ceres) |
 | `gives` | `{ item: n }` | none | Goods gained when it ends (Ceres), and what Mentat's `get:` searches for |
+| `makes` | `{ item: n }` | none | Goods made, added to the stock of `store` (or the place it's done) when it ends; a share of it if cut short (Ceres: [Production](modules/ceres.md#production)) |
+| `store` | place id or `'here'` | none | The place whose stock `makes` goes into; with it, `uses` comes from that stock instead of the person's goods (Ceres) |
+| `yields` | Consideration[] | none | Factors on what `makes` makes (Ceres) |
 | `wage` | number | none | Pay per hour, paid at the end by the place's owner (Ceres) |
 | `social` | string | none | A social act resolved with the target when it ends (Cityspeak) |
 | `feels` | string[] | none | Feelings the person gets when it ends (Reverie) |
 | `deed` | string | none | A deed done to the target when it ends: the same path as `world.did` (Reverie, Fellowship) |
 | `crime` | string | none | Doing it is this crime: everyone at the place may witness it (Wormtongue) |
 | `cost` | number | none | Extra planning cost in minutes (Mentat) |
+| `trains` | `{ skill: n }` | none | Skills it trains: `n` hours of practice per hour spent on it, given when it ends (or stops). See [Skills](#skills-and-talents) |
+| `palls` | string or `true` | none | A pastime that palls: a kind shared with other actions (`'drink'`), or `true` for this action alone. See [Pastimes that pall](#pastimes-that-pall) |
 | `data` | object | none | Anything the game wants to attach; the engine doesn't read it |
 
 An action is a free choice only if it has `relieves` or `base`, its `rank` isn't below 0, and the person has its `job` (if it names one). Actions without either are still possible when something requires them.
@@ -248,8 +256,11 @@ Relief beyond what the person needs counts for nothing (eating when barely hungr
 |---|---|
 | considerations | Each consideration's output, compensated for how many there are (see below). A zero vetoes the option |
 | `habit` | The person's habit for this action (1 when they've none) |
+| `instinct` | Their inborn taste for it: `PersonDef.instincts` (see [Instincts](#instincts)) |
+| `had enough of <kind>` | For a pastime that palls: `1 - penalty × tolerance`, once the tolerance is over 0.05 (see [Pastimes that pall](#pastimes-that-pall)) |
+| `wish: <label>`, `dream: <label>` | A wish or a dream that pulls toward it: its `pull` (1.35). At most one of each counts (see [Wishes and dreams](#wishes-and-dreams)) |
 | `travel` | `1 / (1 + minutes / config.travelScale)`; 30 minutes away halves it |
-| `did it last` | `config.repeat` (0.75) for a free choice that's the same as the last thing they did, ended under 90 minutes ago (actions tagged `'sleep'` are exempt) |
+| `did it last` | `config.repeat` (0.75) for a free choice that's the same as the last thing they did, ended under 90 minutes ago (actions tagged `'sleep'`, and pastimes that pall, are exempt) |
 | `carrying on` | `config.inertia` (1.15) for what they're doing now, at the same place |
 | Reverie | A feeling's `boost` for the action's tags; `against <value>` for actions against values they hold |
 | Fellowship | `regard` for `'social'` actions with a target: `clamp(1 + regard × 0.8 + compat × 0.2, 0.1, 2)` |
@@ -343,6 +354,96 @@ world.reward('sam', 'steal_food', -0.5);
 
 `reward` adds the amount to the fast weight and a quarter of it to the slow one. With Fellowship, people also pick up a little of the habits of people they like when they spend time together.
 
+### Instincts
+
+A habit is learned; an instinct is inborn. `PersonDef.instincts` gives a person a standing multiplier per action or task (`{ fish: 1.3, chat: 0.8 }`): it's weighed in as the factor `instinct` beside `habit`, and never changes. Delos fills it in from a genome, so children inherit their parents' tastes; a game can also write it by hand. Read it as `instinct.<action>`.
+
+## Skills and talents
+
+A skill is how good someone has got at something: a level per person that rises with practice, at their own pace, harder the nearer the top, and slips back slowly if they let it go. Declare skills, and say which actions train them:
+
+```js
+world.skill({ id: 'baking', label: 'Baking', rate: 0.03, levels: [[0.25, 'competent'], [0.5, 'skilled'], [0.75, 'expert']], decay: 0.01, then: ['feel:proud'] });
+world.action({ id: 'bake', at: 'cafe', minutes: 60, job: 'baker', rank: -1, trains: { baking: 1 } });
+world.person('mara', { talents: { baking: 1.4 }, skills: { baking: 0.3 }, job: { ... } });
+```
+
+- **Practice.** When an action with `trains` ends (or stops), each skill it names gets the time spent on it, times its number: `{ baking: 1 }` is an hour of practice per hour of baking, `{ baking: 0.5, chat: 0.2 }` half that and a little conversation. The game can give practice from outside the simulation with `world.train(id, skill, hours)` (a lesson, a book: an input), and set a level outright with `world.setSkill(id, skill, level)`. In effects: `train:<skill>=hours` and `skill.<skill>+=0.1`.
+- **The pace.** Progress is `rate` per hour at talent 1, scaled by how much room is left: the gain shrinks with `(1 - level / max)` to the power `diminish`. It's worked out exactly over the hours, so eight hours at once is the same as eight one-hour goes. A person's `talents` entry multiplies the rate (Delos inherits talents); the skill's `learn` considerations multiply it again (schooling, wit).
+- **Forgetting.** With `decay`, a skill not practiced for `grace` days (3) loses `decay` a day after that, down to `floor`. It's worked out when the level is read, so nothing ticks.
+- **Named levels.** Reaching one of `levels` on the way up logs `skill`, emits `skill` `{ id, skill, level, value }`, and runs the skill's `then` effects (`ctx.data.level` is the level's name).
+- **Reading them.** `skill.<id>` in conditions and considerations: gate an action (`if: ['skill.baking>=0.5']`), or weigh it (`{ input: 'skill.baking', out: [0.6, 1.4] }`); Ceres' `yields` can scale what a skilled hand makes. From the game, `world.skillOf(id, skill)`; `world.skills.of(person)` lists them; `world.describe` shows them.
+
+| `SkillDef` field | Default | Meaning |
+|---|---|---|
+| `id` | required | The skill's id. Actions can train a skill that wasn't declared; it gets the defaults |
+| `label` | none | A readable name |
+| `max` | 1 | The top of the scale |
+| `rate` | 0.02 | Level gained per hour of practice at talent 1, from nothing |
+| `diminish` | 1 | How much harder each step is: progress is scaled by `(1 - level / max) ** diminish`. 0 for none |
+| `decay` | 0 | Level lost per day without practice, once `grace` days have gone by |
+| `grace` | 3 | Days before a skill starts to slip |
+| `floor` | 0 | Forgetting never takes a level below this |
+| `start` | 0 | Where people start, unless their own `skills` says otherwise |
+| `levels` | none | `[[at, name], ...]`, lowest first |
+| `then` | none | Effects when someone reaches a named level |
+| `learn` | none | Considerations on the learner, multiplied into the rate |
+
+Levels live on the person (`PersonState.skills`: `[level, when last practiced]`), so they save and rewind.
+
+## Pastimes that pall
+
+The same pleasure satisfies less each time, until it's been let alone a while (Merryfolk's variety). Mark an action `palls`, with a kind it shares with others or `true` for itself alone:
+
+```js
+world.pastime({ id: 'drink', label: 'the ale', gain: 0.35, decay: 0.08, penalty: 0.6 });   // optional: a label and its own pace
+world.action({ id: 'ale', at: 'tag:drink', minutes: 60, relieves: { fun: 0.4 }, palls: 'drink' });
+world.action({ id: 'cider', at: 'tag:drink', minutes: 60, relieves: { fun: 0.35 }, palls: 'drink' });
+world.action({ id: 'darts', at: 'tag:drink', minutes: 30, relieves: { fun: 0.3 }, palls: true });
+```
+
+Each go (an action of the kind that ends with more than 20% done) adds `gain` (0.35) to the person's tolerance for the kind, up to 1; it wears off by `decay` (0.08) an hour. While it's over 0.05, every action of the kind weighs `1 - penalty × tolerance` (the part `had enough of <label>`): at full tolerance, 40% of what it would. So people ring the changes, and come back to an old favorite after a few hours. A pastime that palls is exempt from the plain `did it last` penalty, which this replaces. `tolerance:<kind>` reads it in conditions; `world.describe` lists what they've had enough of. The defaults are `config.pallGain`, `pallDecay` and `pallPenalty`; a `pastime` declaration overrides them for its kind.
+
+## Wishes and dreams
+
+A wish is a standing goal: it pulls someone toward what would grant it until it comes true, then it's granted (with its effects, and maybe a wish that follows), or it fades. A dream is a life's wish: one at a time, and it never fades (The Sims' wants and aspirations, Merryfolk's wishes and dreams).
+
+```js
+world.wish({ id: 'pint', label: 'A pint at the Belt', if: ['!is:child'], weight: [{ input: 'trait.talkative', out: [0.3, 1.2] }],
+  toward: ['drink'], by: ['drink'], then: ['feel:wish_granted'] });
+world.wish({ id: 'catch_up', label: 'A good talk with a friend', about: (ctx) => ctx.world.fellowship.friends(ctx.person.id, 1)[0],
+  toward: ['tag:social'], by: ['chat'], minutes: 2 * 1440 });
+world.wish({ id: 'make_up', label: 'Make it up', when: ['regard>=0.25'] });      // granted by a condition
+world.wish({ id: 'master', label: 'Become an expert baker', dream: true, if: ['job:baker'],
+  progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8, toward: ['bake'] });
+```
+
+- **Coming to wish.** At each of `config.wishHours` (8, 13 and 17), each person with fewer than `config.wishMax` (2) wishes may come to wish one, with probability `config.wishChance` (0.5): a weighted draw, from their own stream, among the wishes they don't hold whose `if` holds, by `weight` (a number, considerations multiplied, or a function). Someone without a dream may come to dream one the same way. A dream (and any wish with `once`) is never wished again once it's come true. The game gives one with `world.wishFor(id, wish, about?)` (an input), effects with `wish:<id>`.
+- **What it's about.** `about` (a term, or a function of the context) is worked out when it's wished: a favorite dish, a friend's id, a number to beat. If it comes out `null` or `undefined`, the wish can't be wished now. It's kept with the wish (`x`). When it's a person, the wish is aimed at them: it pulls only toward options aimed at them (or at nobody), and only an action aimed at them grants it; in its `when`, `then` and `fades`, `ctx.target` is that person (`ctx.data.x` holds whatever it's about, always).
+- **The pull.** While it's held, options whose id or tag is in `toward` weigh `pull` (`config.wishPull`, 1.35) more: the part `wish: <label>` (or `dream: <label>`). At most one wish and one dream count for an option.
+- **Coming true.** A wish is granted when the person finishes an action in its `by` (ids or `tag:<tag>`); or when its `when` conditions hold, checked each hour and whenever they finish something; or, each hour, when its `progress` (a term or a function, 0..1) reaches 1. The game grants one with `world.grant(id, wish)`, effects with `grant:<id>`. Granting removes it, counts it (`granted:<id>`), logs and emits `granted`, runs `then`, and gives the `next` wish, if any.
+- **Fading.** A wish not granted within `minutes` (`config.wishMinutes`, a day and a half; `0` never) fades at the next hour: logged and emitted as `faded`, with its `fades` effects.
+
+Read them with `world.wishesOf(id)` (each `{ id, label, t, until?, x?, dream?, progress? }`), the terms `wish:<id>` (what it's about, or `true`, while it's held), `wishes` (how many), `dream` (the dream's id) and `granted:<id>`, and in `world.describe`. Held wishes live on the person (`PersonState.wishes`, `granted`), so they save and rewind.
+
+| `WishDef` field | Default | Meaning |
+|---|---|---|
+| `id` | required | |
+| `label` | the id | A readable name |
+| `if` | none | Who may wish it, and when |
+| `weight` | 1 | A number, considerations multiplied, or a function of the context |
+| `about` | none | A term or a function: what it's about |
+| `toward` | none | Action or task ids, or `tag:<tag>`, it pulls toward |
+| `pull` | `config.wishPull` | How much more those weigh |
+| `by` | none | Actions (ids or `tag:<tag>`) whose finishing grants it |
+| `when` | none | Conditions that grant it |
+| `progress` | none | A term or a function, 0..1; granted at 1 |
+| `dream` | false | A dream: one at a time, never fades, once in a life |
+| `minutes` | `config.wishMinutes` | Minutes before it fades; 0 never |
+| `once` | dreams only | Wished at most once in a life |
+| `then`, `fades` | none | Effects when it's granted, and when it fades |
+| `next` | none | A wish given when it's granted |
+
 ## Config
 
 Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, not state: don't change the decision settings mid-run (a rewind replays with the current values). `minutesPerSecond` and `budgetMs` are safe to change at any time.
@@ -371,6 +472,14 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `habitMin` | 0.25 | Lowest habit weight |
 | `habitMax` | 4 | Highest habit weight |
 | `compensate` | true | Compensate considerations for their number (IAUS) |
+| `pallGain` | 0.35 | Tolerance one go at a pastime adds (see [Pastimes that pall](#pastimes-that-pall)) |
+| `pallDecay` | 0.08 | Tolerance lost per hour |
+| `pallPenalty` | 0.6 | The share of a pastime's appeal lost at full tolerance |
+| `wishMax` | 2 | Wishes held at once, not counting a dream (see [Wishes and dreams](#wishes-and-dreams)) |
+| `wishHours` | `[8, 13, 17]` | The hours a new wish (or dream) may come |
+| `wishChance` | 0.5 | The chance of one at each of those hours |
+| `wishMinutes` | 2160 | Minutes before an unmet wish fades |
+| `wishPull` | 1.35 | How much more a wish's `toward` options weigh |
 
 ## Asking why
 

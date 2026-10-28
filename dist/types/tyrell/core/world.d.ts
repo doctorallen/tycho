@@ -7,6 +7,7 @@ import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
 import { Strangers } from './strangers';
+import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
 import type { Fellowship } from '../modules/fellowship';
 import type { Wormtongue } from '../modules/wormtongue';
@@ -16,7 +17,10 @@ import type { Gaff } from '../modules/gaff';
 import type { Ceres } from '../modules/ceres';
 import type { Cradle } from '../modules/cradle';
 import type { Joi } from '../modules/joi';
-import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, Id, NeedDef, Options, PersonDef, PersonState, PlaceDef, Shell, Stimulus, TaskDef, Value, WorldState } from './types';
+import type { Athelas } from '../modules/athelas';
+import type { Delos } from '../modules/delos';
+import type { Voice } from '../modules/voice';
+import type { ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState, PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState } from './types';
 import { DAY, HOUR, Stream } from './util';
 export declare const SCHEMA = 2;
 export declare const DEFAULT_CONFIG: Config;
@@ -38,6 +42,8 @@ export declare class World {
     readonly actions: Map<string, ActionDef>;
     readonly tasks: Map<string, TaskDef>;
     readonly deeds: Map<string, DeedDef>;
+    readonly pastimes: Map<string, PastimeDef>;
+    readonly wishes: Map<string, WishDef>;
     readonly ring: Ring;
     readonly mind: Bicameral;
     readonly clock: Entmoot;
@@ -45,6 +51,8 @@ export declare class World {
     readonly westmarch: Westmarch;
     readonly palantir: Palantir;
     readonly strangers: Strangers;
+    /** Skills: levels that grow with practice. */
+    readonly skills: Skills;
     readonly modules: Map<string, Module>;
     /** The modules in the order their hooks run. */
     readonly hooks: Module[];
@@ -108,6 +116,12 @@ export declare class World {
     task(def: TaskDef): this;
     /** Says what a deed (world.did) means: feelings, memories, regard, standing, crime. */
     deed(verb: string, def: DeedDef): this;
+    /** A skill: levels that grow with practice (actions' `trains`), read as `skill.<id>`. */
+    skill(def: SkillDef): this;
+    /** A kind of pastime that palls (actions' `palls`): its label, and how fast it palls and recovers. */
+    pastime(def: PastimeDef): this;
+    /** A wish (or, with `dream`, a dream) people may come to hold. */
+    wish(def: WishDef): this;
     /**
      * Adds a person, or returns them if they already exist (after a load the
      * saved person wins, so declaring everyone on every start is safe).
@@ -137,6 +151,12 @@ export declare class World {
     get cradle(): Cradle | undefined;
     /** The optional language-model voice. */
     get joi(): Joi | undefined;
+    /** Conditions that run a course: ale, colds, toxins. */
+    get athelas(): Athelas | undefined;
+    /** Genomes: looks, traits, talents and instincts, inherited. */
+    get delos(): Delos | undefined;
+    /** Branching conversations: threads of beats, answers with approaches, promises. */
+    get voice(): Voice | undefined;
     /** Sets a fact (the truth of the world), or reads it if no value is given. */
     fact(key: string, value?: Value): Value | undefined;
     /** The places that are loaded and visible: people there get bodies. */
@@ -159,6 +179,21 @@ export declare class World {
     setVar(id: Id, name: string, value: Value): void;
     /** Gives (or with a negative count, takes) goods. */
     give(id: Id, item: Id, count?: number): void;
+    /** Practice from outside the simulation (a lesson, a book): hours of it at the person's own pace. */
+    train(id: Id, skill: Id, hours: number): void;
+    /** Sets a skill's level outright. */
+    setSkill(id: Id, skill: Id, level: number): void;
+    /** Gives someone a wish (or a dream), about something if it's given (a dish, a friend's id). */
+    wishFor(id: Id, wish: Id, about?: Value): void;
+    /** Makes a wish someone holds come true. */
+    grant(id: Id, wish: Id): void;
+    /** The wishes (and the dream) someone holds now. */
+    wishesOf(id: Id): Array<HeldWish & {
+        label: string;
+        progress?: number;
+    }>;
+    /** A person's level in a skill now (0 if they've never practiced it and didn't start with it). */
+    skillOf(id: Id, skill: Id): number;
     /** Sends someone away until a time (dormant): they come back with a summary of what they did. */
     away(id: Id, until: number, summary?: string, place?: Id): void;
     /** Has someone follow another (walk together, sit together), or stop (null). */

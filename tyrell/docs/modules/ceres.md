@@ -8,6 +8,7 @@ Money and goods: each person's money or a household's shared purse, prices paid 
 - [The household pantry](#the-household-pantry)
 - [Rent and incomes](#rent-and-incomes)
 - [Affording things](#affording-things)
+- [Production](#production)
 - [State](#state)
 - [API](#api)
 - [Terms and effects](#terms-and-effects)
@@ -99,6 +100,43 @@ Both are inputs that set up a standing arrangement in the state; calling them ag
 
 People weigh a price against what they can spend: an action with a price weighs `clamp(1 - share × (0.4 + thrift × 0.8), 0.05, 1)`, where `share` is the price over their money (at most 1). Thrifty people are put off more. Mentat's `get:` searches cost money the same way.
 
+## Production
+
+Goods that are made, one from another, in a store everyone works from: grain milled into flour, flour baked into bread, the bread eaten. This is Merryfolk's economy, generalized.
+
+```js
+world.place({ id: 'store', stock: { grain: 40, flour: 0, bread: 10 } });
+world.action({ id: 'grind', at: 'mill', minutes: 60, job: 'miller', rank: -1, fill: false, store: 'store', uses: { grain: 2 }, makes: { flour: 2 } });
+world.action({ id: 'bake', at: 'bakery', minutes: 60, job: 'baker', rank: -1, fill: false, store: 'store', uses: { flour: 1 }, makes: { bread: 4 },
+  yields: [{ input: 'skill.baking', out: [0.6, 1.5] }], trains: { baking: 1 } });
+world.action({ id: 'supper', at: 'store', minutes: 30, relieves: { hunger: 0.6 }, store: 'store', uses: { bread: 1 } });
+world.ceres.chain({ id: 'bread', goods: ['grain', 'flour', 'bread'], store: 'store' });
+```
+
+- **`makes`** adds goods to a place's stock when the action ends: the `store`'s, or the place where it's done. Cut short, it makes that share of it (an hour's bake stopped at a quarter makes a quarter of the loaves); `yields` considerations multiply it (a skilled hand makes more). Stock can be fractional. `PlaceDef.stock` caps restocks, not what's made.
+- **`store`** names the place whose stock the action works from: a place id, or `'here'` for the place it's done. With a store, `uses` comes out of that stock when it starts (and rules the action out, "no flour left at store", when there isn't enough) instead of out of the person's goods; it isn't eaten, so goods' `satisfies` doesn't apply. Without one, `uses` is the person's own, as always.
+- **A steady output.** An action chosen by a job or routine stretches to fill the shift; one that makes something should usually have `fill: false`, so it makes its goods once per its own minutes, again and again, through the shift.
+
+Once anything has `makes` or `store`, or a chain is declared, Ceres counts every change to every place's stock: made (what actions make, restocks, deliveries with `restock`) and used (what actions use from a store, what people buy, `restock` with a negative number). At midnight the day's figures become yesterday's, and Ceres emits `production` with the report; `ceres.production(place?)` gives it at any time:
+
+```js
+const r = world.ceres.production('store');
+r.places.store.flour;    // { stock: 6, made: 10, used: 8, net: 2, days: null }
+r.places.store.grain;    // { stock: 12, made: 0, used: 10, net: -10, days: 1.2 }: a day and a bit left
+r.bottlenecks;           // [{ chain: 'bread', from: 'flour', to: 'bread', store: 'store', fromStock: 9, toStock: 0 }]
+```
+
+`days` is how long the stock would last if yesterday repeated (`null` unless it's running down). A chain's link is a **bottleneck** when its first good piles up while the next runs short: by default, the first has at least two days of what was used of it yesterday (and at least 2), and the next has less than a day's worth (or none). `plenty` and `short` set either line as a stock count instead (Merryfolk uses half and a sixth of a store's capacity). A chain without a `store` adds up every place's stock and flows. What to do about a bottleneck (more millers, a word on the board) is the game's.
+
+| `ChainDef` field | Default | Meaning |
+|---|---|---|
+| `id` | required | |
+| `label` | none | A readable name |
+| `goods` | required | The goods, from the rawest to the finished |
+| `store` | every place | The place whose stock it's judged by |
+| `plenty` | two days' use, at least 2 | A good piles up at this much stock |
+| `short` | under a day's use, at least 1 | A good is short at or under this much stock |
+
 ## State
 
 In `world.s.mod.ceres`:
@@ -110,6 +148,7 @@ In `world.s.mod.ceres`:
 | `rent` | Rent arrangements by person: `{ amount, every, next, to? }` |
 | `income` | Income arrangements by person (the payer in `to`) |
 | `ledger` | The last 200 payments: `{ t, from, to, amount, why }` |
+| `prod` | Only once production is on: `{ day, today, yesterday }`, each by place: `{ made?, used? }` by good |
 
 Stock is in each place's state (`world.s.places[id].stock`); a person's own money and goods are in their state.
 
@@ -133,7 +172,11 @@ Stock is in each place's state (`world.s.places[id].stock`); a person's own mone
 | `ledger(id?)` | array | Recent payments, or those from or to an id |
 | `applyPay(from, to, amount, why)` | void | **Engine.** The direct version of `pay` (1.0 called it `transfer`) |
 | `takeFromPantry(id, item, n)` | void | **Engine.** Takes goods from a pantry |
-| `goods` | Map | The declared goods |
+| `chain(def)` | this | Declares a production chain |
+| `production(place?)` | ProductionReport | Stock, yesterday's made and used, days left, and the chains' bottlenecks |
+| `producing()` | boolean | Whether stock flows are being counted (anything has `makes` or `store`, or there's a chain) |
+| `storeOf(action, place)` | id or null | The place an action's `store` names, from where it's done |
+| `goods`, `chains` | Map | The declared goods and chains |
 
 ## Terms and effects
 
@@ -144,6 +187,7 @@ Terms: `purse`, `price:<good>`, `stock:<place>.<item>` (or `stock:<item>` at the
 | Event | Payload |
 |---|---|
 | `rent-missed` | `{ id, amount }` |
+| `production` | The ProductionReport, each midnight once production is on |
 
 Log entries: `rent` (`{ paid }` or `{ missed }`). Ceres has no config through `moduleConfig`.
 
@@ -153,6 +197,7 @@ Log entries: `rent` (`{ paid }` or `{ missed }`). Ceres has no config through `m
 - **Reverie**: missing rent gives `behind_on_rent`, and the landlord believes `behind:<id>`.
 - **Mentat**: `get:` searches buy from stock and cost money by thrift; an unaffordable route is impossible.
 - **Cradle**: with no partner or children to inherit, a departed person's money goes to their household's purse.
+- **Skills**: `yields` can read `skill.<id>`, and the same action can `train` it.
 
 ## Example
 

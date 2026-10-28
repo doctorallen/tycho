@@ -18,7 +18,7 @@
     modules: opts.modules,
     config: Object.assign({ minutesPerSecond: 1 }, opts.config || {}),
     esper: opts.esper,
-    moduleConfig: { cradle: { autoPair: null } },
+    moduleConfig: { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } },
   });
 
   // ---- needs: 0 is fine, 1 is desperate; rise is per game hour --------------
@@ -32,7 +32,7 @@
   // ---- places ---------------------------------------------------------------
   const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
   for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
-  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30 }, restock: { bread: [10, 3] } });
+  w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara', stock: { bread: 30, flour: 12 }, restock: { flour: [8, 24] } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
   w.place({ id: 'bar', name: 'The Belt', tags: ['social', 'drink'], region: 'main', hours: [17, 2], slots: { stool: 6, bar: 1 }, owner: 'ines' });
   w.place({ id: 'park', name: 'Ring Park', tags: ['outdoors', 'fun', 'social'], region: 'main', slots: { bench: 6 } });
@@ -49,22 +49,24 @@
   w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
   w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
-  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'] });
-  w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'] });
+  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
+  w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
   w.action({ id: 'eat_home', label: 'eating at home', at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
   w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
   w.action({ id: 'steal_food', label: 'pocketing food', at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
   w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'] });
-  w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight] });
-  w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight] });
+  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
+  w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
   w.action({ id: 'chat', label: 'chatting', target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
   w.action({ id: 'help_out', label: 'helping out', target: 'person', at: 'here', minutes: 30, base: 0.04, relieves: { company: 0.2 }, deed: 'helped', tags: ['social'], targetIf: ['regard>0.2'], cooldown: DAY });
   w.action({ id: 'sulk', label: 'sulking', at: 'home', minutes: 120, pose: 'sit', rank: -1 });
   w.action({ id: 'bender', label: 'a bender', at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
   // work: only done on shift (rank -1 means "only when required")
-  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, job: 'baker', rank: -1, pose: 'work', tags: ['work'] });
-  w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'] });
+  // Mara bakes the cafe's bread from its flour, an hour at a time (fill: false), more of it the better she is
+  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, fill: false, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 },
+    store: 'here', uses: { flour: 1 }, makes: { bread: 2 }, yields: [{ input: 'skill.baking', out: [0.6, 1.4] }] });
+  w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'], trains: { repair: 1 } });
   w.action({ id: 'serve', label: 'serving drinks', at: 'bar', slot: 'bar', minutes: 60, job: 'bartender', rank: -1, pose: 'work', tags: ['work'], relieves: { company: 0.15 } });
   w.action({ id: 'sell', label: 'minding the till', at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work', tags: ['work'] });
   w.action({ id: 'treat', label: 'seeing patients', at: 'clinic', slot: 'desk', minutes: 60, job: 'doctor', rank: -1, pose: 'work', tags: ['work'] });
@@ -74,6 +76,35 @@
   w.action({ id: 'buy_radio', label: 'buying a radio', at: 'market', minutes: 10, price: 40, buys: { radio: 1 }, pose: 'stand' });
   w.action({ id: 'listen', label: 'listening to the radio', at: 'home', minutes: 60, relieves: { fun: 0.35 }, if: ['has:radio'], pose: 'sit', tags: ['comfort'] });
   w.action({ id: 'shrug', label: 'giving up on the radio', minutes: 1, then: ['take:broken_radio'] });
+
+  // ---- skills: levels that grow with practice, at each person's own pace -----
+  w.skill({ id: 'baking', label: 'Baking', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']] });
+  w.skill({ id: 'repair', label: 'Repair', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']], decay: 0.004, floor: 0.2 });
+  w.skill({ id: 'lore', label: 'Lore', rate: 0.03, diminish: 2 });
+
+  // ---- Delos: genomes, so the town's children take after their parents -------
+  // (declared before anyone is added: founders get a genome when they join,
+  // keeping the traits, talents and instincts their definitions give)
+  const delos = w.delos;
+  if (delos) {
+    delos.gene({ id: 'eyes', alleles: ['brown', 'hazel', 'green', 'blue'], weights: [5, 2, 1.5, 2.5], mutate: 0.04 });
+    delos.gene({ id: 'hair', alleles: ['black', 'brown', 'red', 'fair'], copies: 1, mutate: 0.05 });
+    for (const t of ['thrift', 'honesty', 'talkative', 'courage']) delos.trait({ id: t });
+    for (const k of ['baking', 'repair', 'lore']) delos.talent({ id: k });
+    for (const a of ['walk', 'read', 'drink']) delos.instinct({ id: a });
+  }
+
+  // ---- pastimes that pall, and wishes and dreams ------------------------------
+  w.pastime({ id: 'drink', label: 'the Belt' });
+  w.pastime({ id: 'park', label: 'the park' });
+  w.wish({ id: 'night_out', label: 'A night at the Belt', if: ['!is:child'], weight: [{ input: 'trait.talkative', out: [0.3, 1.2] }], toward: ['drink'], by: ['drink'] });
+  w.wish({ id: 'fresh_air', label: 'Some fresh air', toward: ['tag:outdoors'], by: ['walk', 'sit_park'] });
+  w.wish({
+    id: 'catch_up', label: 'A good talk with a friend', minutes: 2 * DAY, toward: ['chat', 'help_out'], by: ['chat', 'help_out'],
+    about: (ctx) => (ctx.world.fellowship ? ctx.world.fellowship.friends(ctx.person.id, 1)[0] : undefined),
+  });
+  w.wish({ id: 'master_baker', label: 'Become an expert baker', dream: true, if: ['job:baker'], toward: ['bake'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8 });
+  w.wish({ id: 'master_mechanic', label: 'Become an expert mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({
@@ -98,12 +129,14 @@
   w.person('mara', {
     name: 'Mara', home: 'apt_1', groups: ['h_okafor', 'regulars'], vars: { money: 120 },
     traits: { thrift: 0.6, honesty: 0.9, talkative: 0.7, courage: 0.6 }, values: { honesty: 0.8, family: 0.9 },
+    skills: { baking: 0.62 }, talents: { baking: 1.2 },
     job: { id: 'baker', place: 'cafe', action: 'bake', shifts: [[6, 14]], wage: 0 },
     routine: [[5.5, 'home', 'shower'], [6, null, '*'], [14.25, 'market', 'buy_food'], [14.5, null, '*'], [22, 'home', 'sleep']],
   });
   w.person('tomas', {
     name: 'Tomas', home: 'apt_1', groups: ['h_okafor'], vars: { money: 60 },
     traits: { thrift: 0.4, honesty: 0.8, talkative: 0.3, courage: 0.7 }, values: { honesty: 0.6, craft: 0.9 },
+    skills: { repair: 0.74 }, talents: { repair: 1.3 },
     job: { id: 'mechanic', place: 'workshop', action: 'fix', shifts: [[8, 17]], days: [0, 1, 2, 3, 4, 5], wage: 0 },
     routine: [[7, null, '*'], [17, 'tag:food', 'eat_cafe'], [18, null, '*'], [23, 'home', 'sleep']],
   });
@@ -136,6 +169,7 @@
   w.person('kofi', {
     name: 'Kofi', home: 'apt_5', vars: { money: 25 },
     traits: { thrift: 0.5, honesty: 0.6, talkative: 0.6, courage: 0.5 }, values: { honesty: 0.5 },
+    talents: { lore: 1.5 }, instincts: { walk: 1.25, read: 1.2 },   // a student who'd rather be outdoors
   });
   w.person('lena', {
     name: 'Lena', home: 'apt_5', vars: { money: 150 }, groups: ['regulars'],
@@ -173,6 +207,7 @@
   w.deed('fixed', { feeling: 'helped', regard: 0.2, memory: 6, fame: 0.05 });
   w.deed('cheated', { feeling: 'wronged', regard: -0.3, memory: 7, infamy: 0.1 });
   w.deed('paid', { regard: 0.02 });
+  w.deed('talked', { regard: 0.01 });
 
   // ---- Fellowship: groups --------------------------------------------------
   const fs = w.fellowship;
@@ -202,6 +237,10 @@
     }
     w.ceres.good({ id: 'radio', kind: 'gadget', price: 40 });
     w.ceres.good({ id: 'broken_radio', kind: 'junk', price: 0 });
+    // the cafe's bread: flour delivered every morning, baked by Mara, eaten at the tables
+    w.ceres.good({ id: 'flour', kind: 'stores' });
+    w.ceres.good({ id: 'bread', kind: 'food', price: 2 });
+    w.ceres.chain({ id: 'bread', label: 'Bread', goods: ['flour', 'bread'], store: 'cafe' });
   }
 
   // ---- Cityspeak: lines, practices, social acts -------------------------------
@@ -220,9 +259,50 @@
       { key: 'bar_cheers', topic: 'chat', who: 'job:bartender', when: ['at:bar'], text: 'What\'ll it be?' },
       { key: 'mara_bread', topic: 'greet', who: 'mara', when: ['at:cafe'], text: 'Bread\'s fresh this morning.', cooldown: 6 * HOUR },
     ]);
+    // the words of the player's talks (Voice): a beat names a topic, the most specific line wins
+    cs.addLines([
+      { key: 'how_fine', topic: 'how', text: ['Not bad, thanks.', 'Getting along.'] },
+      { key: 'how_hungry', topic: 'how', when: ['need.hunger>0.6'], text: 'Starving, if I\'m honest.' },
+      { key: 'how_tired', topic: 'how', when: ['need.energy>0.7'], text: 'Dead on my feet.' },
+      { key: 'how_low', topic: 'how', when: ['mood<0.4'], text: 'Could be better.' },
+      { key: 'how_cold', topic: 'how', when: ['under:cold=sniffles'], pri: 1, text: '*sniff* Full of cold.' },
+      { key: 'radio', topic: 'radio', text: 'My radio\'s packed in, and the quiz is on tonight.' },
+      { key: 'radio_thanks', topic: 'radio.thanks', text: 'Would you? You\'re a dear.' },
+      { key: 'radio_tomas', topic: 'radio.tomas', text: 'Tomas? I suppose I could take it to him.' },
+      { key: 'bye_talk', topic: 'bye', text: ['See you around.', 'Take care.'] },
+      { key: 'close_talk', topic: 'close', text: 'Anyway, I should get on.' },
+      { key: 'react_badly', topic: 'react.badly', text: 'Hm.' },
+      { key: 'react_jest_well', topic: 'react.jest.well', text: 'Ha! Cheek.' },
+    ]);
     cs.practice({ id: 'dinner', at: 'cafe', hours: [17, 21], roles: { cook: { job: 'baker', actions: ['bake'] }, diner: { actions: ['eat_cafe', 'chat'] } }, tone: 0.05 });
     cs.practice({ id: 'last_orders', at: 'bar', hours: [0, 1], roles: { drinker: { actions: ['drink'] } }, boost: 1.3 });
     cs.act({ id: 'chat', accept: [{ name: 'regard', input: 'regard', range: [-1, 1], out: [0.2, 1] }], feelings: { refused: 'lonely' }, regard: [0.03, -0.02] });
+  }
+
+  // ---- Voice: the player's talks -----------------------------------------------
+  const vo = w.voice;
+  if (vo) {
+    vo.approach({ id: 'warm', base: 1, lands: [{ if: ['trait.talkative<0.4'], by: -1 }] });
+    vo.approach({ id: 'jest', lands: [{ if: ['trait.courage>0.6'], by: 2 }, { if: ['trait.honesty>0.85'], by: -1 }, { if: ['mood<0.4'], by: -2 }] });
+    vo.thread({
+      id: 'how', label: 'How are you?', weight: 1.2, cooldown: DAY,
+      beats: { start: { line: 'how', answers: [
+        { say: 'Glad to hear it.', approach: 'warm' },
+        { say: 'You look like you need a holiday.', approach: 'jest' },
+      ] } },
+    });
+    vo.thread({
+      id: 'radio', label: 'Is everything all right?', if: ['has:broken_radio'], reveals: 'radio', weight: 1.5,
+      beats: {
+        start: { line: 'radio', then: ['learn:radio=broken'], answers: [
+          { say: 'I could fix it for you.', approach: 'warm', then: ['promise:fix_radio'], to: 'thanks' },
+          { say: 'Tomas fixes radios.', then: ['believe:fixes:tomas=true'], to: 'tomas' },
+        ] },
+        thanks: { line: 'radio.thanks', end: true },
+        tomas: { line: 'radio.tomas', end: true },
+      },
+    });
+    vo.promise({ id: 'fix_radio', label: 'You said you\'d fix my radio', days: 2, kept: ['has:radio'], onKept: ['regard+=0.1', 'feel:helped'], onBroken: ['regard-=0.15'], lapse: 'broken' });
   }
 
   // ---- Gaff: storylets -------------------------------------------------------
@@ -238,6 +318,25 @@
     });
     w.on('timer:rain-stops', () => w.fact('raining', false));
     w.on('timer:power-back', () => w.fact('closed:bar', false));
+  }
+
+  // ---- Athelas: courses that run their course -------------------------------
+  const athelas = w.athelas;
+  if (athelas) {
+    athelas.course({ id: 'ale', label: 'A few drinks', again: 'extend', phases: [
+      { id: 'merry', label: 'merry', minutes: 180, rates: { energy: 1.3 }, weigh: { 'tag:work': 0.7, chat: 1.3 } },
+      { id: 'sore_head', label: 'a sore head', minutes: 360, weigh: { nap: 1.5, 'tag:social': 0.8 } },
+    ] });
+    athelas.course({
+      id: 'cold', label: 'A cold', tags: ['illness'], immunity: 5 * DAY,
+      contagion: { chance: 0.05, resist: [{ name: 'courage', input: 'trait.courage', out: [1.3, 0.7] }] },
+      phases: [
+        { id: 'coming_on', label: 'coming on', minutes: [300, 540], spreads: false },
+        { id: 'sniffles', label: 'the sniffles', minutes: [900, 1800], rates: { energy: 1.4 }, weigh: { nap: 2, sleep: 1.3, 'tag:outdoors': 0.5, '*': 0.85 } },
+      ],
+    });
+    // Kofi has brought a cold back from his lectures, and it may go round
+    if (!w.kept('a_cold')) { athelas.afflict('kofi', 'cold'); w.keep('a_cold', true); }
   }
 
   // ---- Strangers -------------------------------------------------------------

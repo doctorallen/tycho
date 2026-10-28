@@ -186,7 +186,6 @@ console.log(world.describe('mo'));
 | Expecting an input from a listener to apply at once | The state hasn't changed yet; `world.input` returned `undefined` | Inputs in listeners are deferred to the end of the event; react to the next event instead |
 | Writing `world.s` or calling engine methods from game code | Works until a rewind or replay, then the world diverges | Use an input; for anything missing, `world.defineInput` |
 | Shell travel times that don't match walking speed | Sprites arrive before or after Tyrell's timetable; near and far disagree | Return the route length divided by walking speed, or place walkers by `travel.f` |
-| Reporting `'failed'` when the obstacle stays | The person tries again each time the back-off (`config.backoff`, 15 minutes) runs out, and fails again | Change something too (a `closed:<id>` fact, a fact the action's `if` reads) |
 | Setup inputs (`ceres.pay`, `income`, `rent`, `setPartner`, `secret`) on every start | Repeated on top of a loaded save | Guard with `world.kept('setup')` and `world.keep('setup', true)` |
 | Changing a person's routine in code | Saved people keep their saved definition | A custom input that patches `world.get(id).def`, run once per content version ([saving.md](saving.md#changing-content-under-existing-saves)) |
 | `money` in conditions with a household purse | Reads 0 for household members | Use `purse` (Ceres) |

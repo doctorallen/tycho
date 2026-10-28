@@ -30,6 +30,7 @@ import type { Joi } from '../modules/joi';
 import type { Athelas } from '../modules/athelas';
 import type { Delos } from '../modules/delos';
 import type { Voice } from '../modules/voice';
+import type { Bree } from '../modules/bree';
 import type {
   ActionDef, Body, Config, Ctx, DeedDef, Decision, Directive, HeldWish, Id, NeedDef, Options, PersonDef, PersonState,
   PastimeDef, PlaceDef, Shell, SkillDef, Stimulus, TaskDef, Value, WishDef, WorldState,
@@ -350,6 +351,8 @@ export class World {
   get delos(): Delos | undefined { return this.modules.get('delos') as Delos | undefined; }
   /** Branching conversations: threads of beats, answers with approaches, promises. */
   get voice(): Voice | undefined { return this.modules.get('voice') as Voice | undefined; }
+  /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
+  get bree(): Bree | undefined { return this.modules.get('bree') as Bree | undefined; }
 
   // -------------------------------------------------------------------------
   // Talking to the world while it runs

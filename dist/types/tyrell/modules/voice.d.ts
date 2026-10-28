@@ -1,15 +1,13 @@
 import type { Module } from '../core/module';
 import type { Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
 import type { World } from '../core/world';
+import type { LandRules } from './landing';
 /** A way of coming at someone: how it lands depends on them. */
 export interface ApproachDef {
     id: Id;
     label?: string;
-    /** How it lands: rules whose conditions hold are added up (ctx: the listener as person, the speaker as target), or a function. Above 0 lands well, below badly. */
-    lands?: Array<{
-        if?: Cond[];
-        by: number;
-    }> | ((ctx: Ctx) => number);
+    /** How it lands: rules whose conditions hold are added up (ctx: the listener as person, the speaker as target), or a function. Above 0 lands well, below badly. Bree's kinds can land the same way (their `approach`). */
+    lands?: LandRules;
     /** Added to every landing. Default 0. */
     base?: number;
 }

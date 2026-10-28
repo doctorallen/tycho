@@ -24,13 +24,15 @@ import type { Module } from '../core/module';
 import type { Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
 import type { World } from '../core/world';
 import { DAY, Stream, clamp, round } from '../core/util';
+import { landing } from './landing';
+import type { LandRules } from './landing';
 
 /** A way of coming at someone: how it lands depends on them. */
 export interface ApproachDef {
   id: Id;
   label?: string;
-  /** How it lands: rules whose conditions hold are added up (ctx: the listener as person, the speaker as target), or a function. Above 0 lands well, below badly. */
-  lands?: Array<{ if?: Cond[]; by: number }> | ((ctx: Ctx) => number);
+  /** How it lands: rules whose conditions hold are added up (ctx: the listener as person, the speaker as target), or a function. Above 0 lands well, below badly. Bree's kinds can land the same way (their `approach`). */
+  lands?: LandRules;
   /** Added to every landing. Default 0. */
   base?: number;
 }
@@ -516,10 +518,7 @@ export class Voice implements Module {
     const def = this.approaches.get(id);
     if (!def) return 0;
     const ctx = this.ctx(talk);
-    let d = def.base ?? 0;
-    if (typeof def.lands === 'function') d += Number(def.lands(ctx)) || 0;
-    else for (const r of def.lands || []) if (!r.if || this.w.lang.all(r.if, ctx)) d += r.by;
-    d = round(d, 4);
+    const d = landing(this.w.lang, def.base ?? 0, def.lands, ctx);
     talk.warmth = round(talk.warmth + d, 4);
     talk.landed = d > 0 ? 'well' : d < 0 ? 'badly' : 'even';
     const c = this.c;

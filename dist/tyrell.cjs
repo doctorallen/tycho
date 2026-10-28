@@ -22,6 +22,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   Athelas: () => Athelas,
+  Bree: () => Bree,
   CORE_KNOBS: () => CORE_KNOBS,
   Ceres: () => Ceres,
   Cityspeak: () => Cityspeak,
@@ -37,6 +38,7 @@ __export(index_exports, {
   MODULES: () => MODULES,
   MODULE_DEFAULTS: () => MODULE_DEFAULTS,
   Mentat: () => Mentat,
+  OUTCOMES: () => OUTCOMES,
   Reverie: () => Reverie,
   SCHEMA: () => SCHEMA,
   Stream: () => Stream,
@@ -45,6 +47,7 @@ __export(index_exports, {
   VoightKampff: () => VoightKampff,
   World: () => World,
   Wormtongue: () => Wormtongue,
+  breeStarter: () => breeStarter,
   clamp: () => clamp,
   create: () => create,
   curveAt: () => curveAt,
@@ -3053,6 +3056,10 @@ var World = class {
   /** Branching conversations: threads of beats, answers with approaches, promises. */
   get voice() {
     return this.modules.get("voice");
+  }
+  /** Interactions between people: exchanges by degrees, conversations over turns, quarrels, grudges, feuds and making up. */
+  get bree() {
+    return this.modules.get("bree");
   }
   // -------------------------------------------------------------------------
   // Talking to the world while it runs
@@ -7193,6 +7200,14 @@ var Delos = class {
   }
 };
 
+// tyrell/src/modules/landing.ts
+function landing(lang, base, lands, ctx) {
+  let d = base;
+  if (typeof lands === "function") d += Number(lands(ctx)) || 0;
+  else for (const r of lands || []) if (!r.if || lang.all(r.if, ctx)) d += r.by;
+  return round(d, 4);
+}
+
 // tyrell/src/modules/voice.ts
 var DEFAULT_VOICE = {
   offers: 3,
@@ -7514,10 +7529,7 @@ var Voice = class {
     const def = this.approaches.get(id);
     if (!def) return 0;
     const ctx = this.ctx(talk);
-    let d = def.base ?? 0;
-    if (typeof def.lands === "function") d += Number(def.lands(ctx)) || 0;
-    else for (const r of def.lands || []) if (!r.if || this.w.lang.all(r.if, ctx)) d += r.by;
-    d = round(d, 4);
+    const d = landing(this.w.lang, def.base ?? 0, def.lands, ctx);
     talk.warmth = round(talk.warmth + d, 4);
     talk.landed = d > 0 ? "well" : d < 0 ? "badly" : "even";
     const c = this.c;
@@ -7790,6 +7802,564 @@ var Voice = class {
   }
 };
 
+// tyrell/src/modules/bree.ts
+var OUTCOMES = ["warm", "good", "fine", "awkward", "sour", "row"];
+var DEFAULT_BREE = {
+  warmth: 1,
+  quarrels: 1,
+  escalation: 1,
+  grudges: 1,
+  forgiveness: 1,
+  talk: 1,
+  strike: 0.3,
+  quiet: ["sleep"],
+  needPull: 2,
+  traits: { temper: "trait.temper", warmth: "trait.warmth", humor: "trait.humor", patience: "trait.patience", courage: "trait.courage", forgiveness: "trait.forgiveness", talkative: "trait.talkative" },
+  scale: [2, 0.75, -0.75, -1.75, -3],
+  spread: 1.5,
+  regardWeight: 2,
+  compatWeight: 1,
+  moodWeight: 1,
+  stressWeight: 1,
+  needWeight: 2,
+  attractWeight: 3,
+  grudgeWeight: 3,
+  rowWeight: 2,
+  rowMinutes: 1440,
+  roomWeight: 0.5,
+  topicWeight: 1,
+  mannerWeight: 1,
+  sway: 0.4,
+  regard: { warm: 0.04, good: 0.02, fine: 5e-3, awkward: -0.01, sour: -0.03, row: -0.08 },
+  attraction: { warm: 0.05, good: 0.025, fine: 0, awkward: -0.01, sour: -0.03, row: -0.06 },
+  grudge: { warm: 0, good: 0, fine: 0, awkward: 0, sour: 0.1, row: 0.25 },
+  mends: { warm: 1.5, good: 1, fine: 0.5, awkward: 0, sour: 0, row: 0 },
+  feel: { warm: "good_talk", sour: "had_words", row: "had_words", long: "long_chat", left: "snubbed" },
+  memory: { row: 5 },
+  groupShare: 0.5,
+  longTurns: 6,
+  leftRegard: -0.03,
+  teachOver: 0.2,
+  turns: { partner: 8, kin: 6, close: 8, friend: 5, acquaintance: 3, stranger: 2, rival: 4, sour: 2 },
+  bonds: [0.6, 0.3, 0.05, -0.15],
+  rivalAt: 0.3,
+  talkativeTurns: 2,
+  lowMood: 0.35,
+  lowMoodTurns: 2,
+  turnsJitter: 1,
+  minTurns: 2,
+  maxTurns: 12,
+  quickTurns: 2,
+  groupTurns: 3,
+  turnGap: [2, 4],
+  topicPull: 0.5,
+  topicCooldown: DAY,
+  topicMemory: 8,
+  tellAt: "fine",
+  trust: 0.7,
+  shareWindow: HOUR,
+  likeAbove: 1.1,
+  mannerJitter: 0.1,
+  groupMax: 5,
+  joinChance: 0.5,
+  joinRegard: 0,
+  escalateAt: "sour",
+  escalateBase: 0.25,
+  escalateTemper: 0.5,
+  escalateStress: 0.5,
+  escalateGrudge: 0.6,
+  escalateRegard: 0.5,
+  calmBase: 0.1,
+  calmPatience: 0.6,
+  calmRegard: 0.3,
+  stepInBase: 0.05,
+  stepInRegard: 0.5,
+  stepInCourage: 0.3,
+  stepInFrom: 0.2,
+  mediateRegard: 0.03,
+  mediateMends: 0.1,
+  leaveBase: 0.3,
+  leaveTemper: 0.35,
+  leaveRegard: 0.3,
+  leaveSour: 0.2,
+  grudgeTemper: 0.5,
+  grudgeForgive: 0.5,
+  fade: 0.04,
+  forgiveBase: 0.5,
+  forgiveTrait: 1,
+  grudgeFloor: 0.02,
+  feudAt: 0.5,
+  feudFade: 0.01,
+  feudSpread: 0,
+  feudMends: 0.5,
+  avoidFrom: 0.05,
+  avoidPlace: 0.6,
+  avoidTarget: 0.8,
+  avoidFloor: 0.1,
+  hostilePull: 1,
+  reconcileLabel: "made it up",
+  reconcileSentiment: 0.05,
+  reconcileFeeling: "made_up",
+  reconcileMemory: 5,
+  seenAt: "sour",
+  witnessStrength: 0.8,
+  witnessMemory: 3,
+  witnessRegard: 0.5,
+  witnessFeeling: "saw_row",
+  recent: 50
+};
+var BREE_FEELINGS = [
+  { id: "good_talk", label: "A good talk", weight: 0.05, minutes: 4 * HOUR, emotion: "happy" },
+  { id: "long_chat", label: "A proper long talk", weight: 0.07, minutes: 7 * HOUR, emotion: "happy" },
+  { id: "had_words", label: "Had words with someone", weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: "angry" },
+  { id: "snubbed", label: "Brushed off", weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: "sad" },
+  { id: "fought", label: "In a fight", weight: -0.2, minutes: DAY, stack: 2, emotion: "angry" },
+  { id: "made_up", label: "Made it up", weight: 0.1, minutes: DAY, emotion: "relieved" },
+  { id: "saw_row", label: "Saw a row", weight: -0.04, minutes: 4 * HOUR, emotion: "tense" },
+  { id: "comforted", label: "Someone was kind", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
+];
+var pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+function breeStarter(opts = {}) {
+  const co = opts.company ?? "company", fun = opts.fun ?? "fun";
+  const nature = (role, lo, hi) => ({ name: role, input: "nature." + role, out: [lo, hi] });
+  const kinds = [
+    {
+      id: "chat",
+      label: "a chat",
+      tags: ["talk", "friendly"],
+      topics: ["*"],
+      group: true,
+      relieves: { [co]: 0.15, [fun]: 0.05 },
+      escalates: "argue",
+      weight: [nature("talkative", 0.5, 1.5)]
+    },
+    {
+      id: "deep_talk",
+      label: "a heart to heart",
+      tags: ["talk", "friendly"],
+      topics: ["tag:deep", "*"],
+      to: ["regard>0.3"],
+      relieves: { [co]: 0.3 },
+      base: 0.25,
+      traits: { warmth: 0.5 },
+      regard: 1.5,
+      escalates: "argue",
+      weight: [nature("warmth", 0.2, 1)],
+      on: { long: { memory: 4 } }
+    },
+    {
+      id: "joke",
+      label: "a joke",
+      tags: ["friendly"],
+      relieves: { [fun]: 0.1 },
+      base: 0.25,
+      traits: { humor: 1.5, temper: -0.5 },
+      skill: { humor: 1 },
+      escalates: "argue",
+      weight: [nature("humor", 0.1, 1.2)]
+    },
+    {
+      id: "compliment",
+      label: "a compliment",
+      tags: ["friendly"],
+      to: ["regard>0"],
+      base: 1,
+      traits: { warmth: 0.5 },
+      weight: 0.4,
+      on: { warm: { sentiment: { label: "said something kind", by: 0.05, minutes: 2 * DAY } } }
+    },
+    {
+      id: "tease",
+      label: "some teasing",
+      tags: ["friendly"],
+      to: ["regard>0.2"],
+      relieves: { [fun]: 0.1 },
+      traits: { humor: 1, temper: -1.5 },
+      skill: { humor: 0.5 },
+      escalates: "argue",
+      weight: [nature("humor", 0.1, 0.8)]
+    },
+    {
+      id: "flirt",
+      label: "flirting",
+      tags: ["romantic", "talk"],
+      topics: ["tag:romantic", "small_talk"],
+      who: ["!is:child"],
+      to: ["attraction>0.1", "!target.is:child"],
+      traits: { warmth: 0.5 },
+      skill: { humor: 0.5, warmth: 0.5 },
+      weight: [{ name: "attraction", input: "attraction", range: [0, 1], out: [0.2, 2.5] }]
+    },
+    {
+      id: "comfort",
+      label: "a word of comfort",
+      tags: ["friendly"],
+      to: ["target.mood<0.4", "regard>0"],
+      relieves: { [co]: 0.2 },
+      base: 0.5,
+      lands: [{ if: ["mood<0.35"], by: 1 }],
+      skill: { warmth: 1 },
+      weight: [nature("warmth", 0.2, 1.5)],
+      on: { warm: { feel: [null, "comforted"] }, good: { feel: [null, "comforted"] } }
+    },
+    { id: "favor", label: "asking a favor", to: ["regard>0.1"], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ["regard>0.4"], by: 1 }], owes: 1, weight: 0.2 },
+    {
+      id: "gift",
+      label: "a gift",
+      tags: ["friendly"],
+      to: ["regard>0"],
+      base: 1.5,
+      regard: 2,
+      mends: 0.2,
+      weight: 0.1,
+      on: { warm: { sentiment: { label: "gave me a present", by: 0.1, minutes: 7 * DAY } } }
+    },
+    { id: "help", label: "a hand", tags: ["friendly"], to: ["regard>0.1"], base: 1, regard: 1.5, mends: 0.1, deed: "helped", weight: 0.2 },
+    { id: "teach", label: "a lesson", tags: ["friendly"], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
+    {
+      id: "argue",
+      label: "an argument",
+      tags: ["hostile", "talk"],
+      topics: ["grievance", "*"],
+      turns: [3, 5],
+      base: -1,
+      traits: { temper: -1, patience: 1 },
+      regard: 1.5,
+      escalates: "fight",
+      weight: [{ name: "grudge", input: "grudge", out: [0.05, 2] }, { name: "regard", input: "regard", range: [-1, 0.5], out: [1.5, 0.2] }],
+      on: { row: { memory: 5 } }
+    },
+    {
+      id: "insult",
+      label: "an insult",
+      tags: ["hostile"],
+      to: ["regard<-0.2"],
+      base: -2.5,
+      traits: { temper: -1, forgiveness: 0.5 },
+      skill: { humor: 0.5 },
+      regard: 1.5,
+      grudge: 1.5,
+      escalates: "fight",
+      weight: [{ name: "dislike", input: "regard", range: [-1, -0.2], out: [1, 0.1] }]
+    },
+    {
+      id: "fight",
+      label: "a fight",
+      tags: ["hostile"],
+      turns: 2,
+      base: -4,
+      traits: { courage: 0.5 },
+      regard: 2,
+      grudge: 2,
+      crime: "fight",
+      weight: 0,
+      on: { sour: { feel: "fought", memory: 6 }, row: { feel: "fought", memory: 7 } }
+    },
+    {
+      id: "apologize",
+      label: "an apology",
+      tags: ["friendly"],
+      to: ["grudged>0.05"],
+      base: 0.5,
+      traits: { forgiveness: 1.5, temper: -0.5 },
+      skill: { warmth: 0.5 },
+      mends: 0.5,
+      weight: [{ name: "their grudge", input: "grudged", out: [0.3, 3] }, nature("warmth", 0.3, 1.5)],
+      on: { sour: { feel: ["snubbed", null] }, row: { feel: ["snubbed", null] } }
+    },
+    {
+      id: "make_up",
+      label: "making up",
+      tags: ["friendly"],
+      to: ["grudge>0.05", "grudged>0.05"],
+      turns: 3,
+      base: 0.5,
+      traits: { forgiveness: 1.5 },
+      mends: 0.6,
+      mutual: true,
+      weight: [nature("forgiveness", 0.3, 2)]
+    },
+    {
+      id: "avoid",
+      label: "the cold shoulder",
+      tags: ["hostile"],
+      to: ["grudge>0.3"],
+      turns: 1,
+      base: -1,
+      regard: 0.5,
+      grudge: 0,
+      weight: [{ name: "grudge", input: "grudge", out: [0, 2] }],
+      on: { end: { feel: [null, "snubbed"] } }
+    }
+  ];
+  const topics = [
+    { id: "small_talk", label: "this and that" },
+    { id: "news", label: "the news", from: "beliefs", weight: 1.5 },
+    { id: "old_times", label: "old times", from: "memories", tags: ["deep"], fit: [{ if: ["regard>0.3"], by: 0.5 }] },
+    { id: "pastimes", label: "what they love doing", from: "likes" },
+    { id: "here", label: "this place", from: "place", weight: 0.6 },
+    { id: "the_moment", label: "what they're at", from: "doing", weight: 0.8 },
+    { id: "troubles", label: "their troubles", tags: ["deep"], if: ["mood<0.45"], fit: [{ if: ["nature.warmth>0.6"], by: 0.5 }], kinds: ["deep_talk", "comfort"] },
+    { id: "sweet_nothings", label: "sweet nothings", tags: ["romantic"], kinds: ["flirt"], fit: [{ if: ["attraction>0.3"], by: 1 }] },
+    { id: "grievance", label: "what's wrong between them", from: "grudge", kinds: ["argue"], weight: 3 }
+  ];
+  const manners = [
+    { id: "plain", label: "plain", base: 0.1 },
+    { id: "warm", label: "warm", traits: { warmth: 2 }, fits: [{ if: ["mood>0.6"], by: 0.3 }], lands: [{ by: 0.25 }] },
+    { id: "witty", label: "witty", traits: { humor: 2 }, lands: [{ if: ["nature.humor>0.6"], by: 0.75 }, { if: ["nature.temper>0.7"], by: -0.5 }] },
+    { id: "ornery", label: "ornery", traits: { temper: 2 }, fits: [{ if: ["mood<0.4"], by: 0.5 }, { if: ["stress>0.5"], by: 0.5 }], lands: [{ by: -0.75 }] },
+    { id: "shy", label: "shy", traits: { talkative: -2 } },
+    { id: "gloomy", label: "gloomy", base: -0.6, fits: [{ if: ["mood<0.35"], by: 1.2 }], lands: [{ by: -0.25 }, { if: ["nature.warmth>0.6"], by: 0.25 }] }
+  ];
+  const keep = (list, ids) => ids ? list.filter((d) => ids.includes(d.id)) : list;
+  return { kinds: keep(kinds, opts.kinds), topics: keep(topics, opts.topics), manners: keep(manners, opts.manners) };
+}
+var Bree = class {
+  constructor(cfg = {}) {
+    this.name = "bree";
+    this.knobs = { warmth: "person", quarrels: "person", escalation: "person", grudges: "person", forgiveness: "person", talk: "person" };
+    this.kinds = /* @__PURE__ */ new Map();
+    this.topics = /* @__PURE__ */ new Map();
+    this.manners = /* @__PURE__ */ new Map();
+    this.config = { ...DEFAULT_BREE, ...cfg };
+  }
+  get st() {
+    return this.w.s.mod.bree;
+  }
+  mut() {
+    var _a;
+    return (_a = this.w.s.mod).bree || (_a.bree = { n: 0, ids: 0, v: 0, ex: {}, of: {}, g: {}, feuds: {}, pairs: {}, recent: [] });
+  }
+  /** The config in force: as declared, under any world.tune. */
+  get c() {
+    return this.w.tuned(this.name, this.config);
+  }
+  /** A headline knob for someone: the world's, times their own. */
+  knob(name, id) {
+    return this.c[name] * this.w.own(id === void 0 ? void 0 : this.w.s.people[id], this.name, name);
+  }
+  attach(w) {
+    this.w = w;
+    const L = w.lang;
+    const other = (c, a) => a && a !== "target" ? a : c.target ?? null;
+    L.term("nature", (c, a) => c.person ? this.nature(c.person, a) : w.cfg.traitDefault);
+    L.term("grudge", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.grudge(c.person.id, o) : 0;
+    });
+    L.term("grudged", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.grudge(o, c.person.id) : 0;
+    });
+    L.term("feud", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.feudBetween(c.person.id, o) : 0;
+    });
+    L.term("bond", (c, a) => {
+      const o = c.target ?? null;
+      if (!c.person || !o) return a ? false : null;
+      const b = this.bond(c.person.id, o);
+      return a ? b === a : b;
+    });
+    L.term("rowed", (c, a) => {
+      const o = other(c, a);
+      const row = c.person && o ? this.st?.pairs[pairKey(c.person.id, o)]?.row : void 0;
+      return row === void 0 ? null : round(w.s.now - row, 2);
+    });
+    L.term("exchanges", (c, a) => {
+      const o = other(c, a);
+      return c.person && o ? this.st?.pairs[pairKey(c.person.id, o)]?.n ?? 0 : 0;
+    });
+    const rv = w.reverie;
+    if (rv) {
+      for (const f of BREE_FEELINGS) if (!rv.feelingDefs.has(f.id)) rv.feelingDefs.set(f.id, f);
+    }
+    w.defineInput("bree.grudge", (a, b, by, why) => this.applyGrudge(a, b, by, why ?? "the game"));
+    w.defineInput("bree.feud", (a, b, s, why) => this.applyFeud(a, b, s, why ?? "the game"));
+  }
+  // -------------------------------------------------------------------------
+  // Declaring
+  // -------------------------------------------------------------------------
+  kind(def) {
+    this.kinds.set(def.id, def);
+    return this;
+  }
+  topic(def) {
+    this.topics.set(def.id, def);
+    return this;
+  }
+  manner(def) {
+    this.manners.set(def.id, def);
+    return this;
+  }
+  /** Declares the starter set (or some of it): kinds, topics and manners. Declare your own with the same ids after, to change them. */
+  starter(opts = {}) {
+    const s = breeStarter(opts);
+    for (const d of s.topics) this.topic(d);
+    for (const d of s.manners) this.manner(d);
+    for (const d of s.kinds) this.kind(d);
+    return this;
+  }
+  // -------------------------------------------------------------------------
+  // Reading people
+  // -------------------------------------------------------------------------
+  /** Someone's nature in a role (temper, warmth, humor, patience, courage, forgiveness, talkative), read from the term the config maps it to. */
+  nature(p, role) {
+    const term = this.c.traits[role];
+    const mid2 = this.w.cfg.traitDefault;
+    if (!term) return mid2;
+    const v = this.w.lang.value(term, this.w.ctx(p));
+    return typeof v === "number" && isFinite(v) ? v : mid2;
+  }
+  /** How a stands with b: 'partner', 'kin', 'rival', or by regard: 'close', 'friend', 'acquaintance', 'stranger', 'sour'. */
+  bond(a, b) {
+    const w = this.w, fs = w.fellowship, c = this.c;
+    if (fs?.partner(a) === b) return "partner";
+    if (fs) {
+      const h = fs.household(a);
+      if (h && h === fs.household(b)) return "kin";
+    }
+    const cr = w.cradle;
+    if (cr && (cr.parents(a).includes(b) || cr.parents(b).includes(a))) return "kin";
+    if (Math.min(this.animosity(a, b), this.animosity(b, a)) >= c.rivalAt) return "rival";
+    const r = fs ? fs.regard(a, b) : 0;
+    const [close, friend, acq, stranger] = c.bonds;
+    return r >= close ? "close" : r >= friend ? "friend" : r >= acq ? "acquaintance" : r >= stranger ? "stranger" : "sour";
+  }
+  /** Where a score falls on the scale. */
+  outcome(score) {
+    const s = this.c.scale;
+    for (let i = 0; i < s.length && i < OUTCOMES.length - 1; i++) if (score >= s[i]) return OUTCOMES[i];
+    return "row";
+  }
+  /** Is outcome x at least as good as y? */
+  atLeast(x, y) {
+    return OUTCOMES.indexOf(x) <= OUTCOMES.indexOf(y);
+  }
+  // -------------------------------------------------------------------------
+  // Grudges and feuds
+  // -------------------------------------------------------------------------
+  /** How readily someone forgives: their knob times their nature. */
+  forgiving(id) {
+    const p = this.w.s.people[id];
+    const c = this.c;
+    return this.knob("forgiveness", id) * (c.forgiveBase + c.forgiveTrait * (p ? this.nature(p, "forgiveness") : this.w.cfg.traitDefault));
+  }
+  /** a's grudge against b now, 0..1 (it fades from when it was last set). */
+  grudge(a, b) {
+    const g = this.st?.g[a]?.[b];
+    if (!g) return 0;
+    const days = (this.w.s.now - g[1]) / DAY;
+    return round(Math.max(0, g[0] - this.c.fade * this.forgiving(a) * days), 4);
+  }
+  /** Everyone a bears a grudge against: { id, strength, why }, strongest first. */
+  grudges(a) {
+    const out = [];
+    const g = this.st?.g[a];
+    if (g) for (const b of Object.keys(g)) {
+      const s = this.grudge(a, b);
+      if (s > 0) out.push({ id: b, strength: s, why: g[b][2] });
+    }
+    return out.sort((x, y) => y.strength - x.strength || (x.id < y.id ? -1 : 1));
+  }
+  /** Changes a's grudge against b (from the game: recorded). Negative eases it. */
+  grudgeAgainst(a, b, by, why) {
+    this.w.input("bree.grudge", [a, b, by, why ?? null]);
+  }
+  /** Changes a grudge inside the simulation. */
+  applyGrudge(a, b, by, why) {
+    var _a;
+    if (a === b || !this.w.s.people[a]) return;
+    const st = this.mut();
+    const now2 = this.w.s.now;
+    const s = clamp(this.grudge(a, b) + by);
+    const map = (_a = st.g)[a] || (_a[a] = {});
+    st.v++;
+    if (s <= 0) {
+      delete map[b];
+      if (!Object.keys(map).length) delete st.g[a];
+    } else map[b] = [round(s, 4), now2, by > 0 ? why : map[b]?.[2] ?? why];
+    this.w.log("grudge", a, { against: b, by: round(by, 4), strength: round(s, 4), why });
+    if (by > 0) this.w.emit("bree:grudge", { id: a, against: b, strength: round(s, 4), why });
+    const c = this.c;
+    if (by > 0 && s >= c.feudAt && this.grudge(b, a) >= c.feudAt && !st.feuds[pairKey(a, b)]) this.applyFeud(a, b, Math.min(s, this.grudge(b, a)), why);
+  }
+  /** A feud's strength now (it fades from when it was last set). */
+  feudStrength(f) {
+    const days = (this.w.s.now - f.t) / DAY;
+    return round(Math.max(0, f.s - this.c.feudFade * this.c.forgiveness * days), 4);
+  }
+  /** Is a person in a party (themselves, or a group they belong to)? */
+  inParty(id, party) {
+    return id === party || !!this.w.fellowship?.groupsOf(id).includes(party);
+  }
+  /** The feud between two people, as people or through their groups: its strength, 0 if none. */
+  feudBetween(a, b) {
+    const feuds = this.st?.feuds;
+    if (!feuds) return 0;
+    let best = 0;
+    for (const k of Object.keys(feuds)) {
+      const f = feuds[k];
+      if (this.inParty(a, f.a) && this.inParty(b, f.b) || this.inParty(a, f.b) && this.inParty(b, f.a)) best = Math.max(best, this.feudStrength(f));
+    }
+    return best;
+  }
+  /** Every feud: { a, b, strength, since, why }. */
+  feuds() {
+    const feuds = this.st?.feuds || {};
+    return Object.keys(feuds).sort().map((k) => ({ a: feuds[k].a, b: feuds[k].b, strength: this.feudStrength(feuds[k]), since: feuds[k].t, why: feuds[k].why })).filter((f) => f.strength > 0);
+  }
+  /** How much a has against b: their grudge or their feud, whichever is stronger. */
+  animosity(a, b) {
+    return Math.max(this.grudge(a, b), this.feudBetween(a, b));
+  }
+  /** Declares a feud between two people or two groups (from the game: recorded); a strength of 0 or null ends it. */
+  feud(a, b, strength, why) {
+    this.w.input("bree.feud", [a, b, strength, why ?? null]);
+  }
+  /** Sets a feud inside the simulation. */
+  applyFeud(a, b, s, why) {
+    if (a === b) return;
+    const st = this.mut();
+    const k = pairKey(a, b);
+    st.v++;
+    if (s === null || s <= 0) {
+      if (!st.feuds[k]) return;
+      delete st.feuds[k];
+      this.w.log("feud", a, { with: b, strength: 0, why });
+      this.w.emit("bree:feud", { a, b, strength: 0, why });
+      return;
+    }
+    const [x, y] = a < b ? [a, b] : [b, a];
+    st.feuds[k] = { a: x, b: y, s: round(clamp(s), 4), t: this.w.s.now, why };
+    this.w.log("feud", a, { with: b, strength: round(clamp(s), 4), why });
+    this.w.emit("bree:feud", { a, b, strength: round(clamp(s), 4), why });
+  }
+  // -------------------------------------------------------------------------
+  // Hooks
+  // -------------------------------------------------------------------------
+  day() {
+    const st = this.st;
+    if (!st) return;
+    const floor = this.c.grudgeFloor;
+    for (const a of Object.keys(st.g)) {
+      for (const b of Object.keys(st.g[a])) if (this.grudge(a, b) < floor) delete st.g[a][b];
+      if (!Object.keys(st.g[a]).length) delete st.g[a];
+    }
+    for (const k of Object.keys(st.feuds)) if (this.feudStrength(st.feuds[k]) < floor) delete st.feuds[k];
+  }
+  removed(p) {
+    const st = this.st;
+    if (!st) return;
+    delete st.g[p.id];
+    for (const a of Object.keys(st.g)) {
+      delete st.g[a][p.id];
+      if (!Object.keys(st.g[a]).length) delete st.g[a];
+    }
+    for (const k of Object.keys(st.feuds)) if (st.feuds[k].a === p.id || st.feuds[k].b === p.id) delete st.feuds[k];
+  }
+};
+
 // tyrell/src/tools/voightkampff.ts
 var builtins = {
   "nobody-starves": {
@@ -7976,7 +8546,7 @@ function compare2(report, baseline, tolerance = 0.05) {
 
 // tyrell/src/index.ts
 var VERSION = "2.0.0";
-var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice"];
+var MODULES = ["reverie", "fellowship", "wormtongue", "cityspeak", "mentat", "gaff", "ceres", "cradle", "joi", "athelas", "delos", "voice", "bree"];
 function create(opts = {}) {
   const names = opts.modules ?? [...MODULES];
   const cfg = opts.moduleConfig || {};
@@ -7992,7 +8562,8 @@ function create(opts = {}) {
     joi: () => new Joi(cfg.joi),
     athelas: () => new Athelas(cfg.athelas),
     delos: () => new Delos(cfg.delos),
-    voice: () => new Voice(cfg.voice)
+    voice: () => new Voice(cfg.voice),
+    bree: () => new Bree(cfg.bree)
   };
   const modules = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -8013,5 +8584,6 @@ var MODULE_DEFAULTS = {
   joi: DEFAULT_JOI,
   athelas: DEFAULT_ATHELAS,
   delos: DEFAULT_DELOS,
-  voice: DEFAULT_VOICE
+  voice: DEFAULT_VOICE,
+  bree: DEFAULT_BREE
 };

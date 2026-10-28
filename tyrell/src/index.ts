@@ -24,6 +24,7 @@ import { Joi, DEFAULT_JOI } from './modules/joi';
 import { Athelas, DEFAULT_ATHELAS } from './modules/athelas';
 import { Delos, DEFAULT_DELOS } from './modules/delos';
 import { Voice, DEFAULT_VOICE } from './modules/voice';
+import { Bree, DEFAULT_BREE, OUTCOMES, breeStarter } from './modules/bree';
 import { run, compare } from './tools/voightkampff';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
@@ -32,7 +33,7 @@ import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from '
 export const VERSION = '2.0.0';
 
 /** Every module that ships with Tyrell, by name. */
-export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice'] as const;
+export const MODULES = ['reverie', 'fellowship', 'wormtongue', 'cityspeak', 'mentat', 'gaff', 'ceres', 'cradle', 'joi', 'athelas', 'delos', 'voice', 'bree'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export interface CreateOptions extends Options {
@@ -59,6 +60,7 @@ export function create(opts: CreateOptions = {}): World {
     athelas: () => new Athelas(cfg.athelas as any),
     delos: () => new Delos(cfg.delos as any),
     voice: () => new Voice(cfg.voice as any),
+    bree: () => new Bree(cfg.bree as any),
   };
   const modules: Module[] = [];
   for (const n of MODULES) if (names.includes(n)) modules.push(make[n]());
@@ -74,11 +76,13 @@ export const VoightKampff = { run, compare };
 export const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>> = {
   reverie: DEFAULT_REVERIE, fellowship: DEFAULT_FELLOWSHIP, wormtongue: DEFAULT_WORMTONGUE, cityspeak: DEFAULT_CITYSPEAK, mentat: DEFAULT_MENTAT,
   gaff: DEFAULT_GAFF, ceres: DEFAULT_CERES, cradle: DEFAULT_CRADLE, joi: DEFAULT_JOI, athelas: DEFAULT_ATHELAS, delos: DEFAULT_DELOS, voice: DEFAULT_VOICE,
+  bree: DEFAULT_BREE,
 } as unknown as Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>>;
 
 export {
   World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA,
-  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice,
+  Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree,
+  OUTCOMES, breeStarter,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
 export type { SaveData, Module };
@@ -95,6 +99,8 @@ export type { JoiRequest, JoiReply, JoiProvider, Spoken, JoiConfig } from './mod
 export type { CourseDef, CoursePhase, AthelasConfig } from './modules/athelas';
 export type { GeneDef, BlendDef, Genome, Mutation, DelosConfig } from './modules/delos';
 export type { ApproachDef, AnswerDef, BeatDef, ThreadDef, PromiseDef, VoiceConfig, TalkLine, TalkOption, TalkView } from './modules/voice';
+export type { LandRules } from './modules/landing';
+export type { Outcome, OutcomeKey, OutcomeDo, KindDef, TopicDef, TopicSource, MannerDef, BreeConfig, Exchange, Feud, Finished, StarterOptions } from './modules/bree';
 export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';

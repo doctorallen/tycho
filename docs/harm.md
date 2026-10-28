@@ -1,6 +1,6 @@
 # Harm (proposed)
 
-**Proposed: nothing on this page is built yet.** It's the design for people and creatures hurting each other in games on Tycho: fights, traps, poison, falls, fire, and accidents nobody meant. It's here to be argued over, and the [open questions](#open-questions) settled, before any code is written.
+**Proposed: nothing on this page is built yet.** It's the design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. Its open questions are settled ([what's decided](#whats-decided)); the code comes next, in [this order](#the-order-to-build-it).
 
 The ideas come from Lodestar's own fighting (a hit that passes through resistances, armor, wards and statuses that react together, and hazards shown before they bite), RimWorld (wounds that need tending, infections, social fights that turn into brawls), Dwarf Fortress (grudges and vengeance that outlive the fight), Thief and Dishonored (traps and poison as the patient way to hurt someone, and accidents arranged to look like nothing), and Crusader Kings (murder by scheme, suspicion that falls on whoever had reason).
 
@@ -12,7 +12,7 @@ The ideas come from Lodestar's own fighting (a hit that passes through resistanc
 - [Athelas, grown](#athelas-grown)
 - [On screen and off](#on-screen-and-off)
 - [Each game](#each-game)
-- [Open questions](#open-questions)
+- [What's decided](#whats-decided)
 - [The order to build it](#the-order-to-build-it)
 
 ## The idea
@@ -53,7 +53,7 @@ flowchart LR
 | `place` | Where |
 | `seenBy` | Who saw it land: from the game's sight on screen (`Tycho.minds.witnesses`), everyone at the place off screen |
 
-A health bar is one game's fast pool, not the measure of harm. The general case is the wound it leaves, a course that runs, so a game with no health still has harm: a shock from a rigged machine can leave someone with shaking hands for an hour.
+A health bar is one game's fast pool, not the measure of harm. The general case is the wound it leaves, a condition that runs its course, so a game with no health still has harm: a shock from a rigged machine can leave someone with shaking hands for an hour. That goes for the player too: harm to the player leaves wounds, not a health bar (Lodestar's Kindler keeps his light, which is his health already).
 
 ## The act and the harm
 
@@ -88,6 +88,33 @@ const r = hit.land(foe, { by: kindler, amount: 12, kinds: ['ember'], knock: { x,
 // r: { amount, stopped, verdict, marks, follow, knock, stagger, stop }
 ```
 
+### Means: weapons, spells, poisons, traps
+
+What harm is done with is declared once, as a means, and the player and the characters wield the same ones.
+
+```js
+const MEANS = [
+  { id: 'cudgel', kinds: ['blunt'], use: 'strike', severity: 0.2,
+    move: { windup: 0.35, active: 0.1, recover: 0.45, area: { ahead: 14, w: 16, h: 12 } }, blow: { amount: 8, knock: 120 } },
+  { id: 'arc', kinds: ['shock'], use: 'cast', cost: { cooldown: 0.6 }, severity: 0.15,
+    move: { windup: 0.1, bolt: { speed: 260, range: 120 } }, blow: { amount: 6, statuses: ['shock'] } },
+  { id: 'nightshade', kinds: ['poison'], use: 'dose', course: 'nightshade' },
+  { id: 'snare', kinds: ['cut'], use: 'set', severity: 0.25, trigger: { box: [12, 4], once: true, hidden: true }, blow: { amount: 5 } },
+];
+Tycho.minds.means(world, MEANS);   // declared to Tycho.harm and to Morgul alike
+```
+
+A means is used one of a few ways:
+
+- **`strike`**: a move up close (a fist, a knife, a cudgel);
+- **`throw`** and **`shoot`**: a projectile (a stone, a dart, a bolt);
+- **`cast`**: a spell, a move with a cost: a cooldown, a charge, or a pool the game names (mana, light). Lodestar's rig and its spells are the first;
+- **`coat`**: onto another means, so its blows carry this one's status or course for a few uses (a poisoned blade);
+- **`dose`**: into food or drink, a [taint](#poison);
+- **`set`**: a [trap](#traps), a trigger in space here and a hazard in Morgul.
+
+The on-screen fields (the move, the blow, the trigger) are what `Tycho.harm` plays in frames; the off-screen ones (the kinds, `severity`, `course`) are what Morgul settles by numbers. The player wields a means as gear (`Tycho.items`: a thing in a slot, with the means as its own), or the game's own way (Lodestar's rig); a character holds it as a Ceres good of the same id, which they can buy, carry, be given and use up, and which Morgul reads (`armed`, a fight's odds, `has:nightshade` before a poisoning). So a character holding a cudgel strikes with its move on screen and its severity off screen.
+
 ### Statuses
 
 What a hit leaves on a body for a while: a burn, a chill, a charge building to overload, a poison ticking. Each is declared with its time, how often it bites (`every`), how much, how it stacks, and whether it spreads (on a death, or on a hit). Two statuses that meet react, from a table the game gives (Lodestar's eight reactions and five stacks are the first).
@@ -99,6 +126,10 @@ An attack is a timeline: a wind-up (the tell), the strike (the frames it can hit
 ### Triggers
 
 Harm that waits in space: a trap, a vent, a cloud. A trigger has a zone (a box, a line for a tripwire), what sets it off (a body entering it, or a cycle), whether it's armed, who set it, whether it's hidden, and the blow it lands. A cycle shows before it bites: Lodestar's vents glow and then burst, its spore pods swell and then let go. A snare is a zone entered once; a tripwire a line; a gas trap a zone that leaves a cloud behind.
+
+### The player's wounds
+
+The player isn't one of Tyrell's people (to Tyrell the player is `'player'`, someone who does things), so Athelas doesn't hold the player's wounds: `Tycho.harm` does, as conditions that run on the game's clock in game minutes, in phases shaped like Athelas's (sore for an hour, then stiff for a day). The game reads them for what they change (`has(player, 'shaky')` makes bench work rougher; a sprain slows the stick's pace) and keeps them in its own save. One wound table declares both: the bridge gives Athelas the course for characters and `Tycho.harm` the condition for the player. At its worst the player is knocked down, and the game says what that costs (time, money, what they were carrying); the player never dies of harm unless a game allows it.
 
 ### The feel
 
@@ -162,11 +193,11 @@ Tainted servings travel with the goods: bought, they go home with the buyer (the
 
 ### Suspicion
 
-When a harm is seen, whoever saw it knows who did it. When it isn't (a trap sprung, a poison that tells, a body found), suspicion falls where people have reason to put it: whoever set or served it if anyone saw that; whoever bore the victim a grudge (Bree's `animosity`); whoever was about. Each is a belief, as strong as the evidence, and it can be wrong. A scapegoat can be blamed and hated for a harm someone else did, and gossip spreads the wrong name as readily as the right one.
+When a harm is seen, whoever saw it knows who did it. When it isn't (a trap sprung, a poison that tells, a body found), suspicion falls where people have reason to put it: whoever set or served it if anyone saw that; whoever bore the victim a grudge (Bree's `animosity`); whoever was about. Each is a belief, as strong as the evidence, and it can be wrong. A scapegoat can be blamed and hated for a harm someone else did, and gossip spreads the wrong name as readily as the right one. Nobody investigates: suspicion is all there is, and working out the truth is the player's to do.
 
 ### Fights by numbers
 
-Off screen, a Bree fight comes out by a contest. Each turn of it, one of them lands a blow, by the odds of their `might` (the game's considerations: strength, size, skill, nerve, what they're holding: a good with `harm: { kind: 'cut', severity: 0.3 }`) and how hurt each already is. A fight ends as Bree's do, by someone stepping in or someone walking off, and two more ways: someone yields (hurt past `yieldAt`, sooner for the timid), or someone goes down. Everything above then follows from each blow.
+Off screen, a Bree fight comes out by a contest. Each turn of it, one of them lands a blow, by the odds of their `might` (the game's considerations: strength, size, skill, nerve, what they're holding: a [means](#means-weapons-spells-poisons-traps), by its `severity`) and how hurt each already is. A fight ends as Bree's do, by someone stepping in or someone walking off, and two more ways: someone yields (hurt past `yieldAt`, sooner for the timid), or someone goes down. Everything above then follows from each blow.
 
 ### Choosing harm
 
@@ -196,6 +227,7 @@ Headline knobs, as everywhere in Tyrell: the world's, times each person's own `t
 
 | Method | | |
 |---|---|---|
+| `means(def)` | definition | What harm is done with, as [above](#means-weapons-spells-poisons-traps): its kinds, use, `severity`, `course` (the bridge's `means` declares it here and to Tycho at once) |
 | `wound(def)` | definition | A harm's kind and severity band, and the course it leaves |
 | `trap(def)` | definition | A kind of trap: its harm, `hidden`, `uses`, `catch` |
 | `harm(h)` | **input** | A harm, from the game (on screen) |
@@ -224,33 +256,39 @@ Wounds and poisons need a little more of Athelas than colds and ale do:
 
 Tyrell has no coordinates, so off screen Morgul settles harm by numbers: a fight by its contest, a trap by its chance, a poison by who eats. On screen the game plays it out with `Tycho.harm` and reports each harm (`morgul.harm`) and each trap sprung (`morgul.spring`). The bridge does the handing over, the way Tyrell already hands bodies to the game near the player:
 
-- `Tycho.minds.harm(world, blow, { seenBy })` turns a hit Tycho landed into a harm, with its witnesses.
-- A fight whose place comes near pauses its turns and goes to the game, which plays it with moves and reports the blows and the end; one that goes far is settled by numbers from where it stands.
+- `Tycho.minds.means(world, list)` declares the means to both sides; `Tycho.minds.harm(world, blow, { seenBy })` turns a hit Tycho landed into a harm, with its witnesses.
+- A fight between characters goes on by numbers wherever it is. Near the player the game shows it as a scuffle: two bodies tussling, a blow landing as each turn lands, so what's seen and what's settled agree turn for turn.
+- A fight with the player in it is played in frames: the player's strikes, casts and throws through `Tycho.harm`, and the character's back with the moves of what they hold (fists, if nothing). Whether they fight back, flee, yield or call for help is Tyrell's choice, asked as the fight starts and after each blow.
 - A trap at a place near the player is left to the game's trigger, so nobody is caught twice.
 
 Lodestar's creatures stay frame brains in the game, not Tyrell minds; only people get the whole chain.
 
 ## Each game
 
-What each game might take. None of it is decided.
+- **Lodestar**: `Tycho.harm` only. Its fighting moves in as it is: natures, armor, wards, affixes, statuses and reactions, the foes' moves, its spells as means cast from the rig, its hazards as triggers, the freeze and the knockback. The Kindler's light stays its own pool and health, and its creatures die as they do now. Nothing changes in play.
+- **Merryfolk**: three things, and nobody dies of any of them.
+  - **Scuffles**: a quarrel that turns physical (Bree's argument escalating to a fight) leaves a bruise or a bloody nose, settled by numbers and shown as a tussle.
+  - **Mischief and pranks**: a tripwire across a path, a snare by the hedge, a bad mushroom slipped into a stew: traps and taints that sting, embarrass and start grudges, set by folk with a grudge or a wicked streak.
+  - **Its body on Athelas**: its ale, germs and toxins, now its own body chemistry, move onto Athelas courses, held to its season's numbers before and after (`test/season.js`), as the minds' move was.
+- **The White Dragon**: nothing for now. Its design keeps no fighting and no health.
 
-- **Lodestar**: `Tycho.harm` only. Its fighting moves in as it is: natures, armor, wards, affixes, statuses and reactions, the foes' moves, its hazards as triggers, the freeze and the knockback. The Kindler's light stays its own pool and health. Nothing changes in play.
-- **Merryfolk**: a quarrel that turns into a scuffle leaves a bruise or a bloody nose; nobody dies of it; the wizard can't be hurt. Its ale, germs and toxins stay its own body chemistry, as now, unless they move onto Athelas too.
-- **The White Dragon**: its design says no fighting and no health, so any of this is a change to it. The gentlest: brawls between residents (the watch, heat, gossip) and booby-trapped machines that leave the player shaking (worse at the bench for an hour), with no health bar anywhere.
+## What's decided
 
-## Open questions
+Settled on 2026-10-28:
 
-1. **Can anyone die?** By game: `lethality` for people, and whether the player can.
-2. **Can the player be hurt**, and is it a health bar, wounds, or both?
-3. **Fights between people on screen**: played out blow by blow with moves, or settled by numbers and shown as a scuffle? The second is far cheaper and may be enough for Merryfolk and the White Dragon.
-4. **How much working out**: does anyone work out who poisoned whom beyond suspicion, or is that the player's job (and the White Dragon set detective work aside)?
-5. **Weapons**: goods with a `harm`, or gear in `Tycho.items` with stats, or both?
-6. **The name**: Morgul, on the shelf with the others?
+1. **Nobody dies of harm** in Merryfolk or the White Dragon: `lethality` starts at 0 and both leave it there, so harm at its worst knocks someone down. Lodestar's creatures die as they do now. The engine can still kill for a game that raises it.
+2. **The player can be hurt, by wounds, with no health bar**: conditions that slow them for a while ([the player's wounds](#the-players-wounds)). Lodestar's Kindler keeps his light.
+3. **Fights between characters are settled by numbers** and shown as a scuffle, on screen and off. A fight with the player in it is played in frames.
+4. **Suspicion only**: unseen harm leaves beliefs about who did it, which can be wrong; nobody investigates, and the truth is the player's to work out.
+5. **The player and the characters wield the same means**: weapons, spells, poisons and traps, declared once; the player holds them as gear, the characters as goods.
+6. **The module is Morgul.**
+7. **The White Dragon gets nothing for now**; **Merryfolk gets scuffles, mischief and pranks, and its ale, germs and toxins on Athelas**.
 
 ## The order to build it
 
-1. **`Tycho.harm` from Lodestar**, bit for bit: the pipeline, statuses and reactions, moves, triggers from its hazards, the feel. Lodestar's traces and a new test that replays recorded hits against its `hurtEnemy` hold it.
+1. **`Tycho.harm` from Lodestar**, bit for bit: the pipeline, statuses and reactions, means (its spells first), moves, triggers from its hazards, the feel; then the player's wounds, which Lodestar doesn't use. Lodestar's traces and a new test that replays recorded hits against its `hurtEnemy` hold it.
 2. **Athelas grown**: severity, worsening, branches, care, ending badly, quiet phases.
 3. **Morgul**: harm, wounds, down and dead, the victim, the onlookers and the law, traps, poison, suspicion, fights by numbers, the knobs; in Rocinante a brawl at the bar, a snare in the barn and a poisoned stew, and a Voight-Kampff check that nobody dies with `lethality` 0, grudges follow harm, and the poisoner is suspected some of the time and not always.
-4. **The bridge**: `Tycho.minds.harm`, and fights and traps handed between near and far.
-5. **Each game**, by its answers to the questions above.
+4. **The bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns, fights with the player played in frames, and traps handed between near and far.
+5. **Lodestar** onto `Tycho.harm` (in step 1, as its proof).
+6. **Merryfolk**: its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks.

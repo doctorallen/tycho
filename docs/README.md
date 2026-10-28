@@ -21,4 +21,4 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 
 Proposed, and not built yet:
 
-- [harm.md](harm.md): people and creatures hurting each other (fights, traps, poison, accidents): the moment in `Tycho.harm`, what follows in Morgul, a Tyrell module, and the open questions.
+- [harm.md](harm.md): people and creatures hurting each other (fights, weapons, spells, traps, poison, accidents): the moment in `Tycho.harm`, what follows in Morgul, a Tyrell module, what's decided and the order to build it.

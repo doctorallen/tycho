@@ -25,6 +25,27 @@ test('a witness who knows you recognizes you, believes it, and may report it: he
   assert.ok(w.reverie.belief('vance', 'did:player:strip') !== undefined, 'the Watch knows');
 });
 
+test('a witness who knows you well is slower to report you: familiarReport, with Voice\'s familiarity', () => {
+  const run = (wormtongue) => {
+    const w = rocinante({ start: 10 * HOUR, moduleConfig: { wormtongue } });
+    w.wormtongue.crime({ kind: 'strip', severity: 0.6, reportTo: 'watch', report: 1 });
+    w.voice.start('dev'); w.voice.end(); // a talk: half a point of familiarity
+    const reports = [];
+    w.on('report', (r) => { if (r.actor === 'player') reports.push(r); });
+    w.sense({ kind: 'strip', actor: 'player', what: 'till', place: 'market', seenBy: ['dev'] });
+    until(w, () => reports.length > 0, 3 * HOUR, 5);
+    return { w, reports };
+  };
+  const plain = run({});
+  assert.equal(plain.w.voice.familiarity('dev'), 0.5);
+  assert.equal(plain.reports.length, 1, 'by default familiarity changes nothing');
+  const known = run({ familiarReport: 2, familiarReportMax: 1 });
+  assert.equal(known.reports.length, 0, 'half a point at 2 a point: no chance at all');
+  assert.equal(known.w.reverie.belief('dev', 'did:player:strip'), 'till', 'he still saw it');
+  const capped = run({ familiarReport: 2, familiarReportMax: 0 });
+  assert.equal(capped.reports.length, 1, 'a cap of 0 takes nothing off');
+});
+
 test('a good disguise means nobody knows who it was', () => {
   const w = rocinante({ start: 10 * HOUR });
   w.sense({ kind: 'strip', actor: 'player', place: 'market', seenBy: ['dev', 'ruth', 'kofi'], disguise: 1 });

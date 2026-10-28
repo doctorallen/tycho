@@ -88,6 +88,14 @@ export interface WormtongueConfig {
   fearWeight: number;
   /** How much liking the actor keeps a witness quiet. Default 0.8. */
   loyalty: number;
+  /**
+   * How much knowing the actor keeps a witness quiet: the chance they report
+   * is cut by this much for each point of their familiarity with the actor
+   * (Voice's: talks had, things learned), up to familiarReportMax. Defaults
+   * 0 (it doesn't count) and 1.
+   */
+  familiarReport: number;
+  familiarReportMax: number;
   /** How clearly bystanders see a crime someone commits (a crime action's sighting strength). Default 0.8. */
   crimeSeen: number;
   /** Infamy a report adds, per point of severity, with the group it went to and with the witness's groups. Defaults 0.2 and 0.1. */
@@ -137,7 +145,7 @@ export const DEFAULT_WORMTONGUE: WormtongueConfig = {
   reportChance: 0.6, reportDelay: [10, 90], recognizeStranger: 0.5, gossipChance: 0.45, maxHops: 3, heatDecay: 0.85, lieChance: 0.5,
   gossip: 1, reporting: 1, heat: 1, cooling: 1, lies: 1,
   heatPerSeverity: 10, heatFloor: 0.05, sawStrength: 0.3, crimeMemory: 4, severityMemory: 6, plainMemory: 3,
-  fearWeight: 0.3, loyalty: 0.8, crimeSeen: 0.8, infamyAuthority: 0.2, infamyGroups: 0.1, toldAuthority: 0.8,
+  fearWeight: 0.3, loyalty: 0.8, familiarReport: 0, familiarReportMax: 1, crimeSeen: 0.8, infamyAuthority: 0.2, infamyGroups: 0.1, toldAuthority: 0.8,
   bribeGreed: 0.6, bribeFull: 100, bribeMoney: 0.5, bribeHonesty: 0.4, bribeBase: 0.1,
   scareFear: 0.8, scareHonesty: 0.2, scareBase: 0.1, scareRegard: -0.3,
   secretSpite: -0.3, juicyCrime: 3, juicyDeed: 1.5, gossipRecency: 0.99, liarBelow: 0.3, lieSpite: -0.3, scapegoat: -0.2,
@@ -239,8 +247,10 @@ export class Wormtongue implements Module {
         const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? mid;
         const fear = p.def.traits?.courage !== undefined ? 1 - p.def.traits.courage : 1 - mid;
         const regard = w.fellowship ? w.fellowship.regard(wid, stim.actor) : 0;
+        // someone who knows the actor (they've talked, they've learned things: Voice) is slower to report them
+        const known = c.familiarReport && w.voice ? clamp(w.voice.familiarity(wid, stim.actor) * c.familiarReport, 0, c.familiarReportMax) : 0;
         // the headline knob scales the chance, for the witness
-        const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * this.knob('reporting', wid));
+        const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * (1 - known) * this.knob('reporting', wid));
         if (r.chance(pReport)) {
           const [a, b] = c.reportDelay;
           w.clock.schedule({ t: w.s.now + r.range(a, b), k: 'module', ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null, ...(stim.severity !== undefined ? { sev: severity } : {}) } });

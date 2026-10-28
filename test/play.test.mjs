@@ -781,3 +781,17 @@ test("the guide: the White Dragon's tutorial moves on as it did", () => {
   assert.equal(none.active(), false); assert.deepEqual(none.tick(), []);
   assert.deepEqual(Tycho.guide.fresh(), { i: 0 });
 });
+
+test("keys scaled below one, with a walk and a sprint either side: scale, slow and fast", () => {
+  const c = new Tycho.input.Controls({
+    keys: { ArrowRight: 'right', ArrowLeft: 'left', ShiftLeft: 'sprint', KeyC: 'walk' },
+    axes: { left: 'left', right: 'right', up: 'up', down: 'down', scale: { x: 0.66 }, slow: { action: 'walk', x: 0.5 }, fast: { action: 'sprint', x: 1.6 } },
+  });
+  const x = () => { c.update(); return +c.move.x.toFixed(3); };
+  c.keyDown('ArrowRight', false); assert.equal(x(), 0.66);
+  c.keyDown('ShiftLeft', false); assert.equal(x(), 1);      // held to one
+  c.keyUp('ShiftLeft'); c.keyDown('KeyC', false); assert.equal(x(), 0.33);
+  c.keyUp('KeyC'); c.keyUp('ArrowRight'); c.keyDown('ArrowLeft', false); c.keyDown('ShiftLeft', false); assert.equal(x(), -1);
+  const plain = new Tycho.input.Controls({ keys: { ArrowRight: 'right' }, axes: { left: 'left', right: 'right', up: 'up', down: 'down' } });
+  plain.keyDown('ArrowRight', false); plain.update(); assert.equal(plain.move.x, 1);
+});

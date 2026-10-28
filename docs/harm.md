@@ -1,6 +1,6 @@
-# Harm (proposed)
+# Harm
 
-**Proposed: nothing on this page is built yet.** It's the design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. Its open questions are settled ([what's decided](#whats-decided)); the code comes next, in [this order](#the-order-to-build-it).
+**Partly built.** The design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. The moment of a hit is built ([`Tycho.harm`](#tycho-the-moment), with Lodestar's fighting on it), and so is what follows ([Morgul](../tyrell/docs/modules/morgul.md) and the [larger Athelas](#athelas-grown)), and the bridge between them ([on screen and off](#on-screen-and-off)); Merryfolk's harm comes next ([the order](#the-order-to-build-it)). Its questions are settled ([what's decided](#whats-decided)).
 
 The ideas come from Lodestar's own fighting (a hit that passes through resistances, armor, wards and statuses that react together, and hazards shown before they bite), RimWorld (wounds that need tending, infections, social fights that turn into brawls), Dwarf Fortress (grudges and vengeance that outlive the fight), Thief and Dishonored (traps and poison as the patient way to hurt someone, and accidents arranged to look like nothing), and Crusader Kings (murder by scheme, suspicion that falls on whoever had reason).
 
@@ -73,70 +73,172 @@ So the act and the harm are two records, linked by the `cause`. Setting a trap o
 
 ## Tycho: the moment
 
-`Tycho.harm`, in the play layer. Like every part it's parameters, not defaults: the game passes its stages, statuses, reactions and numbers, and every random draw comes from the source it's given. Lodestar's fighting (`hurtEnemy`, `hurtPlayer` and `killEnemy` in `combat.js`, its reactions, natures, affixes and hazards) already does all of this in its own code, so it moves in first and bit for bit: Lodestar plays the same, held to its traces, and that's the proof the part is general.
+`Tycho.harm`, in the play layer (`src/play/harm.ts`). Like every part it's parameters, not defaults: the game passes its stages, statuses, reactions, numbers and words, and every random draw comes from the source it's given (`rng`, Lodestar's `d.rng`). It works on the game's own plain objects, by the fields the game names, so a body's statuses, a trap's state and a move's phase stay where the game keeps them and in its save as they are. Lodestar's fighting is on it, bit for bit: `test/harm.test.mjs` holds each piece to Lodestar's original code, kept in the test, and replays 478 blows on its creatures and 78 on the Kindler, recorded from Lodestar's main before it changed (`test/fixtures/lodestar-hits.json`), through Tycho's stages; Lodestar's own `test/fights.js` replays 32 fights, 23,986 frames of them, every frame's combat state hashed, unchanged.
 
 ### The hit
 
-A pipeline of stages the game lists in order. A stage takes the blow and the body it's landing on and may change the amount, stop it, mark it (a reaction's name to show), or send a follow-up blow to someone else (a shock that arcs, a chain that shares the hit).
+A pipeline of stages the game lists in order. Each is given the hit (the blow, the body, the amount as it stands) and may change the amount, stop it, mark it (a name to show), or send a blow on to another body (a shock that arcs, a chain that shares the hit), landed at once through the same pipeline or another, with the same random source.
 
 ```js
 const hit = new Tycho.harm.Pipeline([
-  Tycho.harm.resist({ of: elementMult }),       // weak, resistant or neither, by kind
-  Tycho.harm.armor({ k: T.items.armorK }),      // k / (k + armor)
-  Tycho.harm.soak('ward', { gone: wardGone }),  // a shield takes it first
-  affixStage,                                   // the game's own: a shell, thorns, a chain
-  Tycho.harm.react(REACTIONS),                  // statuses that meet: shatter, steam, pyre
+  Tycho.harm.gate((h) => !(h.to.dead || h.to.hid)),                  // out of reach: not struck
+  Tycho.harm.resist({ of: elementMult, shape: crabShellShape }),      // weak, resistant or neither, by kind
+  Tycho.harm.armor({ k: () => T.items.armorK, of: (b) => b.armor }),  // k / (k + armor)
+  Tycho.harm.soak('ward', { first: strikeBack, gone: wardGone }),     // a shield takes it first
+  affixStage,                                                         // the game's own: a shell, thorns, a chain
+  Tycho.harm.react({ table: new Tycho.harm.Reactions(PAIRS), kinds: ELEMENTS, carries, do: REACT_DO }),
+  landStage,                                                          // the game's: health, the number
+  Tycho.harm.knock({ weight }), Tycho.harm.stagger({ ... }), Tycho.harm.hold({ ... }),
 ]);
-const r = hit.land(foe, { by: kindler, amount: 12, kinds: ['ember'], knock: { x, y }, heavy: true }, { rng: d.rng });
-// r: { amount, stopped, verdict, marks, follow, knock, stagger, stop }
+const h = hit.land(foe, { by: kindler, amount: 12, kinds: ['ember'], knock: { x, y }, heavy: true }, { rng: d.rng });
+// h: { amount, stopped, verdict, marks, follow, knock, stagger, flinch, hold, extra }
 ```
+
+A stage is a function of the hit, or `{ name, land(h) }`. The hit (`Hit`) carries `to`, `blow` (with `amount`, `kinds`, `by`, `knock`, `heavy`, `statuses` and whatever the game's stages read), `amount`, `kinds`, `rng`, `ctx`, and what the stages made of it; `h.stop()`, `h.mark(name)` and `h.send(to, blow, pipe?)` (the blow sent on comes back as its own hit, kept in `h.follow`).
+
+| Stock stage | What it does |
+|---|---|
+| `gate(open)` | Stops the blow unless `open(h)` |
+| `scale(by)` | The amount times `by(h)` (an exposed foe, a brittle one, a passive) |
+| `resist({ of, verdict?, weak, strong, shape? })` | The amount times `of(body, kinds)` (1 for a blow of no kind), once, after `shape(h, m)` has the last say; the verdict 'W' over `weak` (1.01), 'R' under `strong` (0.99) |
+| `armor({ k, of })` | The amount times k / (k + armor); `armored(x, k, a)` is the same for a drain that isn't a blow (x × k / (k + a), as Lodestar's spores and burns take it) |
+| `soak(field, { when?, first?, gone? })` | What's in the body's field (a ward) takes as much as it can; `first` as it does (what strikes it is struck back), `gone` once it's spent |
+| `react({ table, kinds, carries, do, ready?, fired?, when? })` | Statuses that meet: a blow of two kinds with itself, then each of its kinds with every other kind the body `carries`, in the order of `kinds`, each reaction once; each that's `ready` runs `do[id](h)`, which returns the amount's multiplier or null (nothing to do); the amount is amount × the multipliers + `h.extra`. `Reactions` is the table: pairs by either order |
+| `afflict(statuses, { of?, amount?, scale? })` | The statuses the blow leaves: its `statuses`, and `of(kind)` for each of its kinds, each by its own stacking |
+| `knock({ weight?, vx?, vy? })` | The blow's knock times the body's weight, onto its knock velocity (`kvx`, `kvy`) |
+| `stagger({ heavy, can?, steady?, open?, scale?, flinch? })` | A heavy blow staggers (`state` to 'stagger' for `heavy` s, times the blow's `scale` field); a body in its wind-up struck for `flinch.share` of its health breaks it off, once every `flinch.gap`; a body `steady` shrugs off both |
+| `hold({ field, time, heavy?, can? })` | The struck body held still at least `time` s (`heavy` for a heavy blow) |
+
+Lodestar's two pipelines are `KINDLER_HIT` (`hurtPlayer`: his gate, his thick skin as `scale`, the lattice's armor, his ward's `soak` with the strike back, then the light knocked out of him) and `FOE_HIT` (`hurtEnemy`: the gate; exposed; the nature and a Slag Crab's shell as `resist`; Wick's note; brittle; its affixes, a Keeper's phase, the reactions on `react` with its own `REACT_DO`; the statuses its elements leave; a warded shell cracked; a cast ward's `soak`; the health, its flash and the number; `knock`, `stagger` and `hold`; the wake and the Kindler's traits, the kill). Its affixes' thorns and chain are blows sent on, through `KINDLER_HIT` and a pipeline of one stage (`CHAIN_SHARE`); its reactions' and procs' arcs through `FOE_HIT`.
 
 ### Means: weapons, spells, poisons, traps
 
 What harm is done with is declared once, as a means, and the player and the characters wield the same ones.
 
 ```js
-const MEANS = [
+const MEANS = Tycho.harm.means([
   { id: 'cudgel', kinds: ['blunt'], use: 'strike', severity: 0.2,
-    move: { windup: 0.35, active: 0.1, recover: 0.45, area: { ahead: 14, w: 16, h: 12 } }, blow: { amount: 8, knock: 120 } },
-  { id: 'arc', kinds: ['shock'], use: 'cast', cost: { cooldown: 0.6 }, severity: 0.15,
-    move: { windup: 0.1, bolt: { speed: 260, range: 120 } }, blow: { amount: 6, statuses: ['shock'] } },
+    move: { windup: 0.35, active: 0.1, recover: 0.45, area: { touch: 2 } }, blow: { amount: 8, knock: { x: 120, y: 0 } } },
+  { id: 'arc', kinds: ['shock'], use: 'cast', cost: { cooldown: 0.6, charge: 2 }, severity: 0.15, blow: { amount: 6, statuses: ['shock'] } },
   { id: 'nightshade', kinds: ['poison'], use: 'dose', course: 'nightshade' },
-  { id: 'snare', kinds: ['cut'], use: 'set', severity: 0.25, trigger: { box: [12, 4], once: true, hidden: true }, blow: { amount: 5 } },
-];
-Tycho.minds.means(world, MEANS);   // declared to Tycho.harm and to Morgul alike
+  { id: 'venom', kinds: ['poison'], use: 'coat', uses: 3, blow: { statuses: ['poison'] } },
+  { id: 'snare', kinds: ['cut'], use: 'set', severity: 0.25, trigger: { zone: { w: 12, h: 4 }, once: true, hidden: true }, blow: { amount: 5 } },
+]);
+MEANS.get('arc'); MEANS.of('cast');
 ```
 
-A means is used one of a few ways:
+A means is used one of a few ways: **`strike`** (a move up close), **`throw`** and **`shoot`** (a projectile), **`cast`** (a spell, a move with a cost: a cooldown, a charge, or a pool the game names), **`coat`** (onto another means, so its blows carry this one for `uses` blows), **`dose`** (into food or drink, a [taint](#poison)), **`set`** (a [trap](#traps), a trigger here and a hazard in Morgul). Its fields are the shared definition: Morgul reads `id`, `kinds`, `use`, `severity` and `course` off screen; Tycho plays `move` (a [Move](#moves)), `blow`, `trigger` (a [Trigger](#triggers)) and `cost` on screen.
 
-- **`strike`**: a move up close (a fist, a knife, a cudgel);
-- **`throw`** and **`shoot`**: a projectile (a stone, a dart, a bolt);
-- **`cast`**: a spell, a move with a cost: a cooldown, a charge, or a pool the game names (mana, light). Lodestar's rig and its spells are the first;
-- **`coat`**: onto another means, so its blows carry this one's status or course for a few uses (a poisoned blade);
-- **`dose`**: into food or drink, a [taint](#poison);
-- **`set`**: a [trap](#traps), a trigger in space here and a hazard in Morgul.
+| Helper | |
+|---|---|
+| `means(list)` | A lookup (`Arsenal`): `get(id)`, `has(id)`, `of(use)`, `list` |
+| `cooldown(m, step?)` | Its cooldown: the cost's, or a combo's step's (by step, round) |
+| `costOf(m)` | What it costs in charge, or from its pool |
+| `ready(holder)`, `use(m, holder, { step, scale, pools })` | A holder (`{ cd, charge }`) ready when its cooldown is out; using it pays the cost (charge from the holder, or `cost.amount` from `pools[cost.pool]`) and starts its cooldown, or does nothing and says false |
+| `coat(holder, m, uses?)`, `coatOf(holder)`, `spendCoat(holder)` | A coat on what a holder wields, its uses spent a blow at a time |
 
-The on-screen fields (the move, the blow, the trigger) are what `Tycho.harm` plays in frames; the off-screen ones (the kinds, `severity`, `course`) are what Morgul settles by numbers. The player wields a means as gear (`Tycho.items`: a thing in a slot, with the means as its own), or the game's own way (Lodestar's rig); a character holds it as a Ceres good of the same id, which they can buy, carry, be given and use up, and which Morgul reads (`armed`, a fight's odds, `has:nightshade` before a poisoning). So a character holding a cudgel strikes with its move on screen and its severity off screen.
+The player wields a means as gear (`Tycho.items`: a thing in a slot, with the means as its own), or the game's own way; a character holds it as a Ceres good of the same id. Lodestar's Forms are its means (`SPELL_MEANS`: each Form and the spark a cast, its cooldown, an Arc's one a step of its combo, and its charge): `spellWait` and `groupCost` read them. A cast there costs nothing but its cooldown, and its wait is the means' cooldown times Quicken, the frame and the wrist in its own order, so it doesn't go through `use`.
 
 ### Statuses
 
-What a hit leaves on a body for a while: a burn, a chill, a charge building to overload, a poison ticking. Each is declared with its time, how often it bites (`every`), how much, how it stacks, and whether it spreads (on a death, or on a hit). Two statuses that meet react, from a table the game gives (Lodestar's eight reactions and five stacks are the first).
+What a hit leaves on a body for a while, declared with where the body keeps it, how long it lasts, how often it bites, how it stacks, how it wears off and how it spreads. A **timer** is a number on the body, its time left (a chill, an element's mark); a **dose** is an object, `{ t, its amount a second (its dose field), n stacks, tick }`, that bites while it lasts (a burn, a poison).
+
+```js
+const S = new Tycho.harm.Statuses([
+  { id: 'frost', at: ['st', 'frost'], time: 3, wear: 'clear', ends: (e) => { if (e.stk) e.stk.frost = 0; } },
+  { id: 'chill', at: 'slowT', time: 2, wear: 'clamp' },
+  { id: 'burn', dose: 'dps', time: 3, every: 0.5, stack: 'add', most: 3, spread: { r: 32 } },
+  { id: 'poison', at: 'blight', dose: 'dps', time: 4, every: 0.5, stack: 'refresh', spread: { r: 40, on: 'death', reach: 'middle' } },
+  { id: 'shockStack', at: ['stk', 'shock'], stack: 'count', most: 5 },
+]);
+S.give(e, 'burn', { amount: 2, scale: k });   // 'new' | 'again' | 'most' | 'full' | 'kept'
+S.wear(e, dt);                                // timers, each by its wear
+S.tick(e, dt, { bites, bite, show, after });  // doses: time out, bites, beats, gone
+S.spread(e, 'poison', foes, { who, take, as });
+```
+
+| | |
+|---|---|
+| `at` | Where the body keeps it: a field (by default the id), or a field's key (`['st', 'frost']`, the map made when first given) |
+| `time`, `every`, `bite` | How long one lasts; its beat (a dose shows a number each beat); a dose bites `steady` (amount × dt every step, Lodestar's) or on its `beat` (amount × every) |
+| `stack` | Given again while it lasts: `max` (the longer time), `set` (the time given), `count` (one more, or n, back to none and 'full' at `most`), `add` (a dose: one more stack to `most`, the amount added to `most` times one, the longer time; 'most' when it's there), `refresh` (a dose: a fresh one, the larger amount), `keep` |
+| `wear` | A timer: `clamp` (down to 0 every step), `clear` (down while above 0, and at 0 `ends`), `down` (down while above 0, past 0) |
+| `spread` | Its reach for `spread(from, id, to, o)`: within `r` of the body, to the other's edge (r + its r) or its middle; `who` may catch it, `take` agrees (a weaker one, or none), `as` makes what it gets (else a copy); `died(body, to)` spreads what spreads `on: 'death'` |
+| `get`, `has`, `put`, `clear`, `def` | Its time or dose; carried (a timer above 0, a dose there); put as given; gone (0, or null) |
+
+Two statuses that meet react through the `react` stage and its `Reactions` table. Lodestar's are `FOE_STATUS` (each element's mark, the chill, a burn that stacks to the Inferno's most, a poison that takes the stronger, the brittle, the frozen, a heavy blow ringing, a stun and a loss worn by the creature's own step, the stacks of shock and chill that overload and freeze) and `KINDLER_STATUS` (his chill, jolt, burn and blight); its five elements' eight reactions are its `REACT_DO` on `react`, and the rules for what each element leaves (a shock's chance to arc, frost not stacking while frozen, a burn at its most and a poison on the poisoned spreading at once, a second heavy Force blow stunning) are its own stage over `FOE_STATUS`.
 
 ### Moves
 
-An attack is a timeline: a wind-up (the tell), the strike (the frames it can hit, and the area it covers, ahead of the body), the recovery (the opening). A strike hits each target once a swing. A solid hit during a wind-up breaks it off (a flinch); a heavy one staggers; a body marked steady shrugs both off. Lodestar's foes' wind-up, lunge and recover are the first, and the same moves serve people who fight on screen.
+An attack is a timeline: a wind-up (the tell), the strike (the frames it can hit, and the area it covers), the recovery (the opening), each phase's name and time in the body's own fields.
+
+```js
+const LUNGE = new Tycho.harm.Move({ windup: () => def.windup, active: () => def.lungeTime, recover: () => def.recover,
+  names: { active: 'lunge' }, once: 'hitDone', area: { touch: 3 } });
+LUNGE.start(e);                                    // e.state 'windup', e.t its time
+if (e.t <= 0) LUNGE.next(e);                       // on to 'lunge' (struck cleared), 'recover', then null: what next is the game's
+if (LUNGE.hits(e, p, p.x, p.y, p.r)) hurt(p);      // in its area and not struck yet this swing
+```
+
+The game counts the time down and says when to go on. A move's struck targets are one field (`once`, for one target) or a list on the body. `reaches(area, x, y, r, dx, dy, tx, ty, tr)` is its area alone: `touch` (within both radii and this much more), `r` (round, to the other's edge), `ahead` with `w` (a line along the aim, by `segDist`), or `r` with `cos` (a cone, or as near as `close`). A solid hit during a wind-up breaks it off, a heavy one staggers, and a body marked steady shrugs both off: the `stagger` stage. Lodestar's creatures' attacks are moves (`foeMove`: a lunge for the crawler, the dropper, the crab, the idol and the eel; a charge for the construct, the warden, the Keepers, the tusker and the hound; the sentinel's sweep; a wind-up alone that ends in the kind's own strike, its reach asked with `reaches`, for the wisp, the plants, the skink, the wraith, the lurker's lash, the weaver and the dropper's fall).
 
 ### Triggers
 
-Harm that waits in space: a trap, a vent, a cloud. A trigger has a zone (a box, a line for a tripwire), what sets it off (a body entering it, or a cycle), whether it's armed, who set it, whether it's hidden, and the blow it lands. A cycle shows before it bites: Lodestar's vents glow and then burst, its spore pods swell and then let go. A snare is a zone entered once; a tripwire a line; a gas trap a zone that leaves a cloud behind.
+Harm that waits in space: a trap, a vent, a cloud. A trigger's kind has a zone, what sets it off (a body entering, or a cycle that shows before it bites, or a mark shown before it bites once), whether it goes off once, whether it's hidden, and the blow it lands; a placed one is the game's own object (`{ x, y, ph, t, by, armed, sprung, fired, last, done }`).
+
+```js
+const VENT = new Tycho.harm.Trigger({ cycle: { every: 5, tell: 1.2, bite: 0.6 }, zone: { r: 11 } });
+if (VENT.fires(v, clock)) for (const b of bodies) if (VENT.inside(v, b.x, b.y, b.r)) hurt(b);   // once a cycle
+VENT.phase(VENT.at(clock, v.ph));                  // 'rest' | 'tell' | 'bite', for drawing it
+const STRIKE = new Tycho.harm.Trigger({ tell: 1.1, zone: { r: 20 }, once: true });
+if (STRIKE.down(strike, dt)) ...                   // a mark: its tell run out
+```
+
+| | |
+|---|---|
+| Zones, `inZone(z, cx, cy, x, y, r)` | `{ r }` round its place; a box, `{ w, h }` on its place or `{ x0, y0, x1, y1 }`, felt as Tycho.collide feels a round body against a box; a line, `{ x0, y0, x1, y1, w }`; tiles, `{ tiles(x, y) }` |
+| `at`, `share`, `phase` | Seconds into its cycle, or the share, from its offset `ph` (an `every` of the placed one's own may be passed); resting, telling or biting |
+| `fires(p, clock)`, `wraps(p, clock)` | The step its bite begins, once a cycle (`fired`); the step its cycle begins again (`last`) |
+| `down(p, dt)`, `goes(p)` | A mark's tell counted down, true once it's out; true once, the first time it's out (`done`) |
+| `inside(p, x, y, r)`, `spring(p, by?)` | A round body in its zone; set off (false if disarmed, or sprung and set off only once) |
+| `beat(s, dt, every?)` | A zone's beat: true on the step its tick runs out (a field that bites what's in it every half second) |
+| `Traps(box)` | Traps in a world of boxes, each one's box in a Tycho.collide space: `add`, `remove`, `entered(x0, y0, x1, y1)`, the first armed one a body's box overlaps |
+
+Lodestar's vents (they glow, then burst once a cycle) and spore pods (they swell, then let a cloud go as the cycle begins again) are triggers, its clouds and the ground that bites (spores, fire, chilling ground, the Kindler's lingering fields on their beat) zones, and the Lodestorm's strike, a blinker's landing and a volatile elite's blast marks; a mortar's landing and a snare's line are zones too.
 
 ### The player's wounds
 
-The player isn't one of Tyrell's people (to Tyrell the player is `'player'`, someone who does things), so Athelas doesn't hold the player's wounds: `Tycho.harm` does, as conditions that run on the game's clock in game minutes, in phases shaped like Athelas's (sore for an hour, then stiff for a day). The game reads them for what they change (`has(player, 'shaky')` makes bench work rougher; a sprain slows the stick's pace) and keeps them in its own save. One wound table declares both: the bridge gives Athelas the course for characters and `Tycho.harm` the condition for the player. At its worst the player is knocked down, and the game says what that costs (time, money, what they were carrying); the player never dies of harm unless a game allows it.
+The player isn't one of Tyrell's people (to Tyrell the player is `'player'`, someone who does things), so Athelas doesn't hold the player's wounds: `Tycho.harm` does, as conditions that run on the game's clock in game minutes, in phases shaped like Athelas's (sore for an hour, then stiff for a day), so one wound table can declare both.
+
+```js
+const WOUNDS = new Tycho.harm.Wounds([
+  { id: 'sprain', phases: [{ id: 'sore', minutes: 60, has: ['limping'] }, { id: 'stiff', minutes: [600, 900] }], again: 'extend' },
+  { id: 'shock', phases: [{ id: 'shaky', minutes: [20, 40], has: ['shaky'] }] },
+]);
+Game.s.wounds = WOUNDS.fresh(now);           // { now, on: { sprain: { p, since, until } } }: plain JSON, in the game's save
+WOUNDS.give(Game.s.wounds, 'sprain', rng);
+WOUNDS.step(Game.s.wounds, minutes, rng);    // [{ id, phase, healed, at }]: phases ending in time order, the last healing it
+WOUNDS.has(Game.s.wounds, 'shaky');          // a wound, a phase or a mark: bench work rougher, the stick slower
+```
+
+A phase lasts `minutes` or `[min, max]` drawn from the rng the game passes; given again, a wound is ignored, runs its phase on as long again (`extend`), or starts over (`restart`). `of(s)` lists what's open with the minutes left, `heal(s, id?)` ends one or all. At its worst the player is knocked down, and the game says what that costs (time, money, what they were carrying); the player never dies of harm unless a game allows it. Lodestar doesn't use it: its Kindler's light is his health.
 
 ### The feel
 
-The world holds still a moment as a hit lands (longer for the one struck, longer for a heavy hit); knockback scaled by each body's own weight; a flash in the hit's color; the number rising (`Tycho.fx`); a shake for games that want one.
+The world holds still a moment as a hit lands (longer for the one struck, longer for a heavy hit); knockback scaled by each body's own weight; a flash; the number rising; a shake for games that want one.
+
+| | |
+|---|---|
+| `Hitstop({ state, gap, clock })` | The world held still: `freeze(t, heavy)` at least t s, unless the last began within `gap` s (only a heavy hit freezes again so soon); `hold(dt)` each step says whether it's still held. On the game's object (`hitstop`, `frozeAt`: Lodestar's `Game`) |
+| `hold` stage | The one struck held still longer |
+| `knock` stage, `Knock({ decay })` | The knock by the body's weight; it moves the body while it's over `min` (1), fading by e^(-decay × dt): `step(body, dt, move)`, `fade(dt)`, `stop(body)` |
+| `flash(body, t, { col })`, `fade(body, dt)` | A flash's time (and its color, as given), fading to 0 |
+| `rise(list, dt, speed)` | Numbers and words rising and running out (Tycho.fx's `tick`) |
+| `Shake(state, decay)` | `kick(n)`, `step(dt)` |
+
+### Lodestar on it, and what stayed its own
+
+What's Tycho's in Lodestar now: the two pipelines and their stock stages, the hold still, the knock, the flashes, the numbers rising, the shake, every status and its wearing, biting and spreading, the reactions' table and stage, the creatures' moves, the vents, pods, clouds, marks and biting ground, and the spells' cooldowns and charges. What stayed its own, as stages and calls on Tycho's parts, because it's this game's and nothing general: its affixes, a Keeper's phases, what each element leaves (above), the number and its WEAK and RESIST, the wake and the Kindler's traits; a kill's loot and motes; the spells' shapes and their hit (`circuitHit`: crits, the ore's weight, the charge given back, a Chain's leaps), what's in flight and what lingers; the lava and the water, which are its floor's own map of hazards (`hazardAt`), read once a step for several things; and its creatures' own strikes (a skink bursting up, a tusker's slide, a hound's glances).
 
 ## Tyrell: what follows
 
@@ -205,7 +307,7 @@ A Bree fight (a kind in `fights`) comes out by a contest, wherever it is. Both f
 
 ### Fights with the player
 
-Harm by `'player'` (or to the player by a character) makes the character answer, as the fight starts and after each harm between them: fight back, flee, yield or call for help, drawn by their nerve and temper, how hurt they are, their odds against the player (whose might is the game's fact, `might:player`), and whether a friend is about. It's emitted as `morgul:respond`; `respond(id)` asks without changing anything. One who flees wants to get away a while.
+Harm by `'player'` (or to the player by a character) face to face, not by a trap or a dose, makes the character answer, as the fight starts and after each harm between them: fight back, flee, yield or call for help, drawn by their nerve and temper, how hurt they are, their odds against the player (whose might is the game's fact, `might:player`), and whether a friend is about. It's emitted as `morgul:respond`; `respond(id)` asks without changing anything. One who flees wants to get away a while.
 
 ### Choosing harm
 
@@ -244,7 +346,7 @@ Every finer number is a setting too ([Tuning](../tyrell/docs/tuning.md#morgul)).
 | `trap(def)` | definition | A kind of trap: its harm, `hidden`, `uses`, `catch` |
 | `harm(h)` | **input** | A harm, from the game (on screen); returns it |
 | `set(kind, { by, place, for, seenBy })` | **input** | A trap set, from the game |
-| `spring(trap, id)` | **input** | A trap caught someone on screen |
+| `spring(trap, id)` | **input** | A trap caught someone on screen, or the player |
 | `disarm(trap, by)` | **input** | |
 | `taint(def)` | **input** | Poison into stock, a pot, or someone's goods |
 | `tend(id, by)` | **input** | Someone tends someone: their wounds, and up if down |
@@ -270,12 +372,12 @@ Wounds and poisons need a little more of Athelas than colds and ale do, and it h
 
 ## On screen and off
 
-Tyrell has no coordinates, so off screen Morgul settles harm by numbers: a fight by its contest, a trap by its chance, a poison by who eats. On screen the game plays it out with `Tycho.harm` and reports each harm (`morgul.harm`) and each trap sprung (`morgul.spring`). The bridge does the handing over, the way Tyrell already hands bodies to the game near the player:
+Tyrell has no coordinates, so off screen Morgul settles harm by numbers: a fight by its contest, a trap by its chance, a poison by who eats. On screen the game plays it out with `Tycho.harm` and reports each harm (`morgul.harm`) and each trap sprung (`morgul.spring`). The bridge does the handing over, the way Tyrell already hands bodies to the game near the player ([Harm in the bridge](minds.md#harm)):
 
-- `Tycho.minds.means(world, list)` declares the means to both sides; `Tycho.minds.harm(world, blow, { seenBy })` turns a hit Tycho landed into a harm, with its witnesses.
-- A fight between characters goes on by numbers wherever it is. Near the player the game shows it as a scuffle: two bodies tussling, a blow landing as each turn lands, so what's seen and what's settled agree turn for turn.
-- A fight with the player in it is played in frames: the player's strikes, casts and throws through `Tycho.harm`, and the character's back with the moves of what they hold (fists, if nothing). Whether they fight back, flee, yield or call for help is Tyrell's choice, asked as the fight starts and after each blow.
-- A trap at a place near the player is left to the game's trigger, so nobody is caught twice.
+- `Tycho.minds.means(world, list, Tycho.harm.means)` declares the means to both sides at once (a means set as a trap as Morgul's trap too) and returns Tycho's arsenal; `Tycho.minds.harm(world, hit, { whole, people, sight })` turns a hit Tycho landed into a harm: the bodies' ids, its kind, its severity as the hit's share of what the game measures, what it was done with, and its witnesses.
+- A fight between characters goes on by numbers wherever it is. Near the player the game shows it as a scuffle: `Tycho.minds.scuffles(world)` gives it the beats in step with Bree's turns (they square up; each turn who swings at whom, whether it lands or the other counters, how hard; how it ends) and the fights going on as the world has them, so a rewind leaves nothing stale.
+- A fight with the player in it is played in frames: the player's strikes, casts and throws through `Tycho.harm`, and the character's back with the moves of what they hold (fists, if nothing). Whether they fight back, flee, yield or call for help is Tyrell's choice, made as the fight starts and after each blow; `Tycho.minds.fighters(world, { might })` makes each answer into what the game's fighter does, with what they'd fight with, and sets the player's might, the game's, as the fact Morgul reads.
+- A trap at a place near the player is left to the game's trigger, so nobody is caught twice: `Tycho.minds.traps(world, { regions, make, drop })` tells Morgul which regions are loaded, hands the game the traps there to make triggers from (and takes them back when they're spent or far), and reports a trigger that springs, on a character or the player.
 
 Lodestar's creatures stay frame brains in the game, not Tyrell minds; only people get the whole chain.
 
@@ -302,9 +404,9 @@ Settled on 2026-10-28:
 
 ## The order to build it
 
-1. **`Tycho.harm` from Lodestar**, bit for bit: the pipeline, statuses and reactions, means (its spells first), moves, triggers from its hazards, the feel; then the player's wounds, which Lodestar doesn't use. Lodestar's traces and a new test that replays recorded hits against its `hurtEnemy` hold it.
-2. **Athelas grown**: severity, worsening, branches, care, ending badly, quiet phases.
-3. **Morgul**: harm, wounds, down and dead, the victim, the onlookers and the law, traps, poison, suspicion, fights by numbers, the knobs; in Rocinante a brawl at the bar, a snare in the barn and a poisoned stew, and a Voight-Kampff check that nobody dies with `lethality` 0, grudges follow harm, and the poisoner is suspected some of the time and not always.
-4. **The bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns, fights with the player played in frames, and traps handed between near and far.
-5. **Lodestar** onto `Tycho.harm` (in step 1, as its proof).
-6. **Merryfolk**: its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks.
+1. **Built: `Tycho.harm` from Lodestar**, bit for bit: the pipeline, statuses and reactions, means (its spells first), moves, triggers from its hazards, the feel; then the player's wounds, which Lodestar doesn't use. Lodestar's traces and a new test that replays recorded hits against its `hurtEnemy` hold it.
+2. **Built: Athelas grown**: severity, worsening, branches, care, ending badly, quiet phases.
+3. **Built: Morgul**: harm, wounds, down and dead, the victim, the onlookers and the law, traps, poison, suspicion, fights by numbers, the knobs; in Rocinante a brawl at the bar, a snare in the barn and a poisoned stew, and a Voight-Kampff check that nobody dies with `lethality` 0, grudges follow harm, and the poisoner is suspected some of the time and not always.
+4. **Built: the bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns (`scuffles`), fights with the player played in frames (`fighters`), and traps handed between near and far (`traps`), held by `test/minds-harm.test.mjs` against Tyrell and Tycho.harm together.
+5. **Built: Lodestar** onto `Tycho.harm` (in step 1, as its proof), held to a test of 32 fights recorded before the move, frame for frame.
+6. **Then Merryfolk**: its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks.

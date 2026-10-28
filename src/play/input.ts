@@ -46,9 +46,12 @@ export interface ControlsOptions {
   /** A key's code (KeyboardEvent.code) to the action it holds. */
   keys?: Record<string, string>;
   /** The actions the keys move with, when the stick isn't held: each axis is
-   * -1, 0 or 1, both scaled to length one if `round` (so a diagonal isn't
-   * quicker), and scaled by `slow`'s factors while its action is held. */
-  axes?: { left: string; right: string; up: string; down: string; round?: boolean; slow?: { action: string; x?: number; y?: number } };
+   * -1, 0 or 1, times `scale`'s factors (none: 1), scaled by `slow`'s factors
+   * while its action is held and by `fast`'s while its is (then held to -1..1),
+   * and both scaled to length one if `round` (so a diagonal isn't quicker). A
+   * game whose keys run with a walk and a sprint either side scales them below
+   * one and lets `fast` take them back up. */
+  axes?: { left: string; right: string; up: string; down: string; round?: boolean; scale?: { x?: number; y?: number }; slow?: { action: string; x?: number; y?: number }; fast?: { action: string; x?: number; y?: number } };
   /** Actions whose press waits until the game takes it (take()): pressed by
    * a key going down, a button or tap landing, or a flick. */
   presses?: string[];
@@ -195,7 +198,9 @@ export class Controls {
     const A = this.o.axes;
     if (!A) { m.x = m.y = 0; return; }
     let kx = (this.held(A.right) ? 1 : 0) - (this.held(A.left) ? 1 : 0), ky = (this.held(A.down) ? 1 : 0) - (this.held(A.up) ? 1 : 0);
+    if (A.scale) { kx *= A.scale.x ?? 1; ky *= A.scale.y ?? 1; }
     if (A.slow && this.held(A.slow.action)) { kx *= A.slow.x ?? 1; ky *= A.slow.y ?? 1; }
+    if (A.fast && this.held(A.fast.action)) { kx = clamp(kx * (A.fast.x ?? 1), -1, 1); ky = clamp(ky * (A.fast.y ?? 1), -1, 1); }
     if (A.round) { const len = Math.hypot(kx, ky) || 1; kx /= len; ky /= len; }
     m.x = kx; m.y = ky;
   }

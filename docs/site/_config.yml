@@ -28,6 +28,7 @@ nav:
       - { title: Effects, url: /docs/fx.html }
       - { title: The world, url: /docs/world.html }
       - { title: Play, url: /docs/play.html }
+      - { title: Harm, url: /docs/harm.html }
       - { title: The shell, url: /docs/shell.html }
       - { title: Sound, url: /docs/audio.html }
       - { title: The interface kit, url: /docs/ui.html }
@@ -72,5 +73,4 @@ nav:
       - { title: Joi, url: /tyrell/docs/modules/joi.html }
   - title: Proposed
     pages:
-      - { title: Harm, url: /docs/harm.html }
       - { title: Events by impact, url: /docs/events.html }

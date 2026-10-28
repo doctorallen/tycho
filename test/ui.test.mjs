@@ -230,3 +230,59 @@ test('buttons wired by their data attributes, as panelBind did, and acts as Lode
   assert.deepEqual(b, a);
   assert.ok(a.includes('start over') && a.includes('go screen-map'));
 });
+
+// ---- words spoken aloud: Merryfolk's talk sheet's timing ---------------------------
+test("words spoken aloud come out on Merryfolk's talk sheet's timing, and the typer says them so", () => {
+  // as Merryfolk's typeTalk (js/play.js) laid out its timeline: a line is
+  // { text, typed } (typed: someone else's words; not: the wizard's own, a note)
+  const merryfolk = (lines) => {
+    const out = []; let t = 0, spoke = false;
+    lines.forEach((l, line) => {
+      if (!l.typed) { if (spoke) t += 200; out.push({ t, line, upto: -1 }); return; }
+      t += spoke ? 320 : 160; out.push({ t, line, upto: -1 });
+      for (let i = 0; i < l.text.length; i++) {
+        const c = l.text[i], end = i === l.text.length - 1 || l.text[i + 1] === ' ';
+        t += 1000 / 40; out.push({ t, line, upto: i + 1 });
+        if (end && /[.!?…]/.test(c)) t += 260; else if (end && /[,;:—]/.test(c)) t += 110;
+      }
+      spoke = true;
+    });
+    return out;
+  };
+  const sets = [
+    [{ text: 'Morning. Rain again, is it?', typed: true }],
+    [{ text: 'Hm.', typed: false }, { text: 'Well, I never — not in all my years; truly!', typed: true }, { text: '', typed: false }, { text: 'Go on…', typed: true }],
+    [{ text: 'You said that.', typed: false }],
+  ];
+  for (const L of sets) assert.deepEqual(ui.typeTimeline(L), merryfolk(L));
+  // the typer on a stand-in page: text nodes said into two spans, a name label left be
+  const doc = { createElement: (tag) => new Node(tag) };
+  class Node {
+    constructor(tag, data) { this.nodeType = tag ? 1 : 3; this.data = data; this.childNodes = []; this.cls = new Set(); this.parent = null; this.ownerDocument = doc; this.className = ''; this._text = ''; }
+    get classList() { const s = this.cls; return { add: (c) => s.add(c), remove: (c) => s.delete(c), contains: (c) => s.has(c) }; }
+    set textContent(v) { this._text = v; } get textContent() { return this.nodeType === 3 ? this.data : this._text + this.childNodes.map((n) => n.textContent).join(''); }
+    append(...ns) { for (const n of ns) { const k = typeof n === 'string' ? new Node(null, n) : n; k.parent = this; this.childNodes.push(k); } }
+    remove() { const p = this.parent; if (p) p.childNodes = p.childNodes.filter((n) => n !== this); }
+  }
+  const line = (label, words) => { const p = new Node('p'); if (label) { const b = new Node('b'); b.textContent = label; p.append(b); } p.append(words); return p; };
+  const them = line('Wen', ' Morning. Rain again.'), you = line(null, 'Looks like it.');
+  let t = 0; const frames = [];
+  const typer = new ui.Typer({ reduced: () => false, now: () => t, frame: (fn) => (frames.push(fn), frames.length), cancel: () => {} });
+  const shown = []; let done = 0;
+  typer.type([you, them], (el) => el === them, { show: (el) => shown.push(el === them ? 'them' : 'you'), done: () => done++ });
+  assert.ok(you.classList.contains('tk-wait') && them.classList.contains('tk-wait'));
+  const run = (until) => { while (frames.length && t <= until) { const f = frames.shift(); f(); t += 16; } };
+  run(0); assert.deepEqual(shown, ['you']);
+  run(400);
+  const said = them.childNodes.filter((n) => n.nodeType === 1 && n !== them.childNodes[0]);
+  assert.equal(them.childNodes[0].textContent, 'Wen');
+  assert.ok(said[0].textContent.length > 0 && said[0].textContent.length < 'Morning. Rain again.'.length);
+  assert.equal(said[0].textContent + said[1].textContent, 'Morning. Rain again.');
+  assert.equal(said[1].className, 'tk-unsaid');
+  assert.ok(typer.busy);
+  typer.finish();
+  assert.equal(said[0].textContent, 'Morning. Rain again.'); assert.equal(said[1].textContent, '');
+  assert.deepEqual(shown, ['you', 'them']); assert.equal(done, 1); assert.ok(!typer.busy);
+  // asked for reduced motion: all at once
+  let d2 = 0; new ui.Typer({ reduced: () => true }).type([line(null, 'Hi.')], () => true, { done: () => d2++ }); assert.equal(d2, 1);
+});

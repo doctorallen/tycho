@@ -465,9 +465,9 @@ export declare class Morgul implements Module {
         t: number;
         known: Id[];
     }>;
-    /** A trap caught someone on screen (from the game: recorded). */
+    /** A trap caught someone on screen, or the player (from the game: recorded). */
     spring(trap: string, id: Id, seenBy?: Id[]): void;
-    /** A trap catches someone, inside the simulation: the harm, and it's spent a use. */
+    /** A trap catches someone (or the player), inside the simulation: the harm, and it's spent a use. */
     applySpring(trap: string, id: Id, seenBy?: Id[]): HarmView | null;
     /** A trap is disarmed (from the game: recorded), by someone if given. */
     disarm(trap: string, by?: Id): void;

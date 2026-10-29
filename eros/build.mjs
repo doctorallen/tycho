@@ -13,7 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 mkdirSync(join(here, 'out'), { recursive: true });
 writeCatalog(join(here, '..'), join(here, 'out', 'catalog.json'));
 await build({
-  entryPoints: { eros: join(here, 'src/main.tsx'), lib: join(here, 'src/lib.ts') },
+  entryPoints: { eros: join(here, 'src/main.tsx'), lib: join(here, 'src/lib.ts'), app: join(here, 'src/app.ts') },
   outdir: join(here, 'out'),
   outExtension: { '.js': '.mjs' },
   bundle: true,

@@ -15,8 +15,8 @@ export function fnSource(fn: Function): string {
 
 const quote = (s: string) => "'" + JSON.stringify(s).slice(1, -1).replace(/\\"/g, '"').replace(/'/g, "\\'") + "'";
 
-/** A value as JavaScript source, short ones on a line, long ones spread over lines with this indent. */
-export function toCode(value: unknown, indent = '', seen: Set<unknown> = new Set()): string {
+/** A value as JavaScript source, ones that fit a width on a line, longer ones spread over lines with this indent. */
+export function toCode(value: unknown, indent = '', seen: Set<unknown> = new Set(), width = 100): string {
   if (value === undefined) return 'undefined';
   if (value === null) return 'null';
   if (typeof value === 'string') return quote(value);
@@ -31,17 +31,17 @@ export function toCode(value: unknown, indent = '', seen: Set<unknown> = new Set
   const inner = indent + '  ';
   let parts: string[], open: string, close: string;
   if (Array.isArray(value)) {
-    parts = value.map((v) => toCode(v, inner, seen));
+    parts = value.map((v) => toCode(v, inner, seen, width));
     open = '['; close = ']';
   } else {
     parts = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined)
-      .map(([k, v]) => `${IDENT.test(k) ? k : quote(k)}: ${toCode(v, inner, seen)}`);
+      .map(([k, v]) => `${IDENT.test(k) ? k : quote(k)}: ${toCode(v, inner, seen, width)}`);
     open = '{ '; close = ' }';
     if (!parts.length) { seen.delete(value); return '{}'; }
   }
   seen.delete(value);
   const line = Array.isArray(value) ? `[${parts.join(', ')}]` : `${open}${parts.join(', ')}${close}`;
-  if (line.length + indent.length <= 100 && !line.includes('\n')) return line;
+  if (line.length + indent.length <= width && !line.includes('\n')) return line;
   return `${open.trim()}\n${parts.map((p) => inner + p).join(',\n')},\n${indent}${close.trim()}`;
 }
 

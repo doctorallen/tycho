@@ -700,6 +700,9 @@ test('Irulan takes the game\'s words, and falls back to the label and describe',
     ['Ruth caught a cold from Kofi.', 'Ruth had a few drinks too many again.', 'Ruth shook off the cold.']);
   w.athelas.course({ id: 'gout', label: 'A touch of gout', phases: [{ id: 'sore', minutes: 60 }] });
   assert.deepEqual(said([at(0, 'afflicted', { course: 'gout' }), at(90, 'recovered', { course: 'gout' })]), ['Ruth came down with a touch of gout.', 'Ruth got over a touch of gout.']);
+  // one thing two modules write in the same minute is said once
+  const hurt = rocinante({ harm: true });
+  assert.deepEqual(hurt.irulan.beats([at(0, 'recovered', { course: 'nightshade' }), at(0, 'healed', { course: 'nightshade' })], { vary: false }).map((b) => b.text), ['Ruth pulled through the poisoning.']);
   // a kind Irulan has no words of its own for, in describe's
   assert.deepEqual(said([at(0, 'arrived', { place: 'market' }), at(5, 'rent', { paid: 25 })]), ['Ruth went to The Market.', 'Ruth paid the rent (25).']);
   // and its own for what describe says tersely
@@ -770,6 +773,8 @@ test('Irulan finds the storylines: a theft and what came of it, a snare, a poiso
   assert.ok(!threads.some((th) => th.keys.some((k) => k.startsWith('pair:')) && th.keys.some((k) => !k.startsWith('pair:'))));
   // someone's own
   assert.ok(w.irulan.threads(kept, { who: 'pip' }).threads.every((th) => th.people.includes('pip')));
+  // no two titles alike
+  assert.equal(new Set(threads.map((th) => th.title)).size, threads.length);
   assert.equal(w.hash(), before);
 });
 

@@ -156,7 +156,7 @@ Every beat's sentence also comes in `parts`: its words, and each person and plac
 - **A matter**: a crime (what was done, who saw it, who was told and who reported it), a trap (set, sprung, disarmed, warned of, gossiped about), a taint and whom it poisoned, a harm (and whom it was blamed on and who was suspected). A crime seen or told of without knowing who did it belongs to the latest crime of its kind before it.
 - **What passed between two people**, for what's about no matter: their talks, grudges, feuds, making up, deeds for each other, harm. A pair becomes a storyline only when something with consequences passed between them (not a chat that went fine, nor a kind word alone).
 
-Matters are one story only when a single log entry links them (a quarrel that came to blows, a trap and the cut it gave), never for happening in the same minute: someone telling gossip as they start a chat doesn't tie the chat to the gossip. A beat about two stories is in both. What a thread's people felt in its course (after something in it that mattered, that they were in) comes with it: the thief's guilty conscience, the victim's breakdown. Everything about a thread's matters is in it whatever it scores; a thread needs two beats and one scoring `min` (default 0.4). They come the one that matters most first, each `{ id, keys, title, parts, people, beats, t, end, score, active }` (`people` the most involved first; `id` the same from one telling to the next, the first of its keys to turn up; `active` while something in it is within a day of now), with `rest`, the beats in no thread scoring `min`.
+Matters are one story only when a single log entry links them (a quarrel that came to blows, a trap and the cut it gave), never for happening in the same minute: someone telling gossip as they start a chat doesn't tie the chat to the gossip. A beat about two stories is in both. What a thread's people felt in its course (after something in it that mattered, that they were in) comes with it: the thief's guilty conscience, the victim's breakdown. Everything about a thread's matters is in it whatever it scores; a thread needs two beats and one scoring `min` (default 0.4). They come the one that matters most first, each `{ id, keys, title, parts, people, beats, t, end, score, active }` (`people` the most involved first; `id` the same from one telling to the next, the first of its keys to turn up; `active` while something in it is within a day of now), with `rest`, the beats in no thread scoring `min`. Two with the same title (Sam poisoning the stew twice in a week) are told apart by the day each began: "Sam's nightshade, day 2".
 
 ### The story kept
 
@@ -296,6 +296,11 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `--recap [n]` | Print the `n` headlines (default 5): the beats that matter most, in order |
 | `--focus id` | Count what's about this person twice over (`focus`); as many as you like |
 | `--feed [min]` | Print the story as it happens ([`feed`](#as-it-happens)), each beat as it completes, what scores under `min` left out (default 0.5) |
+| `--as id` | Tell only what this person knows, as they know it ([point of view](#point-of-view)); with `--recap`, what they'd say of what's new (`recount`) |
+| `--voice first` | With `--as`, in their own words |
+| `--plain` | Don't vary the words (`vary: false`) |
+| `--story-size n` | Keep Irulan's story beyond the log (`config.storySize`) and tell from it ([the story kept](#the-story-kept)) |
+| `--log-size n` | The log's size (`config.logSize`). Like `--story-size`, passed to the setup file as `config`, which it must hand on to `create()`, as Rocinante does |
 | `--no-color` | On a terminal, names are bold and places colored; this (or `NO_COLOR`) prints them plain |
 
 ```

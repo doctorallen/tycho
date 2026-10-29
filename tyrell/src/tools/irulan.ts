@@ -480,6 +480,14 @@ export class Irulan {
       th.title = textOf(th.parts);
       kept.push(th);
     }
+    // the same title twice (Sam's nightshade, once a day) tells them apart by the day each began
+    const titles = new Map<string, number>();
+    for (const th of kept) titles.set(th.title, (titles.get(th.title) || 0) + 1);
+    for (const th of kept) if (titles.get(th.title)! > 1) {
+      const day = `, day ${Math.floor((th.t + 1e-6) / DAY)}`;
+      th.parts.push({ text: day });
+      th.title += day;
+    }
     kept.sort((a, b) => b.score - a.score || a.t - b.t);
     // (a beat in a thread that wasn't kept may be in one that was)
     const told = new Set(kept.flatMap((th) => th.beats));
@@ -794,7 +802,8 @@ export class Irulan {
   /** A minute's clauses, as one: "gave up on dinner at home, was frustrated, then read at home for an hour". What happened comes first, then how they felt, then what they did. */
   private join(clauses: Clause[]): string {
     const rank = (c: Clause) => (c.act || c.talk ? 2 : c.kinds[0] === 'felt' ? 1 : 0);
-    const cs = clauses.slice().sort((a, b) => rank(a) - rank(b));
+    // (two entries for one thing, like Athelas's recovery and Morgul's healing of a poisoning, said once)
+    const cs = clauses.slice().sort((a, b) => rank(a) - rank(b)).filter((c, i, all) => all.findIndex((x) => x.text === c.text) === i);
     const words = cs.map((c) => c.text!);
     if (words.length < 2) return words[0];
     const last = cs[cs.length - 1];

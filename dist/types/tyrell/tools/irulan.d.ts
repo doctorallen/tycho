@@ -162,6 +162,19 @@ export declare class Irulan {
         threads: Thread[];
         rest: Beat[];
     };
+    /**
+     * The story as it happens: calls `fn` with each beat once it's complete
+     * (its action or talk over, its last minute gone by, so it won't grow) and
+     * scores `min`, for a notice when something that matters happens. Beats
+     * are worked out every `every` game minutes (default 10) from the entries
+     * of the last `window` (default 12 hours); a rewind forgets what came
+     * after the time gone back to, so the new course is told as it happens.
+     * It listens and changes nothing. Returns a function that stops it.
+     */
+    feed(fn: (beat: Beat) => void, opts?: TellOptions & {
+        every?: Minutes;
+        window?: Minutes;
+    }): () => void;
     /** When a time is, as tell's paragraphs say it: "Day 0, early morning". */
     when(t: Minutes, opts?: TellOptions): string;
     /**

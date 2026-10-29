@@ -3095,6 +3095,50 @@ var Irulan = class {
       rest: beats.filter((b) => !told.has(b) && b.score >= min && (who === void 0 || this.concerns(b, who)))
     };
   }
+  /**
+   * The story as it happens: calls `fn` with each beat once it's complete
+   * (its action or talk over, its last minute gone by, so it won't grow) and
+   * scores `min`, for a notice when something that matters happens. Beats
+   * are worked out every `every` game minutes (default 10) from the entries
+   * of the last `window` (default 12 hours); a rewind forgets what came
+   * after the time gone back to, so the new course is told as it happens.
+   * It listens and changes nothing. Returns a function that stops it.
+   */
+  feed(fn, opts = {}) {
+    const w = this.w;
+    const every = opts.every ?? 10, window = opts.window ?? 12 * HOUR;
+    let buffer = [];
+    const told = /* @__PURE__ */ new Map();
+    let last = -Infinity;
+    const idOf = (e) => `${e.t}|${e.k}|${e.who ?? ""}|${JSON.stringify(e.d ?? null)}`;
+    const open = (b) => b.kinds.includes("started") && !b.kinds.includes("finished") && !b.kinds.includes("stopped") || b.kinds.includes("exchange") && !b.kinds.includes("exchanged") || b.kinds.includes("set-out") && !b.kinds.includes("arrived");
+    const flush = () => {
+      const now2 = Math.floor(w.now + 1e-6);
+      buffer = buffer.filter((e) => e.t >= now2 - window);
+      for (const [id, t] of told) if (t < now2 - window) told.delete(id);
+      for (const b of this.beats(buffer, opts)) {
+        const done = Math.floor(b.entries[b.entries.length - 1].t + 1e-6);
+        if (open(b) || done >= now2 || done < last || b.entries.some((e) => told.has(idOf(e)))) continue;
+        for (const e of b.entries) told.set(idOf(e), e.t);
+        fn(b);
+      }
+      last = now2;
+    };
+    const offLog = w.on("log", (e) => {
+      buffer.push({ t: e.t, k: e.k, ...e.who !== void 0 ? { who: e.who } : {}, ...e.d !== void 0 ? { d: e.d } : {} });
+      if (w.now - last >= every) flush();
+    });
+    const offSeek = w.on("seek", (s) => {
+      if (s.to >= s.from) return;
+      buffer = buffer.filter((e) => e.t <= s.to);
+      for (const [id, t] of told) if (t > s.to) told.delete(id);
+      last = Math.min(last, Math.floor(s.to + 1e-6));
+    });
+    return () => {
+      offLog();
+      offSeek();
+    };
+  }
   /** When a time is, as tell's paragraphs say it: "Day 0, early morning". */
   when(t, opts = {}) {
     const periods = opts.periods ?? PERIODS;

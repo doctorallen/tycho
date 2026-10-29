@@ -873,6 +873,43 @@ test('Irulan keeps the story beyond the log, so storylines last the week, and it
   assert.deepEqual(w.irulan.book()[n - 1], last);
 });
 
+test('Irulan tells the story as it happens: each beat once, complete, in order, and again after a rewind', () => {
+  const quiet = rocinante({ seed: 'voight-kampff', harm: true });
+  quiet.advance(2 * DAY);
+  const w = rocinante({ seed: 'voight-kampff', harm: true });
+  const got = [];
+  const stop = w.irulan.feed((b) => got.push({ b, now: w.now }), { min: 0.6, vary: false });
+  w.advance(2 * DAY);
+  // listening changes nothing
+  assert.equal(w.hash(), quiet.hash());
+  assert.ok(got.length > 20, `${got.length}`);
+  const seen = new Set();
+  for (const { b, now } of got) {
+    assert.ok(b.score >= 0.6, b.text);
+    // told once it's over and its minute has gone by
+    assert.ok(b.entries[b.entries.length - 1].t < Math.floor(now), b.text);
+    assert.ok(!b.kinds.includes('started') || b.kinds.includes('finished') || b.kinds.includes('stopped'), b.text);
+    for (const e of b.entries) { const id = `${e.t}|${e.k}|${e.who}|${JSON.stringify(e.d)}`; assert.ok(!seen.has(id), b.text); seen.add(id); }
+  }
+  // each telling has what was done since the one before, in the order it began
+  const done = (b) => b.entries[b.entries.length - 1].t;
+  const groups = [...new Set(got.map((x) => x.now))].map((now) => got.filter((x) => x.now === now).map((x) => x.b));
+  for (const g of groups) assert.deepEqual(g.map((b) => b.t), g.map((b) => b.t).slice().sort((a, b) => a - b));
+  for (let i = 1; i < groups.length; i++) assert.ok(Math.max(...groups[i - 1].map(done)) < Math.min(...groups[i].map(done)) + 1);
+  assert.ok(got.some(({ b }) => b.text.startsWith('Sam slipped nightshade into the stew')));
+  // a rewind: what comes after the time gone back to is told again, as it happens anew
+  const back = w.now - 6 * HOUR, before = got.length;
+  const after = got.filter(({ b }) => b.entries[b.entries.length - 1].t > back + 10).length;
+  w.seek(back);
+  w.advance(6 * HOUR);
+  assert.ok(got.length - before >= after - 2 && after > 0, `${got.length - before} again of ${after}`);
+  // stopped, it tells nothing more
+  stop();
+  const n = got.length;
+  w.advance(6 * HOUR);
+  assert.equal(got.length, n);
+});
+
 test('Irulan gives the headlines, and more of the people who matter to the game', () => {
   const w = rocinante({ bree: true });
   const kept = [];

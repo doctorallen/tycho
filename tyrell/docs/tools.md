@@ -99,7 +99,7 @@ The log is in every snapshot and every save, so its size is the biggest lever on
 
 ## Irulan
 
-The narrator, named for the Princess Irulan of Dune, who wrote the histories of Muad'Dib. Westmarch keeps the log a line at a time; Irulan tells it as a story: for an inspector's "their day so far", a town journal, a recap after time away, the storylines running through the town, what someone says when asked what's new, or reading a Voight-Kampff run.
+The narrator, named for the Princess Irulan of Dune, who wrote the histories of Muad'Dib. Westmarch keeps the log a line at a time; Irulan tells it as a story: for an inspector's "their day so far", a town journal, a recap after time away, the storylines running through the town, a notice when something happens, what someone says when asked what's new, or reading a Voight-Kampff run.
 
 ```js
 const kept = [];
@@ -114,6 +114,7 @@ world.irulan.tell(kept, { min: 0.3 });     // ['Day 0, morning. Sam went to The 
 world.irulan.day('ruth', kept);            // 'Ruth went to Tomas\'s Workshop and had the radio fixed, with Tomas there. ...'
 world.irulan.recap(kept, { limit: 3 });    // the three beats that matter most, in order
 world.irulan.recount('tomas', kept);     // ['Early yesterday, I was caught in a snare at The Old Barn, ...', 'Yesterday evening, I was poisoned and was hurt by tainted food.']
+world.irulan.feed((beat) => notify(beat.parts), { min: 0.6 });   // each beat that matters, as it happens
 world.irulan.threads(kept);
 // { threads: [{ title: "Sam's nightshade", people: ['tomas', 'sam', ...], keys: ['harm:5', 'taint:x4'], beats: [
 //     "Sam slipped nightshade into the stew at Mara's Cafe.", "Tomas was poisoned and was hurt by what Sam put in the food.",
@@ -161,6 +162,10 @@ Matters are one story only when a single log entry links them (a quarrel that ca
 
 The log keeps its last `config.logSize` entries, a day or so of a busy town, too little to follow a feud for a week. With `config.storySize`, Irulan keeps the entries that matter in a story of their own (`world.s.story`), as Westmarch writes them: whatever weighs `config.storyMin` (0.3) or more, a crime or a deed done and how it ended, a feeling that moves the mood by 0.1 or more, a talk with where it was. Walks, company and routine actions aren't kept. Past `storySize`, the least that matters goes, the oldest of it first. It's part of the world's state, so it saves, loads, rewinds and replays with the world; off (0, the default), a world has no story and hashes as before. Every call takes its entries from it when given none (`world.irulan.threads()`), and `book()` returns it. Each entry is about 100 bytes, in every save and every time-walk snapshot: a story of 1,000 is about 100 KB a snapshot.
 
+### As it happens
+
+`feed(fn, opts?)` tells the story as it happens: it calls `fn` with each beat once it's complete (its action or talk over, its last minute gone by, so it won't grow) and scores `min`, for a notice when something that matters happens. Each beat is judged once, when it completes, and told at most once; each call has what completed since the last, in the order it began. Beats are worked out every `every` game minutes (default 10) from the entries of the last `window` (default 12 hours), from the `log` events, so it costs a little time as the world runs and nothing in it. A rewind (Esper) forgets what came after the time gone back to, so the new course is told as it happens. It returns a function that stops it.
+
 | Call | Returns |
 |---|---|
 | `beats(entries?, opts?)` | The entries told as beats, oldest first: `{ t, end?, who, with, place?, kinds, score, text, parts, entries }`. `who` is the subject (several when told as one, none for what happened to nobody in particular); `with` the others in it. `entries` is a list (the game's own, kept from the `log` events, to reach back further than the log keeps) or a time to tell the log from; without it, the story kept (`config.storySize`), or the whole log |
@@ -170,6 +175,7 @@ The log keeps its last `config.logSize` entries, a day or so of a busy town, too
 | `threads(entries, opts?)` | `{ threads, rest }`: the storylines, the one that matters most first, and the beats in none |
 | `recount(id, entries, opts?)` | What someone would say of what's new: the beats they know that matter most, in their words, with when |
 | `ago(t, now?)` | When something was, from now: `'yesterday evening'` |
+| `feed(fn, opts?)` | Calls `fn(beat)` with each beat as it completes; returns a function that stops it. `every` (10) and `window` (12 hours) besides the options below |
 | `book()` | The story kept beyond the log (`config.storySize`), oldest first |
 | `when(t, opts?)` | A time as the paragraphs say it: `'Day 0, early morning'` |
 | `words(kind, fn)` | Gives a kind of entry the game's own words: `fn(entry, { name, place, world })` returns what follows the person's name (or the whole sentence, for an entry with no person), `null` to leave the entry out, or `undefined` for Irulan's own. A definition: declare it again on every start |
@@ -289,6 +295,7 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `--story-by how` | `time` (the default: the timeline), `person` (each person's own beats under their name), `thread` (the storylines, the one that matters most first, then the rest of the town as a timeline), or `day` (paragraphs) |
 | `--recap [n]` | Print the `n` headlines (default 5): the beats that matter most, in order |
 | `--focus id` | Count what's about this person twice over (`focus`); as many as you like |
+| `--feed [min]` | Print the story as it happens ([`feed`](#as-it-happens)), each beat as it completes, what scores under `min` left out (default 0.5) |
 | `--no-color` | On a terminal, names are bold and places colored; this (or `NO_COLOR`) prints them plain |
 
 ```

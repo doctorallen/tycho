@@ -2,7 +2,7 @@
 // Runs the Voight-Kampff behavior tests on a world from the command line.
 //
 //   node bin/voight-kampff.mjs examples/rocinante.js [--days 7] [--seed s] [--with option]... [--check name]... [--json] [--baseline file.json] [--save file.json]
-//     [--log [all | kind,kind...]] [--who id] [--chronicle id] [--story [min]] [--story-by time|person|thread|day] [--recap [n]] [--focus id]...
+//     [--log [all | kind,kind...]] [--who id] [--chronicle id] [--story [min]] [--story-by time|person|thread|day] [--recap [n]] [--focus id]... [--feed [min]]
 //
 // The setup file exports a function (Tyrell, { seed, ...options }) => world,
 // as examples/rocinante.js does. `--with bree` passes { bree: true } (any
@@ -20,7 +20,10 @@
 // the town (`thread`), or paragraphs (`day`). `--recap` prints the five
 // headlines (`--recap 10`, ten), `--focus ruth` counts what's about Ruth
 // twice over, and with `--who`, only what's about them. On a terminal, names
-// are bold and places colored (NO_COLOR or `--no-color` for plain). Only the run's own world is watched: the checks that
+// are bold and places colored (NO_COLOR or `--no-color` for plain).
+// `--feed` prints the story as it happens instead, each beat once it's
+// complete (Irulan's feed), what scores under 0.5 left out (`--feed 0.3`).
+// Only the run's own world is watched: the checks that
 // build more worlds with the same seed would tell it all again.
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -31,11 +34,11 @@ const args = process.argv.slice(2);
 // (--log takes a value only when one follows that reads as kinds, not a file)
 const kinds = (a) => a !== undefined && /^[a-z][a-z:,-]*$/.test(a);
 const score = (a) => a !== undefined && /^\d*\.?\d+$/.test(a);
-const bare = (i) => args[i] === '--json' || args[i] === '--no-color' || (args[i] === '--log' && !kinds(args[i + 1])) || ((args[i] === '--story' || args[i] === '--recap') && !score(args[i + 1]));
+const bare = (i) => args[i] === '--json' || args[i] === '--no-color' || (args[i] === '--log' && !kinds(args[i + 1])) || ((args[i] === '--story' || args[i] === '--recap' || args[i] === '--feed') && !score(args[i + 1]));
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
 const all = (name) => args.flatMap((a, i) => (a === '--' + name && args[i + 1] !== undefined ? [args[i + 1]] : []));
 const file = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--') && !bare(i - 1)));
-if (!file) { console.error('usage: voight-kampff <setup.js> [--days n] [--seed s] [--with option]... [--check name]... [--json] [--baseline file] [--save file] [--log [all | kinds]] [--who id] [--chronicle id] [--story [min]] [--story-by time|person|thread|day] [--recap [n]] [--focus id]...'); process.exit(2); }
+if (!file) { console.error('usage: voight-kampff <setup.js> [--days n] [--seed s] [--with option]... [--check name]... [--json] [--baseline file] [--save file] [--log [all | kinds]] [--who id] [--chronicle id] [--story [min]] [--story-by time|person|thread|day] [--recap [n]] [--focus id]... [--feed [min]]'); process.exit(2); }
 const require = createRequire(import.meta.url);
 let build = require(resolve(file));
 if (build.default) build = build.default;
@@ -55,6 +58,8 @@ const recap = recapAt < 0 ? null : score(args[recapAt + 1]) ? Number(args[recapA
 const story = storyAt < 0 ? (recap !== null ? 0.3 : null) : score(args[storyAt + 1]) ? Number(args[storyAt + 1]) : 0.3;
 const storyBy = opt('story-by', 'time');
 if (!['time', 'person', 'thread', 'day'].includes(storyBy)) { console.error(`--story-by: time, person, thread or day, not '${storyBy}'`); process.exit(2); }
+const feedAt = args.indexOf('--feed');
+const feed = feedAt < 0 ? null : score(args[feedAt + 1]) ? Number(args[feedAt + 1]) : 0.5;
 const focus = Object.fromEntries(all('focus').map((id) => [id, 2]));
 let first = null;
 let chronicled = [];
@@ -89,6 +94,11 @@ function watch(w) {
   const fresh = () => w.now <= end && w.now > seen;
   if (told) w.on('log', (e) => { if (fresh() && w.westmarch.about(e, told)) chronicled.push(e); });
   if (story !== null) w.on('log', (e) => { if (fresh()) written.push(e); });
+  if (feed !== null) {
+    // (as each beat completes; a sentence names its own people)
+    w.irulan.feed((b) => { if (fresh()) console.log(`${when(b.t)}  ${b.text}`); },
+      { min: feed, ...(who ? { who } : {}), ...(Object.keys(focus).length ? { focus } : {}) });
+  }
   if (!logs) return;
   w.on('*', (e) => {
     if (!fresh()) return;

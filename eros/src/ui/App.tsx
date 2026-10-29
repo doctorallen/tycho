@@ -30,7 +30,7 @@ export interface AppProps {
   open: (path: string, options: Record<string, unknown>, seed: string) => Promise<{ sandbox: Sandbox; warnings: string[] }>;
   /** Writes the town to a file and checks it: what to say. */
   exportTo: (sandbox: Sandbox, path: string) => Promise<string>;
-  /** The terminal's size, when it can't be read (tests). */
+  /** A fixed size, over the terminal's (tests, screenshots). */
   size?: { columns: number; rows: number };
   /** Milliseconds between clock ticks while playing. */
   tickMs?: number;
@@ -61,12 +61,12 @@ export function App(props: AppProps) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [message, setMessage] = useState<{ text: string; color?: string } | null>({ text: `Welcome to Eros. ${sb.model.name} is loaded: space plays it, ? explains everything.`, color: 'cyan' });
   const [helpOffset, setHelpOffset] = useState(0);
-  const [size, setSize] = useState(() => ({ columns: stdout?.columns || props.size?.columns || 120, rows: stdout?.rows || props.size?.rows || 36 }));
+  const [size, setSize] = useState(() => props.size ?? { columns: stdout?.columns || 120, rows: stdout?.rows || 36 });
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const say = useCallback((text: string, color?: string) => setMessage({ text, color }), []);
 
   useEffect(() => {
-    if (!stdout) return;
+    if (!stdout || props.size) return;
     const on = () => setSize({ columns: stdout.columns || 120, rows: stdout.rows || 36 });
     stdout.on('resize', on);
     return () => { stdout.off('resize', on); };

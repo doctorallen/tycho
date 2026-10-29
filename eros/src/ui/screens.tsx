@@ -320,7 +320,7 @@ export function CatalogScreen({ ctx }: { ctx: Ctx }) {
           <Rows rows={rows} height={bodyH - 3} offset={offset} width={rw - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['↑↓', panel === 0 ? 'page' : 'scroll'], [panel === 0 ? '→/enter' : '←', panel === 0 ? 'read' : 'pages'], ['PgUp/Dn', 'faster'], ...(page.kind ? [['a', `add a ${page.kind.name.toLowerCase()} to the town`] as [string, string]] : [])]} />
+      <Hints width={width} hints={[['↑↓', panel === 0 ? 'page' : 'scroll'], [panel === 0 ? '→/enter' : '←', panel === 0 ? 'read' : 'pages'], ['PgUp/Dn', 'faster'], ...(page.kind ? [['a', `add ${/^[aeiou]/i.test(page.kind.name) ? 'an' : 'a'} ${page.kind.name.toLowerCase()} to the town`] as [string, string]] : [])]} />
     </Box>
   );
 }

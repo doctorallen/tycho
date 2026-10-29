@@ -63,6 +63,8 @@ These docs describe Tyrell 2.0.0 (save schema 2).
 
 **[Recipes](recipes.md).** A shop with a keeper on shift; a bar regular; a household purse; a crime with witnesses, reports, heat and a payoff; a rumor and a lie; a plan with fallbacks and a `get:` chain; a festival storylet with a deck; a detective game; a time-loop day; a rewind ability; a language-model voice.
 
+**[Eros](../../docs/eros.md).** Tycho's sandbox in the terminal for Tyrell (`npm run eros`): a town live, its story, everything it's made of to see, add and change, and the living documentation of every kind of thing a town can declare.
+
 **[Tools](tools.md).** Palantír (why, why not, describe, inspect), Westmarch (the log and chronicles), Irulan (the log told as a story), Voight-Kampff (headless behavior tests and the command line) and Rocinante (the sample town).
 
 **[API reference](api.md).** Every export, option, property, method and event, the main types, and how to write a module.

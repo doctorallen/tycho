@@ -53,6 +53,8 @@
     "vk:bree": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 7 --with bree --check interactions",
     "vk:harm": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 7 --with harm --check interactions --check harm",
     "vk:log": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 1 --log all",
+    "eros": "node eros/run.mjs",
+    "test:eros": "npm --prefix eros run typecheck && npm --prefix eros test",
     "vk:story": "node tyrell/bin/voight-kampff.mjs tyrell/examples/rocinante.js --days 1 --with bree --story",
     "check-dist": "node scripts/build.mjs && git diff --exit-code -- dist"
   },

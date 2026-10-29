@@ -85,10 +85,18 @@ export class Sandbox {
   /** Runs on by real time while playing. */
   tick(ms: number): void { if (this.playing) this.world.advance((this.speed * ms) / 1000); }
   step(minutes: number): void { this.world.advance(minutes); }
-  /** Goes back (Esper), not before the start, nor before the oldest snapshot it keeps. */
+  /**
+   * Goes back, not before the start: by Esper as far as its snapshots reach,
+   * and further by building the town again and running it to that moment
+   * (the same seed runs the same, so it's the same moment either way).
+   */
   back(minutes: number): void {
-    const to = Math.max(this.startTime, this.world.esper?.earliest?.() ?? this.startTime, this.world.now - minutes);
-    if (to < this.world.now) this.world.seek(to);
+    const to = Math.max(this.startTime, this.world.now - minutes);
+    if (to >= this.world.now) return;
+    const earliest = this.world.esper?.on === false ? Infinity : this.world.esper?.earliest?.() ?? Infinity;
+    if (to >= earliest) { this.world.seek(to); return; }
+    this.build();
+    if (to > this.world.now) this.world.advanceTo(to);
   }
   /** Starts again from the start, with a seed (the same one by default). */
   restart(seed = this.seed): void { this.seed = seed; this.build(); }

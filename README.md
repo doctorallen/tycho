@@ -75,6 +75,8 @@ Two rules hold everywhere:
 
 Tyrell lives in [tyrell/](tyrell/) with its history, its docs, its sample town (Rocinante) and its Voight-Kampff runs, and keeps its own rules: plain-data state, every outside change recorded, the same seed giving the same world, nothing touching the browser, all of it testable in Node. Nothing in `tyrell/src` may import from the engine. Tyrell owns minds and has no coordinates; the engine owns space, pixels and the screen and has no minds; the bridge joins them.
 
+[Eros](docs/eros.md) (`eros/`, `npm run eros`) is a sandbox in the terminal for Tyrell, for the people making the games: it runs a town live (Rocinante, or any setup file), tells its story with every one of Irulan's settings, shows everything the town is made of to see, add and change (each change runs the town again to the same moment, and shows what it did), keeps the living documentation of every kind of thing a town can declare, generated from Tyrell's source, and opens and exports setup files. It has its own dependencies (Ink and React) and isn't part of `dist/`.
+
 ## Building and testing
 
 ```sh
@@ -84,6 +86,8 @@ npm test               # builds, then the engine's and Tyrell's suites
 npm run typecheck
 npm run test:browser   # the pixels' canvas work and the sound in Chromium, against the games' originals (needs Playwright or puppeteer-core)
 npm run vk             # Voight-Kampff: a week of Rocinante
+npm run eros           # Eros, the sandbox: a town live in the terminal, its story, its parts, the living docs
+npm run test:eros      # Eros's type-check and tests
 ```
 
 CI also runs every game's own tests with the new build in its `vendor/tycho`.

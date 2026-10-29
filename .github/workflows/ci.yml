@@ -74,3 +74,17 @@ jobs:
           name: test-out-${{ matrix.game }}
           path: game/test/out
           if-no-files-found: ignore
+
+  # Eros, the sandbox: its own dependencies, type-check and tests (the screen drawn headless)
+  eros:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: eros
+      - name: Eros's type-check and tests
+        run: npm run test:eros

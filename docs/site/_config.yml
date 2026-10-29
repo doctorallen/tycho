@@ -37,6 +37,7 @@ nav:
       - { title: The bridge, url: /docs/minds.html }
       - { title: Installable games, url: /docs/installable.html }
       - { title: The test kit, url: /docs/testkit.html }
+      - { title: Eros, the sandbox, url: /docs/eros.html }
       - { title: The move onto Tycho, url: /docs/move.html }
       - { title: The logo, url: /docs/brand/ }
   - title: Tyrell

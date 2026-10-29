@@ -182,7 +182,19 @@ export function buildCatalog(root) {
     generated: 'from tyrell/src, tyrell/README.md and tyrell/docs',
     modules, kinds, types,
     api: classes.map((c) => ({ target: c.target, className: c.className, file: c.file, doc: c.doc, methods: c.methods })),
-    config: ['Config', ...modules.map((m) => m.config).filter(Boolean)].map((n) => ({ type: n, module: n === 'Config' ? 'core' : modules.find((m) => m.config === n)?.name, fields: types[n]?.fields ?? [] })),
+    // settings, with tuning.md's default and what each does (it lists every one)
+    config: ['Config', ...modules.map((m) => m.config).filter(Boolean)].map((n) => {
+      const fields = types[n]?.fields ?? [];
+      const table = pick(fields, tables.filter((t) => t.page === 'tyrell/docs/tuning.md'), 0.3);
+      const cols = table ? columns(table.header) : null;
+      return {
+        type: n, module: n === 'Config' ? 'core' : modules.find((m) => m.config === n)?.name, table: table ? `tyrell/docs/tuning.md (${table.heading})` : null,
+        fields: fields.map((f) => {
+          const row = table?.rows.find((r) => keysOf(r[0]).includes(f.name));
+          return { ...f, default: row && cols.def >= 0 ? row[cols.def].replace(/`/g, '') : '', meaning: row && cols.meaning >= 0 ? row[cols.meaning] : '' };
+        }),
+      };
+    }),
   };
 }
 

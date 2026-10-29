@@ -2,8 +2,9 @@
 // only the layers below it (core, then pixels, world, play, shell), Tyrell
 // uses nothing outside tyrell/src (so the minds stay testable without a
 // browser and a game without people never loads them), the bridge takes
-// only types from either, and the service worker and the test kit stand
-// alone. Returns a list of problems, empty when all is well.
+// only types from either, and the service worker, the test kit and Eros
+// (the sandbox, with its own dependencies) stand alone. Returns a list of
+// problems, empty when all is well.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -14,7 +15,7 @@ function files(dir) {
   for (const n of readdirSync(dir).sort()) {
     const p = join(dir, n);
     if (statSync(p).isDirectory()) out.push(...files(p));
-    else if (/\.ts$/.test(n) && !/\.d\.ts$/.test(n)) out.push(p);
+    else if (/\.tsx?$/.test(n) && !/\.d\.ts$/.test(n)) out.push(p);
   }
   return out;
 }
@@ -23,14 +24,14 @@ function files(dir) {
 function zoneOf(root, p) {
   const r = relative(root, p).split(/[\\/]/);
   if (r[0] === 'tyrell') return { zone: 'tyrell' };
-  if (r[0] === 'minds' || r[0] === 'sw' || r[0] === 'testkit') return { zone: r[0] };
+  if (r[0] === 'minds' || r[0] === 'sw' || r[0] === 'testkit' || r[0] === 'eros') return { zone: r[0] };
   if (r[0] === 'src') return { zone: 'src', layer: r.length > 2 ? LAYERS.indexOf(r[1]) : LAYERS.length };
   return { zone: 'other' };
 }
 
 export function checkLayers(root) {
   const problems = [];
-  const dirs = ['src', 'tyrell/src', 'minds', 'sw', 'testkit'].map((d) => join(root, d));
+  const dirs = ['src', 'tyrell/src', 'minds', 'sw', 'testkit', 'eros/src'].map((d) => join(root, d));
   for (const dir of dirs) {
     let list = [];
     try { list = files(dir); } catch (e) { continue; }
@@ -45,7 +46,7 @@ export function checkLayers(root) {
         const at = relative(root, f) + ' imports ' + spec;
         if (me.zone === 'tyrell' && to.zone !== 'tyrell') problems.push(`${at}: Tyrell uses nothing outside tyrell/src`);
         else if (me.zone === 'minds' && to.zone !== 'minds' && !typeOnly) problems.push(`${at}: the bridge takes only types from the engine and Tyrell (import type)`);
-        else if ((me.zone === 'sw' || me.zone === 'testkit') && to.zone !== me.zone) problems.push(`${at}: ${me.zone}/ stands alone`);
+        else if ((me.zone === 'sw' || me.zone === 'testkit' || me.zone === 'eros') && to.zone !== me.zone) problems.push(`${at}: ${me.zone}/ stands alone`);
         else if (me.zone === 'src' && to.zone !== 'src') problems.push(`${at}: the engine uses nothing outside src/`);
         else if (me.zone === 'src' && to.layer > me.layer) problems.push(`${at}: ${LAYERS[me.layer]} may not use ${LAYERS[to.layer] || 'the index'}, a layer above it`);
       }

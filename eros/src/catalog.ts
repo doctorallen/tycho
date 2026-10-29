@@ -40,7 +40,7 @@ export interface Catalog {
   kinds: Kind[];
   types: Record<string, TypeInfo>;
   api: Api[];
-  config: Array<{ type: string; module: string; fields: Array<Omit<Field, 'default' | 'meaning'>> }>;
+  config: Array<{ type: string; module: string; table: string | null; fields: Field[] }>;
 }
 
 /** The catalog the build wrote beside the app. */

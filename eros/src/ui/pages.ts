@@ -59,12 +59,13 @@ export function modulePage(m: Module, cat: Catalog, defaults: Record<string, unk
 }
 
 /** Settings with their defaults and meanings. */
-export function settingRows(fields: Array<{ name: string; type: string; doc: string }>, defaults: Record<string, unknown> | undefined, width: number): Row[] {
+export function settingRows(fields: Array<{ name: string; type: string; doc: string; meaning?: string }>, defaults: Record<string, unknown> | undefined, width: number): Row[] {
   const rows: Row[] = [];
   for (const f of fields) {
     const d = defaults && f.name in defaults ? toCode(defaults[f.name], '', new Set(), 60) : '';
     rows.push(...wrap([{ text: f.name, bold: true }, ...(d ? [{ text: ` = ${d.split('\n')[0]}`, color: 'green' }] : []), { text: `  ${f.type}`, dim: true }], width, 4));
-    if (f.doc) rows.push(...wrapText(plain(f.doc), width - 4).map((r) => [{ text: '    ' }, ...r]));
+    const about = plain(f.meaning || f.doc);
+    if (about) rows.push(...wrapText(about, width - 4).map((r) => [{ text: '    ' }, ...r]));
   }
   return rows;
 }

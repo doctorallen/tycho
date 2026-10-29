@@ -33,6 +33,7 @@ world.reverie.emotion('kofi');   // 'angry'
 |---|---|---|
 | `id` | required | The feeling's id |
 | `label` | the id | A readable name ('A good meal') |
+| `tell` | none | Its words in a story ([Irulan](../tools.md#irulan)), as they'd follow the person's name: `'enjoyed a good meal'`. The built-in feelings have theirs (`'was frustrated'`); without it, `'felt <label>'`. A list is variants, one drawn for each telling |
 | `weight` | required | How much it lifts (+) or sinks (-) the mood, -1..1 |
 | `minutes` | required | How long it lasts |
 | `stack` | 1 | How many can be held at once. A new one past the limit refreshes the oldest instead |
@@ -85,6 +86,7 @@ world.reverie.breakdown({ id: 'bender', level: 'major', do: 'bender', label: 'a 
 | `weight` | none (1) | Considerations (read for the person): how likely this break is for them, against the others at its level. A temperament |
 | `after` | `'catharsis'` | The feeling once it's over |
 | `label` | the id | A readable name |
+| `tell` | none | Its words in a story ([Irulan](../tools.md#irulan)), as they'd follow the person's name: `'broke down and went on a bender'`. Without it, `'broke down (<label>)'`. A list is variants |
 
 Each time someone decides, Reverie checks their mood against the thresholds in config: below `extreme[0]` (0.08) it's an extreme break, below `major[0]` (0.2) major, below `minor[0]` (0.35) minor. The chance of a break since they last decided is `1 - exp(-elapsed × breaks / meanTime)`, where the mean time between breaks is `extreme[1]` (0.5 days), `major[1]` (0.8) or `minor[1]` (4), and `breaks` is the headline knob (1; 0 means no breaks, and a person's own `tune` multiplies it for them); the elapsed time counts at most a day. The break is picked among the breaks of that level (or the nearest milder level that has any), weighted by their considerations. With no breaks declared, nobody breaks.
 

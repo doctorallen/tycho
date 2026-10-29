@@ -45,6 +45,14 @@ export declare class Entmoot {
     private travelTo;
     /** Starts the action itself, here. */
     act(p: PersonState, c: Candidate): void;
+    /**
+     * An action done together (its `together`): the target joins in for its
+     * length, if they're at the same place, doing nothing that outranks it,
+     * and there's room in its slot. They leave what they were doing, and
+     * their 'started' names who they joined. Otherwise it's done alone, aimed
+     * at them.
+     */
+    private together;
     /** The action or walk ran its course. */
     finish(p: PersonState): void;
     /** Applies what finishing (some of) an action does: relief, effects, learning. */

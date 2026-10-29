@@ -27,6 +27,7 @@ import { Voice, DEFAULT_VOICE } from './modules/voice';
 import { Bree, DEFAULT_BREE, OUTCOMES, breeStarter } from './modules/bree';
 import { Morgul, DEFAULT_MORGUL } from './modules/morgul';
 import { run, compare } from './tools/voightkampff';
+import { IRULAN_WEIGHTS } from './tools/irulan';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
 
@@ -84,7 +85,7 @@ export const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string
 export {
   World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA,
   Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, Morgul,
-  OUTCOMES, breeStarter,
+  OUTCOMES, breeStarter, IRULAN_WEIGHTS,
   curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR,
 };
 export type { SaveData, Module };
@@ -108,3 +109,4 @@ export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions, VKHarm } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';
 export type { LogFilter } from './core/westmarch';
+export type { Beat, Part, Thread, TellOptions, WordsFn, WordsContext } from './tools/irulan';

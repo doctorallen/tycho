@@ -60,6 +60,7 @@ Every field of `ActionDef`:
 |---|---|---|---|
 | `id` | string | required | The action's id |
 | `label` | string | none | A readable name: chronicles and Joi's prompts use it |
+| `tell` | `{ did?, doing? }` | none | Its words in a story ([Irulan](tools.md#irulan)), as they'd follow the person's name: what they did (`'took a walk in {place}'`, `'chatted with {target}'`) and what they were doing when the story ends (`'was reading'`). `{place}` and `{target}` are named; without `{place}`, where comes after (`'at home'`). Without it, the label is used. A list is variants, one drawn for each telling |
 | `minutes` | number or `[min, max]` | required | How long it takes. A range is drawn from the person's stream |
 | `relieves` | `{ need: number or [min, max] }` | none | How much each need drops when it's done. A range is drawn at the end; the weighing uses the middle |
 | `base` | number | 0 | A flat appeal added to the relief, for things people do for their own sake |
@@ -78,6 +79,7 @@ Every field of `ActionDef`:
 | `tags` | string[] | none | Free labels. The engine reads `'sleep'` (exempt from the repeat penalty; Voight-Kampff's sleep check), `'social'` (Fellowship's regard factor), `'illegal'` (Mentat's cost), and any tag a Reverie feeling `boost`s |
 | `target` | `'person'` | none | Aimed at someone: one option per suitable person at the place (up to `config.targets`, six) |
 | `targetIf` | Cond[] | none | Conditions on the target: `ctx.target` is the candidate (`'regard>0.2'`, `'target.is:child'`) |
+| `together` | boolean | false | Done together: the target joins in for its length (a shower for two, a dance), if they're at the same place, doing nothing that outranks it, and there's room in its slot. They leave what they were doing, and their `started` entry has `layer: 'together'` and names who they joined (`with`). Without it, the target is only who it's aimed at: they go on with their own doing. Either way, others at the place are only about (Fellowship's `met`), never taking part |
 | `pose` | string | `'idle'` | What the body shows while doing it ('sit', 'work', 'sleep') |
 | `says` | string | none | A line topic said when it starts (Cityspeak): the person's best line on that topic, to the target if there is one, as with `cityspeak.say` (remembered, its `then` applied, a `say` event) |
 | `against` | string[] | none | Values it goes against (Reverie): weighs less for people who hold them, and costs them stress and a guilty conscience |
@@ -437,6 +439,7 @@ Read them with `world.wishesOf(id)` (each `{ id, label, t, until?, x?, dream?, p
 |---|---|---|
 | `id` | required | |
 | `label` | the id | A readable name |
+| `tell` | none | Its words in a story ([Irulan](tools.md#irulan)) when it's wished: `'dreamed of becoming an expert baker'`. Without it, `'wished for <label>'`. A list is variants |
 | `if` | none | Who may wish it, and when |
 | `weight` | 1 | A number, considerations multiplied, or a function of the context |
 | `about` | none | A term or a function: what it's about |
@@ -473,6 +476,8 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `backoff` | 15 | Minutes an action is ruled out at a place after it failed there (a closed door, a taken slot, a body's report) |
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame |
 | `logSize` | 1000 | Westmarch log entries kept |
+| `storySize` | 0 | Irulan's story: entries that matter kept beyond the log, so storylines last for weeks (0: off; see [Irulan](tools.md#the-story-kept)) |
+| `storyMin` | 0.3 | What an entry must weigh to be kept in the story |
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `checksOnce` | false | A check already queued for someone at a moment isn't queued again (see [When people think](#when-people-think)) |
 | `habitFast` | 0.25 | Learning rate of the fast habit weight |

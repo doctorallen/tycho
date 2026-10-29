@@ -7,7 +7,7 @@
 // ("near") is the same person: the game is handed a body to walk and pose,
 // and Entmoot keeps the same timetable either way, so someone who sets out
 // for the bar arrives at the same minute whether or not anyone watched.
-import type { Body, Candidate, Doing, Id, PersonState, QueueItem, Value } from './types';
+import type { ActionDef, Body, Candidate, Doing, Id, PersonState, QueueItem, Value } from './types';
 import type { World } from './world';
 import { backoffKey } from './bicameral';
 import { DAY, HOUR, clamp, heapPeek, heapPop, heapPush, hourOf } from './util';
@@ -315,8 +315,36 @@ export class Entmoot {
     if (p.directive && p.directive.do === a.id && c.layer === 'story') p.directive.done = true;
     this.announce(p);
     this.carryFollowers(p);
+    if (a.together && c.target) this.together(p, a);
     this.meet(p);
     this.scheduleChecks(p);
+  }
+
+  /**
+   * An action done together (its `together`): the target joins in for its
+   * length, if they're at the same place, doing nothing that outranks it,
+   * and there's room in its slot. They leave what they were doing, and
+   * their 'started' names who they joined. Otherwise it's done alone, aimed
+   * at them.
+   */
+  private together(p: PersonState, a: ActionDef): void {
+    const w = this.w;
+    const d = p.doing as Doing;
+    const o = d.target ? w.s.people[d.target] : undefined;
+    if (!o || o === p || o.status !== 'active' || !o.place || !d.place || o.doing?.kind === 'travel' || !w.ring.within(o.place, d.place)) return;
+    if (o.doing && o.doing.rank > d.rank) return;
+    if (a.slot && o.slot !== a.slot && (w.ring.free(d.place, a.slot) < 1 || !w.ring.allowed(d.place, a.slot, o))) return;
+    if (o.doing) this.interrupt(o, 'joined ' + p.name, false);
+    if (o.slot && o.place) { w.ring.release(o.place, o.slot, o.id); delete o.slot; }
+    if (a.slot) { w.ring.claim(d.place, a.slot, o.id); o.slot = a.slot; }
+    const seq = this.scheduleEnd(o, d.end);
+    o.place = d.place;
+    o.doing = { kind: 'act', action: a.id, place: d.place, slot: a.slot, target: p.id, start: w.s.now, end: d.end, rank: d.rank, layer: 'together', seq };
+    w.log('started', o.id, { action: a.id, place: d.place, layer: 'together', target: p.id, with: p.id });
+    for (const m of w.hooks) m.started?.(o, o.doing);
+    if (!o.doing || o.doing.seq !== seq) return; // a module stopped it
+    this.announce(o);
+    this.scheduleChecks(o);
   }
 
   /** The action or walk ran its course. */

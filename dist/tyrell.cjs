@@ -33,6 +33,7 @@ __export(index_exports, {
   Fellowship: () => Fellowship,
   Gaff: () => Gaff,
   HOUR: () => HOUR,
+  IRULAN_WEIGHTS: () => IRULAN_WEIGHTS,
   Joi: () => Joi,
   MIGRATIONS: () => MIGRATIONS,
   MODULES: () => MODULES,
@@ -373,10 +374,10 @@ var Ring = class {
   /** Declares a place. */
   place(def) {
     this.defs.set(def.id, def);
-    for (const tag of def.tags || []) {
-      const list = this.byTag.get(tag) || [];
-      if (!list.includes(def.id)) list.push(def.id);
-      this.byTag.set(tag, list);
+    for (const tag2 of def.tags || []) {
+      const list2 = this.byTag.get(tag2) || [];
+      if (!list2.includes(def.id)) list2.push(def.id);
+      this.byTag.set(tag2, list2);
     }
     if (!this.w.s.places[def.id]) this.w.s.places[def.id] = this.fresh(def);
     this.cache.clear();
@@ -409,13 +410,13 @@ var Ring = class {
     return st;
   }
   /** Every place with a tag. */
-  tagged(tag) {
-    return this.byTag.get(tag) || [];
+  tagged(tag2) {
+    return this.byTag.get(tag2) || [];
   }
-  hasTag(id, tag) {
+  hasTag(id, tag2) {
     let cur = this.get(id);
     while (cur) {
-      if (cur.tags && cur.tags.includes(tag)) return true;
+      if (cur.tags && cur.tags.includes(tag2)) return true;
       cur = this.get(cur.in);
     }
     return false;
@@ -490,22 +491,22 @@ var Ring = class {
     const cap = this.capacity(id, slot);
     if (cap <= 0) return true;
     const st = this.state(id);
-    const list = st.claims[slot] || (st.claims[slot] = []);
-    if (list.includes(who)) return true;
-    if (list.length >= cap) return false;
+    const list2 = st.claims[slot] || (st.claims[slot] = []);
+    if (list2.includes(who)) return true;
+    if (list2.length >= cap) return false;
     if (!this.allowed(id, slot, this.w.s.people[who])) return false;
-    list.push(who);
+    list2.push(who);
     return true;
   }
   /** Lets go of a slot. */
   release(id, slot, who) {
     if (!id || !slot) return;
     const st = this.w.s.places[id];
-    const list = st?.claims[slot];
-    if (!list) return;
-    const i = list.indexOf(who);
-    if (i >= 0) list.splice(i, 1);
-    if (!list.length) delete st.claims[slot];
+    const list2 = st?.claims[slot];
+    if (!list2) return;
+    const i = list2.indexOf(who);
+    if (i >= 0) list2.splice(i, 1);
+    if (!list2.length) delete st.claims[slot];
   }
   /** Everyone at a place right now (doing something there, not walking through). */
   present(id) {
@@ -1143,8 +1144,8 @@ var Bicameral = class {
   // -------------------------------------------------------------------------
   // Wishes and dreams
   // -------------------------------------------------------------------------
-  matches(list, id, tags) {
-    for (const x of list) {
+  matches(list2, id, tags) {
+    for (const x of list2) {
       if (x === id) return true;
       if (x.startsWith("tag:") && tags?.includes(x.slice(4))) return true;
     }
@@ -1723,8 +1724,41 @@ var Entmoot = class {
     if (p.directive && p.directive.do === a.id && c.layer === "story") p.directive.done = true;
     this.announce(p);
     this.carryFollowers(p);
+    if (a.together && c.target) this.together(p, a);
     this.meet(p);
     this.scheduleChecks(p);
+  }
+  /**
+   * An action done together (its `together`): the target joins in for its
+   * length, if they're at the same place, doing nothing that outranks it,
+   * and there's room in its slot. They leave what they were doing, and
+   * their 'started' names who they joined. Otherwise it's done alone, aimed
+   * at them.
+   */
+  together(p, a) {
+    const w = this.w;
+    const d = p.doing;
+    const o = d.target ? w.s.people[d.target] : void 0;
+    if (!o || o === p || o.status !== "active" || !o.place || !d.place || o.doing?.kind === "travel" || !w.ring.within(o.place, d.place)) return;
+    if (o.doing && o.doing.rank > d.rank) return;
+    if (a.slot && o.slot !== a.slot && (w.ring.free(d.place, a.slot) < 1 || !w.ring.allowed(d.place, a.slot, o))) return;
+    if (o.doing) this.interrupt(o, "joined " + p.name, false);
+    if (o.slot && o.place) {
+      w.ring.release(o.place, o.slot, o.id);
+      delete o.slot;
+    }
+    if (a.slot) {
+      w.ring.claim(d.place, a.slot, o.id);
+      o.slot = a.slot;
+    }
+    const seq = this.scheduleEnd(o, d.end);
+    o.place = d.place;
+    o.doing = { kind: "act", action: a.id, place: d.place, slot: a.slot, target: p.id, start: w.s.now, end: d.end, rank: d.rank, layer: "together", seq };
+    w.log("started", o.id, { action: a.id, place: d.place, layer: "together", target: p.id, with: p.id });
+    for (const m of w.hooks) m.started?.(o, o.doing);
+    if (!o.doing || o.doing.seq !== seq) return;
+    this.announce(o);
+    this.scheduleChecks(o);
   }
   /** The action or walk ran its course. */
   finish(p) {
@@ -2284,6 +2318,7 @@ var Westmarch = class {
     log.push(e);
     const over = log.length - w.cfg.logSize;
     if (over > 0) log.splice(0, over);
+    if (w.cfg.storySize > 0) w.irulan.keep(e);
     w.emit("log", e);
   }
   /** Entries matching a filter, oldest first. */
@@ -2548,12 +2583,12 @@ var Palantir = class {
   }
   record(d) {
     if (!this.enabled || this.w.replaying) return;
-    const list = this.decisions.get(d.who) || [];
+    const list2 = this.decisions.get(d.who) || [];
     const cands = d.candidates.slice().sort((a, b) => b.rank - a.rank || b.weight - a.weight);
     d.candidates = cands.filter((c, i) => i < 16 || c.layer !== "need");
-    list.push(d);
-    if (list.length > this.w.cfg.decisions) list.shift();
-    this.decisions.set(d.who, list);
+    list2.push(d);
+    if (list2.length > this.w.cfg.decisions) list2.shift();
+    this.decisions.set(d.who, list2);
     this.w.emit("decided", { who: d.who, picked: d.picked?.id ?? null, place: d.picked?.place ?? null });
   }
   clear() {
@@ -2561,8 +2596,8 @@ var Palantir = class {
   }
   /** The latest decision for a person. */
   why(id) {
-    const list = this.decisions.get(id);
-    return list && list.length ? list[list.length - 1] : null;
+    const list2 = this.decisions.get(id);
+    return list2 && list2.length ? list2[list2.length - 1] : null;
   }
   /** A person's recent decisions, oldest first. */
   history(id) {
@@ -2664,6 +2699,1193 @@ var Palantir = class {
       decision: this.why(id),
       body: w.body(id)
     };
+  }
+};
+
+// tyrell/src/tools/irulan.ts
+var IRULAN_WEIGHTS = {
+  // the routine of a day
+  started: 0.15,
+  "set-out": 0.05,
+  arrived: 0.05,
+  met: 0.05,
+  finished: 0.1,
+  stopped: 0.1,
+  interrupted: 0.1,
+  joined: 0.05,
+  parted: 0.05,
+  said: 0.1,
+  social: 0.2,
+  talked: 0.1,
+  course: 0.05,
+  shows: 0.1,
+  released: 0.1,
+  "done-plan": 0.1,
+  replanned: 0.1,
+  "set-aside": 0.05,
+  resumed: 0.05,
+  failed: 0.15,
+  // its turns
+  felt: 0.3,
+  "gave-up": 0.3,
+  "no-plan": 0.3,
+  wished: 0.3,
+  faded: 0.2,
+  granted: 0.45,
+  regard: 0.25,
+  sentiment: 0.35,
+  owes: 0.3,
+  rent: 0.35,
+  exchange: 0.35,
+  told: 0.35,
+  learned: 0.4,
+  sensed: 0.3,
+  directed: 0.4,
+  away: 0.4,
+  back: 0.4,
+  fact: 0.4,
+  did: 0.45,
+  afflicted: 0.45,
+  recovered: 0.35,
+  tended: 0.4,
+  saw: 0.4,
+  promised: 0.5,
+  promise: 0.45,
+  talk: 0.45,
+  skill: 0.55,
+  stage: 0.55,
+  promoted: 0.4,
+  changed: 0.3,
+  up: 0.4,
+  healed: 0.45,
+  noticed: 0.5,
+  warned: 0.5,
+  disarmed: 0.5,
+  respond: 0.5,
+  // what a story is made of
+  witnessed: 0.65,
+  report: 0.6,
+  silenced: 0.7,
+  exposed: 0.75,
+  broke: 0.75,
+  grudge: 0.6,
+  feud: 0.7,
+  mended: 0.6,
+  escalated: 0.6,
+  blamed: 0.6,
+  suspect: 0.6,
+  set: 0.65,
+  tainted: 0.75,
+  sprung: 0.8,
+  yielded: 0.65,
+  spared: 0.6,
+  mutated: 0.6,
+  paired: 0.8,
+  harm: 0.85,
+  down: 0.8,
+  fatal: 0.9,
+  gone: 0.85,
+  born: 1,
+  killed: 1,
+  // told by other means
+  day: 0,
+  timer: 0,
+  route: 0,
+  planned: 0,
+  director: 0,
+  tuned: 0
+};
+var PERIODS = [[0, "night"], [5, "early morning"], [8, "morning"], [12, "afternoon"], [17, "evening"], [21, "night"]];
+var ENDED = { warm: "and it went warmly", good: "and it went well", awkward: "and it got awkward", sour: "and it turned sour", row: "and it ended in a row" };
+var WHY = { "served it": "who served it", "was about": "who was about", "bore a grudge": "who bore them a grudge", "was told": "as they'd been told" };
+var PHRASES = {
+  went: ["went", "headed", "made their way"],
+  with: ["with {x} there", "with {x} around", "in the company of {x}"],
+  then: [", then ", ", and then "],
+  told: ["told {to} about {about}", "told {to} of {about}", "mentioned {about} to {to}"],
+  saw: ["saw {about}", "witnessed {about}", "caught sight of {about}"],
+  report: ["reported {about} to {to}", "went to {to} about {about}"],
+  granted: ["got {wish}, as they'd wished", "got {wish} at last"]
+};
+var INNER = /* @__PURE__ */ new Set([
+  "felt",
+  "wished",
+  "granted",
+  "faded",
+  "gave-up",
+  "no-plan",
+  "planned",
+  "replanned",
+  "done-plan",
+  "set-aside",
+  "resumed",
+  "regard",
+  "sentiment",
+  "grudge",
+  "feud",
+  "suspect",
+  "blamed",
+  "noticed",
+  "skill",
+  "owes",
+  "changed",
+  "sensed",
+  "directed",
+  "released",
+  "witnessed",
+  "report",
+  "silenced"
+]);
+var MINE = [[/\bthey'd\b/g, "I'd"], [/\bthey're\b/g, "I'm"], [/\bthemselves\b|\bthemself\b/g, "myself"], [/\bthey\b/g, "I"], [/\btheir\b/g, "my"], [/\bthem\b/g, "me"]];
+var NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+var BETWEEN = /* @__PURE__ */ new Set(["grudge", "feud", "mended", "escalated", "did", "harm", "blamed", "suspect", "yielded", "respond", "warned", "saw"]);
+var FLOOR = 0.15;
+var AT_ODDS = /* @__PURE__ */ new Set(["grudge", "feud", "escalated", "harm", "blamed", "suspect", "yielded"]);
+var PERSONAL = /* @__PURE__ */ new Set(["felt", "broke", "started", "finished", "stopped", "interrupted", "set-out", "arrived", "met"]);
+var AFTER = 2 * HOUR;
+var MARK = /\u0001([pl])([^\u0002]*)\u0002([^\u0003]*)\u0003/g;
+var tag = (kind, id, text) => `${kind}${id}${text}`;
+function partsOf(s) {
+  const out = [];
+  const plain2 = (text) => {
+    if (!text) return;
+    const last = out[out.length - 1];
+    if (last && last.person === void 0 && last.place === void 0) last.text += text;
+    else out.push({ text });
+  };
+  let i = 0;
+  MARK.lastIndex = 0;
+  for (let m = MARK.exec(s); m; m = MARK.exec(s)) {
+    plain2(s.slice(i, m.index));
+    out.push(m[1] === "p" ? { text: m[3], person: m[2] } : { text: m[3], place: m[2] });
+    i = m.index + m[0].length;
+  }
+  plain2(s.slice(i));
+  return out;
+}
+var textOf = (parts) => parts.map((p) => p.text).join("");
+function list(words) {
+  return words.length < 2 ? words.join("") : words.slice(0, -1).join(", ") + " and " + words[words.length - 1];
+}
+function lasting(minutes) {
+  const m = Math.round(minutes);
+  if (m < 50) return m >= 13 && m <= 17 ? "a quarter of an hour" : m >= 25 && m <= 35 ? "half an hour" : `${Math.max(5, Math.round(m / 5) * 5)} minutes`;
+  const halves = Math.max(2, Math.round(m / 30)), h = Math.floor(halves / 2), half = halves % 2 === 1;
+  if (h === 1) return half ? "an hour and a half" : "an hour";
+  return `${NUMBERS[h] ?? h}${half ? " and a half" : ""} hours`;
+}
+var lower = (s) => s.replace(/^(A|An|The|Some) /, (m) => m.toLowerCase());
+var article = (word) => (/^[aeiou]/i.test(word) ? "an " : "a ") + word;
+var capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var Irulan = class {
+  constructor(w) {
+    this.w = w;
+    this.wordsFor = /* @__PURE__ */ new Map();
+    /** Whether this telling varies its words (TellOptions.vary). */
+    this.varied = true;
+    /** And whether in their words. */
+    this.first = false;
+    this.ctx = { world: w, name: (id) => this.name(id), place: (id, who) => this.placeName(id, who) };
+  }
+  /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
+  words(kind, fn) {
+    this.wordsFor.set(kind, fn);
+    return this;
+  }
+  /** The story kept beyond the log (config.storySize), oldest first. */
+  book() {
+    return this.w.s.story ?? [];
+  }
+  /**
+   * Keeps an entry in the story, if it matters enough (config.storyMin), as
+   * Westmarch writes it: inside the simulation, so the story saves, rewinds
+   * and replays with the world. A talk keeps where it was. Past
+   * config.storySize, the least that matters goes, the oldest of it first.
+   */
+  keep(e) {
+    const w = this.w;
+    if (this.worth(e) < w.cfg.storyMin) return;
+    const at = e.k === "exchange" && e.who !== void 0 ? w.s.people[e.who]?.place : void 0;
+    const story = w.s.story ?? (w.s.story = []);
+    story.push(at ? { ...e, d: { ...e.d || {}, at } } : e);
+    if (story.length <= w.cfg.storySize) return;
+    let drop = 0, low = Infinity;
+    for (let i = 0; i < story.length; i++) {
+      const v = this.worth(story[i]);
+      if (v < low) {
+        low = v;
+        drop = i;
+      }
+    }
+    story.splice(drop, 1);
+  }
+  /** What an entry is worth keeping: its kind's weight; a crime or a deed done, and its end; a feeling by how much it moves the mood. */
+  worth(e) {
+    const d = e.d || {};
+    if (e.k === "started" || e.k === "finished" || e.k === "stopped") {
+      const def = this.w.actions.get(d.action);
+      return def?.crime || def?.deed ? 0.65 : 0;
+    }
+    if (e.k === "felt") return Math.abs(this.w.reverie?.feelingDefs.get(d.feeling)?.weight ?? 0) >= 0.1 ? 0.45 : 0.2;
+    return IRULAN_WEIGHTS[e.k] ?? 0.3;
+  }
+  /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
+  pick(words, ...what) {
+    if (!Array.isArray(words)) return words;
+    if (!words.length) return void 0;
+    return this.varied ? words[hash(this.w.s.seed, "irulan", ...what) % words.length] : words[0];
+  }
+  /** One of Irulan's own phrases, its blanks filled. */
+  phrase(name, fill, ...what) {
+    return this.pick(PHRASES[name], name, ...what).replace(/\{(\w+)\}/g, (_, k) => fill[k] ?? "");
+  }
+  /**
+   * The entries told as beats, in the order they happened. `entries` is a
+   * list (the game's own, kept from the 'log' events, to reach back further
+   * than the log keeps) or a time to tell the log from; without it, the
+   * story (config.storySize), or the whole log.
+   */
+  beats(entries, opts = {}) {
+    const all = entries === void 0 ? this.w.cfg.storySize > 0 ? this.book().slice() : this.w.s.log.slice() : typeof entries === "number" ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
+    this.varied = opts.vary ?? true;
+    this.pov = opts.as;
+    this.first = opts.as !== void 0 && opts.voice === "first";
+    const weights = { ...IRULAN_WEIGHTS, ...opts.weights || {} };
+    const weight = (k) => weights[k] ?? 0.3;
+    const pov = opts.as;
+    const clauses = this.fold(all).filter((c) => weight(c.kinds[0]) > 0 && c.text !== "" && (pov === void 0 || this.knows(c, pov, all)));
+    const count = /* @__PURE__ */ new Map();
+    for (const c of clauses) count.set(c.sig, (count.get(c.sig) || 0) + 1);
+    const score = /* @__PURE__ */ new Map();
+    const focus = opts.focus || {};
+    for (const c of clauses) {
+      let s = this.weigh(c, weight) * (1 + 1 / (count.get(c.sig) || 1));
+      const by = Math.max(1, ...[c.who, ...c.with, ...c.around ?? []].map((id) => id !== void 0 ? focus[id] ?? 1 : 1));
+      score.set(c, Math.min(1, s * by));
+    }
+    const min = opts.min ?? 0;
+    const moments = [];
+    const byMinute = /* @__PURE__ */ new Map();
+    for (const c of clauses) {
+      if (score.get(c) < min) continue;
+      const key2 = c.who === void 0 ? "" : `${c.who}@${c.t}`;
+      const m = key2 && byMinute.get(key2);
+      if (m) m.c.push(c);
+      else {
+        const n = { c: [c], who: c.who };
+        moments.push(n);
+        if (key2) byMinute.set(key2, n);
+      }
+    }
+    const out = [];
+    const told = /* @__PURE__ */ new Map();
+    for (const m of moments) {
+      const said = this.join(m.c);
+      const t = m.c[0].t;
+      const ends = m.c.map((c) => c.end).filter((e) => e !== void 0);
+      const beat = {
+        t,
+        ...ends.length ? { end: Math.max(...ends) } : {},
+        who: m.who === void 0 ? [] : [m.who],
+        with: [...new Set(m.c.flatMap((c) => c.with))].filter((id) => id !== m.who),
+        around: [...new Set(m.c.flatMap((c) => c.around ?? []))].filter((id) => id !== m.who && !m.c.some((c) => c.with.includes(id))),
+        ...m.c.find((c) => c.place) ? { place: m.c.find((c) => c.place).place } : {},
+        kinds: [...new Set(m.c.flatMap((c) => c.kinds))],
+        score: Math.round(Math.max(...m.c.map((c) => score.get(c))) * 1e3) / 1e3,
+        text: said,
+        parts: [],
+        entries: m.c.flatMap((c) => c.entries).sort((a, b) => a.t - b.t)
+      };
+      const same = m.who !== void 0 ? told.get(`${t}|${said}`) : void 0;
+      if (same && !said.includes(this.name(m.who))) {
+        same.who.push(m.who);
+        same.with = same.with.filter((id) => id !== m.who);
+        same.around = same.around.filter((id) => id !== m.who);
+        same.entries = same.entries.concat(beat.entries).sort((a, b) => a.t - b.t);
+        same.score = Math.max(same.score, beat.score);
+        continue;
+      }
+      if (m.who !== void 0) told.set(`${t}|${said}`, beat);
+      out.push(beat);
+    }
+    for (const b of out) {
+      const marked = b.who.length ? `${list(b.who.map((id) => this.name(id)))} ${b.who.length > 1 ? b.text.replace(/\bwas\b/g, "were") : b.text}.` : `${b.text}.`;
+      b.parts = partsOf(marked);
+      if (pov !== void 0 && opts.voice === "first") b.parts = this.mine(b, pov);
+      if (!b.who.length && b.parts.length) b.parts[0].text = capital(b.parts[0].text);
+      b.text = textOf(b.parts);
+    }
+    const who = opts.who;
+    return who === void 0 ? out : out.filter((b) => this.concerns(b, who));
+  }
+  /**
+   * The entries told as paragraphs, one for each part of the day, each
+   * starting with when: "Day 0, early morning. Mara went to Mara's Cafe and
+   * baked bread. ..."
+   */
+  tell(entries, opts = {}) {
+    const out = [];
+    let at = "";
+    let words = [];
+    for (const b of this.beats(entries, opts)) {
+      const head = this.when(b.t, opts) + ".";
+      if (head !== at) {
+        if (words.length) out.push(words.join(" "));
+        at = head;
+        words = [head];
+      }
+      words.push(b.text);
+    }
+    if (words.length) out.push(words.join(" "));
+    return out;
+  }
+  /** Someone's day as one paragraph: the beats about them since a time (or from a list of entries), the routine left out (min 0.3). */
+  day(who, since, opts = {}) {
+    return this.beats(since, { min: 0.3, ...opts, who }).map((b) => b.text).join(" ");
+  }
+  /** The headlines: the `limit` beats that matter most (default 5), in the order they happened. For a recap after time away. */
+  recap(entries, opts = {}) {
+    const beats = this.beats(entries, opts);
+    const top = new Set(beats.slice().sort((a, b) => b.score - a.score || a.t - b.t).slice(0, opts.limit ?? 5));
+    return beats.filter((b) => top.has(b));
+  }
+  /**
+   * The storylines running through the entries, the one that matters most
+   * first, and the beats that belong to none (rest). A thread is the beats of
+   * one matter (a deed, a trap, a taint, a harm: what was done, who saw it,
+   * who was told and who reported it) or of what passed between two people
+   * (talks, grudges, feuds, deeds), joined when they turn out to be one
+   * story (the fight in a quarrel), with what its people felt along the way.
+   * Everything about its matters is in it whatever it scores; a thread needs
+   * two beats and one scoring `min` (default 0.4); the rest are what score
+   * `min` too.
+   */
+  threads(entries, opts = {}) {
+    const min = opts.min ?? 0.4;
+    const beats = this.beats(entries, { ...opts, min: Math.min(min, FLOOR), who: void 0 });
+    const about2 = this.matters(beats);
+    const root = /* @__PURE__ */ new Map();
+    const find = (k) => {
+      if (!root.has(k)) root.set(k, k);
+      let r = k;
+      while (root.get(r) !== r) r = root.get(r);
+      root.set(k, r);
+      return r;
+    };
+    for (const a of about2) for (const link of a.links) for (const k of link) root.set(find(k), find(link[0]));
+    const groups = /* @__PURE__ */ new Map();
+    beats.forEach((b, i) => {
+      for (const r of new Set(about2[i].keys.map(find))) {
+        const g = groups.get(r) ?? { keys: /* @__PURE__ */ new Set(), beats: [] };
+        for (const k of about2[i].keys) if (find(k) === r) g.keys.add(k);
+        g.beats.push(b);
+        groups.set(r, g);
+      }
+    });
+    const threads = [];
+    for (const g of groups.values()) {
+      const n = /* @__PURE__ */ new Map();
+      for (const b of g.beats) for (const id of [...b.who, ...b.with]) n.set(id, (n.get(id) || 0) + 1);
+      for (const k of g.keys) for (const id of this.keyPeople(k, g.beats)) n.set(id, (n.get(id) || 0) + 2);
+      const people = [...n.keys()].filter((id) => this.w.s.people[id]).sort((a, b) => n.get(b) - n.get(a));
+      const first = about2[beats.indexOf(g.beats[0])].keys.filter((k) => g.keys.has(k)).sort();
+      threads.push({ keys: [...g.keys].sort(), title: "", parts: [], people, beats: g.beats, t: g.beats[0].t, end: 0, score: 0, id: first[0] ?? [...g.keys].sort()[0], active: false });
+    }
+    const taken = new Set(threads.flatMap((th) => th.beats));
+    for (const b of beats) {
+      if (taken.has(b) || b.score < min || b.who.length !== 1 || !b.kinds.every((k) => PERSONAL.has(k)) || !(b.kinds.includes("felt") || b.kinds.includes("broke"))) continue;
+      let best, gap = Infinity;
+      for (const th of threads) {
+        if (!th.people.slice(0, 2).includes(b.who[0])) continue;
+        const before = th.beats.filter((x) => x.t <= b.t && x.score >= min && (x.who.includes(b.who[0]) || x.with.includes(b.who[0])));
+        if (!before.length) continue;
+        const d = b.t - before[before.length - 1].t;
+        if (d <= AFTER && d < gap) {
+          gap = d;
+          best = th;
+        }
+      }
+      if (best) {
+        best.beats.push(b);
+        best.beats.sort((x, y) => x.t - y.t);
+        taken.add(b);
+      }
+    }
+    const kept = [];
+    for (const th of threads) {
+      th.score = Math.max(...th.beats.map((b) => b.score));
+      const story = th.keys.some((k) => !k.startsWith("pair:")) || th.beats.some((b) => b.entries.some((e) => BETWEEN.has(e.k)) || this.hostile(b));
+      if (th.beats.length < 2 || th.score < min || !story) continue;
+      th.end = Math.max(...th.beats.map((b) => b.end ?? b.t));
+      th.active = this.w.now - th.end <= DAY;
+      th.parts = partsOf(this.title(th));
+      th.title = textOf(th.parts);
+      kept.push(th);
+    }
+    const titles = /* @__PURE__ */ new Map();
+    for (const th of kept) titles.set(th.title, (titles.get(th.title) || 0) + 1);
+    for (const th of kept) if (titles.get(th.title) > 1) {
+      const day = `, day ${Math.floor((th.t + 1e-6) / DAY)}`;
+      th.parts.push({ text: day });
+      th.title += day;
+    }
+    kept.sort((a, b) => b.score - a.score || a.t - b.t);
+    const told = new Set(kept.flatMap((th) => th.beats));
+    const who = opts.who;
+    return {
+      threads: who === void 0 ? kept : kept.filter((th) => th.people.includes(who)),
+      rest: beats.filter((b) => !told.has(b) && b.score >= min && (who === void 0 || this.concerns(b, who)))
+    };
+  }
+  /**
+   * The story as it happens: calls `fn` with each beat once it's complete
+   * (its action or talk over, its last minute gone by, so it won't grow) and
+   * scores `min`, for a notice when something that matters happens. Beats
+   * are worked out every `every` game minutes (default 10) from the entries
+   * of the last `window` (default 12 hours); a rewind forgets what came
+   * after the time gone back to, so the new course is told as it happens.
+   * It listens and changes nothing. Returns a function that stops it.
+   */
+  feed(fn, opts = {}) {
+    const w = this.w;
+    const every = opts.every ?? 10, window = opts.window ?? 12 * HOUR;
+    let buffer = [];
+    const told = /* @__PURE__ */ new Map();
+    let last = -Infinity;
+    const idOf = (e) => `${e.t}|${e.k}|${e.who ?? ""}|${JSON.stringify(e.d ?? null)}`;
+    const open = (b) => b.kinds.includes("started") && !b.kinds.includes("finished") && !b.kinds.includes("stopped") || b.kinds.includes("exchange") && !b.kinds.includes("exchanged") || b.kinds.includes("set-out") && !b.kinds.includes("arrived");
+    const flush = () => {
+      const now2 = Math.floor(w.now + 1e-6);
+      buffer = buffer.filter((e) => e.t >= now2 - window);
+      for (const [id, t] of told) if (t < now2 - window) told.delete(id);
+      for (const b of this.beats(buffer, opts)) {
+        const done = Math.floor(b.entries[b.entries.length - 1].t + 1e-6);
+        if (open(b) || done >= now2 || done < last || b.entries.some((e) => told.has(idOf(e)))) continue;
+        for (const e of b.entries) told.set(idOf(e), e.t);
+        fn(b);
+      }
+      last = now2;
+    };
+    const offLog = w.on("log", (e) => {
+      buffer.push({ t: e.t, k: e.k, ...e.who !== void 0 ? { who: e.who } : {}, ...e.d !== void 0 ? { d: e.d } : {} });
+      if (w.now - last >= every) flush();
+    });
+    const offSeek = w.on("seek", (s) => {
+      if (s.to >= s.from) return;
+      buffer = buffer.filter((e) => e.t <= s.to);
+      for (const [id, t] of told) if (t > s.to) told.delete(id);
+      last = Math.min(last, Math.floor(s.to + 1e-6));
+    });
+    return () => {
+      offLog();
+      offSeek();
+    };
+  }
+  /** When a time is, as tell's paragraphs say it: "Day 0, early morning". */
+  when(t, opts = {}) {
+    const periods = opts.periods ?? PERIODS;
+    const day = Math.floor((t + 1e-6) / DAY);
+    const hour = (t % DAY + DAY) % DAY / HOUR;
+    let i = 0;
+    for (let j = 0; j < periods.length; j++) if (hour >= periods[j][0]) i = j;
+    return `${(opts.day ?? ((d) => `Day ${d}`))(day)}, ${periods[i][1]}`;
+  }
+  /**
+   * What someone remembers: the beats they know that matter most (`limit`,
+   * default 3, scoring `min`, default 0.4), in the order they happened, told
+   * in their words with when, from `now` (default the world's): "This
+   * morning, Officer Vance told me about Sam's theft." For what a person
+   * says when asked what's new.
+   */
+  recount(as, entries, opts = {}) {
+    const now2 = opts.now ?? this.w.now;
+    const beats = this.recap(entries, { min: 0.4, ...opts, as, voice: opts.voice ?? "first", limit: opts.limit ?? 3 }).filter((b) => b.t <= now2);
+    for (const b of beats) {
+      b.parts = [{ text: capital(this.ago(b.t, now2)) + ", " }, ...b.parts];
+      b.text = textOf(b.parts);
+    }
+    return beats;
+  }
+  /** When something was, from now, as someone would say it: "this morning", "last night", "yesterday afternoon", "three days ago". */
+  ago(t, now2 = this.w.now) {
+    const days = Math.floor((now2 + 1e-6) / DAY) - Math.floor((t + 1e-6) / DAY);
+    const hour = (t % DAY + DAY) % DAY / HOUR;
+    const part = hour < 5 ? "night" : hour < 8 ? "early" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "late";
+    if (days <= 0) return { night: "last night", early: "early this morning", morning: "this morning", afternoon: "this afternoon", evening: "this evening", late: "tonight" }[part];
+    if (days === 1) return { night: "the night before last", early: "early yesterday", morning: "yesterday morning", afternoon: "yesterday afternoon", evening: "yesterday evening", late: "last night" }[part];
+    return days < 7 ? `${NUMBERS[days]} days ago` : "a while back";
+  }
+  /**
+   * Whether someone knows of a clause: theirs; or, for what isn't anyone's
+   * inner life, done to them, in front of them or told to them. A crime
+   * done in front of them they know only if they caught it (Wormtongue's
+   * witness).
+   */
+  knows(c, who, entries) {
+    if (c.who === who) return true;
+    if (INNER.has(c.kinds[0])) return false;
+    if (c.act && this.w.actions.get(c.act.action)?.crime) {
+      const end = (c.end ?? c.act.at) + 15;
+      return entries.some((e) => e.k === "witnessed" && e.who === who && e.d?.recognized && e.d?.actor === c.who && e.t >= c.act.start && e.t <= end);
+    }
+    return c.with.includes(who) || !!c.around?.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
+  }
+  /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
+  mine(b, who) {
+    const own = b.who.length === 1 && b.who[0] === who;
+    const out = [];
+    const parts = b.parts;
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p.person === who) {
+        const next = parts[i + 1];
+        if (next && next.person === void 0 && next.place === void 0 && next.text.startsWith("'s")) {
+          out.push({ text: "my", person: who });
+          out.push({ ...next, text: next.text.slice(2) });
+          i++;
+          continue;
+        }
+        out.push({ text: i < b.who.length * 2 && b.who.includes(who) ? "I" : "me", person: who });
+        continue;
+      }
+      out.push(own && p.person === void 0 && p.place === void 0 ? { text: MINE.reduce((s, [re, to]) => s.replace(re, to), p.text) } : { ...p });
+    }
+    if (b.who.length > 1 && b.who.includes(who)) {
+      const names = out.slice(0, b.who.length * 2 - 1);
+      const meAt = names.findIndex((p) => p.person === who);
+      const others = names.filter((p, j) => j !== meAt && p.person !== void 0);
+      const rest = out.slice(b.who.length * 2 - 1);
+      const list2 = [...others, out[meAt]];
+      const joined = [];
+      list2.forEach((p, j) => {
+        if (j) joined.push({ text: j === list2.length - 1 ? " and " : ", " });
+        joined.push(p);
+      });
+      return [...joined, ...rest];
+    }
+    return out;
+  }
+  /** Whether a beat is about someone: theirs, with them in it or about, or naming them. */
+  concerns(b, who) {
+    return b.who.includes(who) || b.with.includes(who) || b.around.includes(who) || b.entries.some((e) => this.w.westmarch.about(e, who));
+  }
+  // -------------------------------------------------------------------------
+  // Folding: entries into clauses
+  // -------------------------------------------------------------------------
+  fold(entries) {
+    const out = [];
+    const doing = /* @__PURE__ */ new Map();
+    const ended = /* @__PURE__ */ new Map();
+    const walks = /* @__PURE__ */ new Map();
+    const talks = /* @__PURE__ */ new Map();
+    const here = /* @__PURE__ */ new Map();
+    const add = (c) => {
+      const n = { ...c, order: out.length };
+      out.push(n);
+      return n;
+    };
+    const walked = (who) => walks.delete(who);
+    for (const e of entries) {
+      const who = e.who;
+      const d = e.d || {};
+      if (who !== void 0) switch (e.k) {
+        case "set-out": {
+          walked(who);
+          walks.set(who, add({ t: e.t, who, with: [], place: d.to, kinds: ["set-out"], entries: [e], sig: "walk", walk: { to: d.to } }));
+          continue;
+        }
+        case "arrived": {
+          here.set(who, d.place);
+          const c = walks.get(who);
+          if (c && c.walk.arrived === void 0 && c.walk.to === d.place) {
+            c.walk.arrived = e.t;
+            c.end = e.t;
+            c.kinds.push("arrived");
+            c.entries.push(e);
+            continue;
+          }
+          walks.set(who, add({ t: e.t, who, with: [], place: d.place, kinds: ["arrived"], entries: [e], sig: "walk", walk: { to: d.place, arrived: e.t } }));
+          continue;
+        }
+        case "started": {
+          if (d.place) here.set(who, d.place);
+          const last = ended.get(who);
+          if (last && last.end === e.t && !walks.has(who) && last.act.action === d.action && last.place === d.place && last.act.target === d.target) {
+            delete last.end;
+            last.act.at = e.t;
+            last.entries.push(e);
+            ended.delete(who);
+            doing.set(who, last);
+            continue;
+          }
+          const c = walks.get(who);
+          const via = c && c.walk.arrived === e.t && c.walk.to === d.place ? c : void 0;
+          walked(who);
+          const act = { action: d.action, start: e.t, at: e.t, ...d.target !== void 0 ? { target: d.target } : {}, company: [], walked: !!via, felt: [] };
+          const n = { t: via ? via.t : e.t, who, with: d.target !== void 0 ? [d.target] : [], place: d.place, kinds: ["started"], entries: [...via?.entries ?? [], e], sig: "act:" + d.action, act };
+          if (via) {
+            Object.assign(via, n);
+            delete via.walk;
+            delete via.end;
+            doing.set(who, via);
+          } else doing.set(who, add(n));
+          continue;
+        }
+        case "met": {
+          const c = doing.get(who);
+          if (c && c.act.at === e.t) {
+            if (d.target !== c.act.target && !c.act.company.includes(d.target)) {
+              c.act.company.push(d.target);
+              (c.around ?? (c.around = [])).push(d.target);
+            }
+            c.entries.push(e);
+            continue;
+          }
+          break;
+        }
+        case "finished":
+        case "stopped": {
+          const c = doing.get(who);
+          if (c && c.act.action === d.action) {
+            c.end = e.t;
+            c.kinds.push(e.k);
+            c.entries.push(e);
+            doing.delete(who);
+            ended.set(who, c);
+          }
+          continue;
+        }
+        case "interrupted":
+        case "social":
+        case "did": {
+          const c = [doing.get(who), ended.get(who)].find((x) => x && (x.end === void 0 || x.end === e.t) && (e.k === "interrupted" ? x.act.action === d.action : x.act.target === (e.k === "did" ? d.for ?? d.to ?? d.target : d.target)));
+          if (c && (e.k !== "did" || c.act.target !== void 0)) {
+            if (e.k === "social") c.act.ok = !!d.ok;
+            c.entries.push(e);
+            continue;
+          }
+          break;
+        }
+        case "exchange": {
+          talks.set(d.id, add({ t: e.t, who, with: [...d.with || []], place: here.get(who) ?? d.at, kinds: ["exchange"], entries: [e], sig: "talk:" + d.kind, talk: { kinds: [d.kind] } }));
+          continue;
+        }
+        case "joined":
+        case "parted":
+        case "escalated":
+        case "exchanged": {
+          const c = d.id !== void 0 ? talks.get(d.id) : void 0;
+          if (!c) break;
+          c.entries.push(e);
+          if (e.k === "joined" && who !== c.who && !c.with.includes(who)) c.with.push(who);
+          if (e.k === "escalated") {
+            c.talk.kinds.push(d.to);
+            c.kinds.push("escalated");
+            c.sig = "talk:" + d.to;
+          }
+          if (e.k === "exchanged") {
+            c.end = e.t;
+            c.talk.outcome = d.outcome;
+            c.kinds.push("exchanged");
+            talks.delete(d.id);
+          }
+          continue;
+        }
+      }
+      const text = this.say(e);
+      if (text === null) continue;
+      const other = d.target ?? d.against ?? d.by ?? d.to ?? d.for ?? d.suspect ?? d.actor;
+      add({
+        t: e.t,
+        ...who !== void 0 ? { who } : {},
+        with: typeof other === "string" && other !== who && this.w.s.people[other] ? [other] : [],
+        ...typeof d.place === "string" ? { place: d.place } : {},
+        kinds: [e.k],
+        entries: [e],
+        sig: e.k + ":" + (d.feeling ?? d.task ?? d.kind ?? d.verb ?? d.wish ?? d.key ?? d.course ?? ""),
+        text
+      });
+    }
+    const finished = /* @__PURE__ */ new Map();
+    for (const c of out) if (c.act && c.end !== void 0) finished.set(`${c.who}@${c.end}`, c);
+    const kept = out.filter((c) => {
+      if (c.kinds[0] !== "felt") return true;
+      const act = finished.get(`${c.who}@${c.t}`);
+      const cause = c.entries[0].d?.cause;
+      if (!act || !c.text || cause !== void 0 && cause !== act.act.action) return true;
+      if (this.pov !== void 0 && this.pov !== c.who) return true;
+      act.act.felt.push(c.text);
+      act.kinds.push("felt");
+      act.entries.push(c.entries[0]);
+      act.sig += "+" + c.sig;
+      return false;
+    });
+    const blamed = new Set(kept.filter((c) => c.kinds[0] === "blamed").map((c) => `${c.who}@${c.t}>${c.entries[0].d?.by}`));
+    for (let i = kept.length - 1; i >= 0; i--) {
+      const c = kept[i];
+      if (c.kinds[0] === "suspect" && blamed.has(`${c.who}@${c.t}>${c.entries[0].d?.suspect}`)) kept.splice(i, 1);
+    }
+    const acts = /* @__PURE__ */ new Map();
+    const once = kept.filter((c) => {
+      if (!c.act || c.act.target === void 0) return true;
+      const first = acts.get(`${c.act.target}>${c.who}@${c.act.start}:${c.act.action}`);
+      if (first) {
+        first.entries = first.entries.concat(c.entries).sort((a, b) => a.t - b.t);
+        for (const k of c.kinds) if (!first.kinds.includes(k)) first.kinds.push(k);
+        return false;
+      }
+      acts.set(`${c.who}>${c.act.target}@${c.act.start}:${c.act.action}`, c);
+      return true;
+    });
+    for (const c of once) if (c.text === void 0) c.text = c.act ? this.acted(c) : c.talk ? this.talked(c) : this.went(c);
+    return once.sort((a, b) => a.t - b.t || a.order - b.order);
+  }
+  /** How much a clause matters, before what's rare counts. */
+  weigh(c, weight) {
+    const w = this.w;
+    if (c.act) {
+      const def = w.actions.get(c.act.action);
+      let s = weight("started") + (c.with.length || c.around?.length ? 0.1 : 0);
+      if (def?.job) s *= 0.3;
+      if (def?.crime) s = Math.max(s, weight("witnessed"));
+      if (c.act.ok === false) s += 0.15;
+      return s;
+    }
+    if (c.talk) {
+      const def = w.bree?.kinds.get(c.talk.kinds[c.talk.kinds.length - 1]);
+      let s = weight("exchange");
+      if (def?.tags?.includes("hostile")) s += 0.25;
+      if (c.talk.kinds.length > 1) s = Math.max(s, weight("escalated"));
+      if (c.talk.outcome === "sour" || c.talk.outcome === "row") s += 0.15;
+      return s;
+    }
+    const k = c.kinds[0];
+    if (k === "felt") {
+      const f = w.reverie?.feelingDefs.get(c.entries[0].d?.feeling);
+      return weight("felt") * (0.5 + Math.min(1, 8 * Math.abs(f?.weight ?? 0.06)));
+    }
+    return weight(k);
+  }
+  /** A minute's clauses, as one: "gave up on dinner at home, was frustrated, then read at home for an hour". What happened comes first, then how they felt, then what they did. */
+  join(clauses) {
+    const rank = (c) => c.act || c.talk ? 2 : c.kinds[0] === "felt" ? 1 : 0;
+    const cs = clauses.slice().sort((a, b) => rank(a) - rank(b)).filter((c, i, all) => all.findIndex((x) => x.text === c.text) === i);
+    const words = cs.map((c) => c.text);
+    if (words.length < 2) return words[0];
+    const last = cs[cs.length - 1];
+    return words.slice(0, -1).join(", ") + (last.act || last.talk ? this.pick(PHRASES.then, "then", last.t, last.sig) : " and ") + words[words.length - 1];
+  }
+  // -------------------------------------------------------------------------
+  // Threads
+  // -------------------------------------------------------------------------
+  /**
+   * What each beat is about, for threads: its matters (a deed, a trap, a
+   * taint, a harm), or when it's about none, the two people it passed
+   * between. A crime seen, told or reported without knowing who did it
+   * ('did:someone:theft') is the latest crime of its kind done before it,
+   * whoever did that.
+   */
+  matters(beats) {
+    const crimes = /* @__PURE__ */ new Map();
+    const taints = /* @__PURE__ */ new Map();
+    return beats.map((b) => {
+      const resolve = (k) => k.startsWith("did:someone:") ? crimes.get(k.slice(12)) : k.startsWith("taintby:") ? taints.get(k.slice(8)) : k;
+      for (const e of b.entries) {
+        const d = e.d || {};
+        if (e.k === "tainted" && e.who !== void 0) taints.set(e.who, "taint:" + d.taint);
+      }
+      const links = this.keys(b).map((l) => l.map(resolve).filter((k) => k !== void 0));
+      for (const e of b.entries) {
+        const crime = e.k === "started" ? this.w.actions.get(e.d?.action)?.crime : void 0;
+        if (crime && e.who !== void 0) crimes.set(crime, `did:${e.who}:${crime}`);
+      }
+      const all = [...new Set(links.flat())];
+      const matters = all.filter((k) => !k.startsWith("pair:"));
+      return { keys: matters.length ? matters : all, links: links.filter((l) => l.length) };
+    });
+  }
+  /** Whether a beat holds a hostile talk (Bree's kinds tagged 'hostile'). */
+  hostile(b) {
+    return b.entries.some((e) => (e.k === "exchange" || e.k === "escalated") && this.w.bree?.kinds.get(e.d?.[e.k === "exchange" ? "kind" : "to"])?.tags?.includes("hostile"));
+  }
+  /**
+   * What a beat's entries are about, for threads, an entry at a time (what
+   * one entry names is linked): deeds ('did:sam:theft', a crime done, seen,
+   * told or reported, or a talk that is one, like a fight), traps, taints and
+   * harms by their ids, and the two people something passed between
+   * ('pair:dev+sam'). A harm by a trap is linked to the trap sprung in the
+   * same beat, and one by a taint to its maker's ('taintby:sam').
+   */
+  keys(b) {
+    const w = this.w;
+    const links = [];
+    let out = /* @__PURE__ */ new Set();
+    const pair = (a, b2) => {
+      if (typeof a === "string" && typeof b2 === "string" && a !== b2 && w.s.people[a] && w.s.people[b2]) out.add("pair:" + [a, b2].sort().join("+"));
+    };
+    const deed = (actor, kind) => {
+      if (typeof actor === "string" && (actor === "someone" || w.s.people[actor]) && kind) out.add(`did:${actor}:${kind}`);
+    };
+    const traps = b.entries.filter((e) => e.k === "sprung").map((e) => "trap:" + e.d?.trap);
+    for (const e of b.entries) {
+      const d = e.d || {};
+      const who = e.who;
+      out = /* @__PURE__ */ new Set();
+      switch (e.k) {
+        case "started": {
+          const crime = w.actions.get(d.action)?.crime;
+          if (crime) deed(who, crime);
+          break;
+        }
+        case "told": {
+          const m = /^did:([^:]+):(.+)$/.exec(String(d.key));
+          if (m) deed(m[1], m[2]);
+          else if (/^(trap|taint):/.test(String(d.key))) out.add(String(d.key));
+          break;
+        }
+        case "witnessed":
+        case "report":
+        case "silenced":
+          deed(d.actor, d.kind);
+          break;
+        case "exchange": {
+          for (const o of d.with || []) pair(who, o);
+          const crime = w.bree?.kinds.get(d.kind)?.crime;
+          if (crime) deed(who, crime);
+          break;
+        }
+        case "escalated": {
+          pair(who, d.against);
+          const crime = w.bree?.kinds.get(d.to)?.crime;
+          if (crime) deed(who, crime);
+          break;
+        }
+        case "saw":
+          pair(d.actor, d.against);
+          break;
+        case "grudge":
+          pair(who, d.against);
+          break;
+        case "feud":
+        case "mended":
+          pair(who, d.with);
+          break;
+        case "sentiment":
+        case "regard":
+          pair(who, d.target);
+          break;
+        case "social":
+          if (d.ok === false) pair(who, d.target);
+          break;
+        case "did":
+          pair(who, d.for ?? d.to ?? d.target);
+          break;
+        case "yielded":
+        case "respond":
+        case "warned":
+          pair(who, d.to);
+          break;
+        case "harm": {
+          out.add("harm:" + d.id);
+          if (d.via === "trap") for (const k of traps) out.add(k);
+          if ((d.via === "dose" || d.via === "taint") && typeof d.by === "string") out.add("taintby:" + d.by);
+          break;
+        }
+        // (whom someone blames is part of what happened, not a story of their own)
+        case "blamed":
+        case "suspect":
+          out.add("harm:" + d.harm);
+          break;
+        case "noticed":
+        case "down":
+          out.add("harm:" + d.harm);
+          break;
+        case "set":
+        case "sprung":
+        case "disarmed":
+          out.add("trap:" + d.trap);
+          break;
+        case "tainted":
+          out.add("taint:" + d.taint);
+          break;
+      }
+      if (e.k === "warned") out.add(d.trap !== void 0 ? "trap:" + d.trap : "taint:" + d.taint);
+      if (out.size) links.push([...out].sort());
+    }
+    return links;
+  }
+  /** The people a key names: the two of a pair, a deed's doer, a trap's setter and a taint's maker (from the beats). */
+  keyPeople(k, beats) {
+    if (k.startsWith("pair:")) return k.slice(5).split("+");
+    if (k.startsWith("did:")) return [k.split(":")[1]];
+    const [kind, id] = k.split(":");
+    const by = beats.flatMap((b) => b.entries).find((e) => kind === "trap" && e.k === "set" && String(e.d?.trap) === id || kind === "taint" && e.k === "tainted" && String(e.d?.taint) === id);
+    return by?.who !== void 0 ? [by.who] : [];
+  }
+  /** A thread's title: its trap or taint ("Pip's snare"), its deed ("Sam's theft"), or its two people ("Dev and Sam at odds"). */
+  title(th) {
+    const entries = th.beats.flatMap((b) => b.entries);
+    const trap = entries.find((e) => e.k === "set");
+    if (trap && trap.who !== void 0) return `${this.name(trap.who)}'s ${trap.d?.kind ?? "trap"}`;
+    const taint = entries.find((e) => e.k === "tainted");
+    if (taint && taint.who !== void 0) {
+      const l = lower(this.w.athelas?.courses.get(taint.d?.course)?.label ?? taint.d?.course ?? "poison");
+      return `${this.name(taint.who)}'s ${l.charAt(0).toLowerCase() + l.slice(1)}`;
+    }
+    const deeds = th.keys.filter((k) => k.startsWith("did:")).map((k) => k.split(":"));
+    if (deeds.length) {
+      const by = deeds[0][1];
+      const kinds = [...new Set(deeds.filter((d) => d[1] === by).map((d) => d[2]))];
+      return `${this.name(by)}'s ${list(kinds)}`;
+    }
+    const pair = th.keys.find((k) => k.startsWith("pair:"));
+    if (pair) {
+      const [a, b] = pair.slice(5).split("+").sort((x, y) => th.people.indexOf(x) - th.people.indexOf(y));
+      const odds = entries.some((e) => AT_ODDS.has(e.k) || e.k === "exchange" && this.w.bree?.kinds.get(e.d?.kind)?.tags?.includes("hostile"));
+      return `${this.name(a)} and ${this.name(b)}${odds ? " at odds" : ""}`;
+    }
+    const hurt = entries.find((e) => e.k === "harm");
+    return hurt?.who !== void 0 ? `What happened to ${this.name(hurt.who)}` : "A story";
+  }
+  // -------------------------------------------------------------------------
+  // Words
+  // -------------------------------------------------------------------------
+  /** A person, a group or a place by its name, people and places tagged for the parts. */
+  name(id) {
+    if (typeof id !== "string") return "someone";
+    const w = this.w;
+    const p = w.s.people[id];
+    if (p) return tag("p", id, p.name);
+    const g = w.fellowship?.groups.get(id)?.label;
+    if (g) return g;
+    const place = w.ring.get(id)?.name;
+    return place ? tag("l", id, place) : id;
+  }
+  isHome(id, who) {
+    return id !== void 0 && who !== void 0 && this.w.s.people[who]?.def.home === id;
+  }
+  placeName(id, who) {
+    if (id === void 0) return "somewhere";
+    const w = this.w;
+    if (this.isHome(id, who)) return tag("l", id, "home");
+    const named = w.ring.get(id)?.name;
+    if (named) return tag("l", id, named);
+    const lives = Object.values(w.s.people).find((p) => p.def.home === id);
+    return tag("l", id, lives ? `${lives.name}'s place` : id);
+  }
+  /** "at home", "at Mara's Cafe". */
+  at(id, who) {
+    return "at " + this.placeName(id, who);
+  }
+  /** "home", "to Mara's Cafe". */
+  to(id, who) {
+    return (this.isHome(id, who) ? "" : "to ") + this.placeName(id, who);
+  }
+  /** A walk not followed by anything told with it. */
+  went(c) {
+    return c.walk.arrived !== void 0 ? `${this.pick(PHRASES.went, "went", c.t, c.walk.to)} ${this.to(c.walk.to, c.who)}` : `set out for ${this.placeName(c.walk.to, c.who)}`;
+  }
+  /** An action from start to finish: "went to Mara's Cafe and ate, with Ines there". */
+  acted(c) {
+    const w = this.w;
+    const a = c.act;
+    const def = w.actions.get(a.action);
+    const label = def?.label ?? a.action;
+    const going = c.end === void 0;
+    const gerund = /^\w+ing\b/.test(label);
+    const minutes = (c.end ?? a.start) - a.start;
+    let words;
+    let timed = false;
+    const did = this.pick(def?.tell?.did, "did", c.t, a.action), doing = this.pick(def?.tell?.doing, "doing", c.t, a.action);
+    if (going) words = doing ?? (gerund ? `was ${label}` : `was having ${label}`);
+    else if (did) words = did;
+    else if (gerund && minutes >= 30) {
+      words = `spent ${lasting(minutes)} ${label}`;
+      timed = true;
+    } else words = gerund ? `was ${label}` : `had ${label}`;
+    if (a.walked) words = words.replace(/\s+(at|in|on|to|into|around|across|from)\s+\{place\}/g, "");
+    const placed = words.includes("{place}");
+    const named = words.includes("{target}");
+    words = words.replace(/\{place\}/g, this.placeName(c.place, c.who)).replace(/\{target\}/g, this.name(a.target));
+    if (def?.together && a.target !== void 0 && !named) words += " with " + this.name(a.target);
+    if (!placed && !a.walked && c.place !== void 0) words += " " + this.at(c.place, c.who);
+    if (!going && !timed && minutes >= 30) words += " for " + lasting(minutes);
+    if (a.company.length) words += ", " + this.company(c);
+    if (a.ok === false) words += ", but it went badly";
+    if (a.felt.length) words += ", and " + list(a.felt);
+    return a.walked ? `${this.pick(PHRASES.went, "went", c.t, a.action)} ${this.to(c.place, c.who)} and ${words}` : words;
+  }
+  /**
+   * Who else was about while someone did something. Company is only being
+   * at the same place (Fellowship's 'met'), not doing it together, so at
+   * someone's home it's told as being home ("had a shower, with Pip and
+   * Tomas home too", or "there too" for a visitor), never as sharing it;
+   * elsewhere as being there. In someone's own words they come last ("Pip
+   * and me"), and never "in the company of me".
+   */
+  company(c) {
+    const a = c.act;
+    const ids = this.first && a.company.includes(this.pov) ? [...a.company.filter((id) => id !== this.pov), this.pov] : a.company;
+    const x = list(ids.map((id) => this.name(id)));
+    const people = this.w.s.people;
+    const isHome = c.place !== void 0 && (this.w.ring.get(c.place)?.tags?.includes("home") || Object.values(people).some((p) => p.def.home === c.place));
+    if (isHome) return `with ${x} ${ids.every((id) => people[id]?.def.home === c.place) ? "home" : "there"} too`;
+    return this.first && a.company.includes(this.pov) ? `with ${x} there` : this.phrase("with", { x }, c.t, a.action);
+  }
+  /** A talk (Bree): "argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row". */
+  talked(c) {
+    const kinds = this.w.bree?.kinds;
+    const t = c.talk;
+    const first = kinds?.get(t.kinds[0]);
+    const others = list(c.with.map((id) => this.name(id))) || "nobody";
+    let words = (this.pick(first?.tell, "kind", c.t, t.kinds[0]) ?? `had ${first?.label ?? t.kinds[0]} with {with}`).replace(/\{with\}/g, others);
+    if (c.place !== void 0) words += " " + this.at(c.place, c.who);
+    if (t.kinds.length > 1) {
+      const last = kinds?.get(t.kinds[t.kinds.length - 1]);
+      words += `, which turned into ${last?.label ?? t.kinds[t.kinds.length - 1]}`;
+    }
+    const ended = t.outcome !== void 0 ? ENDED[t.outcome] : void 0;
+    if (ended) words += ", " + ended;
+    return words;
+  }
+  /** Any other entry: the game's words, Irulan's own, or describe's; null leaves it out. */
+  say(e) {
+    const w = this.w;
+    const game = this.wordsFor.get(e.k);
+    if (game) {
+      const s = game(e, this.ctx);
+      if (s !== void 0) return s;
+    }
+    const d = e.d || {};
+    const name = (id) => this.name(id);
+    const names = (ids) => Array.isArray(ids) && ids.length ? list(ids.map(name)) : "nobody";
+    const task = (id) => w.tasks.get(id)?.label ?? id;
+    const wish = (id) => lower(w.wishes.get(id)?.label ?? id);
+    const course = (id) => {
+      const l = lower(w.athelas?.courses.get(id)?.label ?? id);
+      return l.charAt(0).toLowerCase() + l.slice(1);
+    };
+    const kind = (id) => w.bree?.kinds.get(id)?.label ?? id;
+    const where = d.place !== void 0 ? " " + this.at(d.place, e.who) : "";
+    const about2 = (key2) => {
+      const m = /^did:([^:]+):(.+)$/.exec(String(key2));
+      if (/^trap:/.test(String(key2))) return "a trap";
+      if (/^taint:/.test(String(key2))) return "something in the food";
+      if (m && m[2] === "harm") return `${m[1] === "someone" ? "someone" : name(m[1])} hurting someone`;
+      return m ? m[1] === "someone" ? article(m[2]) : `${name(m[1])}'s ${m[2]}` : String(key2);
+    };
+    const because = (why) => WHY[String(why)] ? ", " + WHY[String(why)] : why ? ` (${why})` : "";
+    const deep = (s) => Number(s) >= 0.6 ? "a deep " : Number(s) < 0.2 ? "a small " : "a ";
+    const over = (why) => why === "harm" ? "being hurt" : w.bree?.kinds.has(String(why)) ? kind(String(why)) : String(why);
+    switch (e.k) {
+      case "day":
+      case "timer":
+      case "route":
+      case "planned":
+      case "director":
+      case "tuned":
+        return null;
+      case "felt": {
+        const f = this.pick(w.reverie?.feelingDefs.get(d.feeling)?.tell, "felt", e.t, d.feeling);
+        if (f) return f;
+        break;
+      }
+      case "broke": {
+        const b = w.reverie?.breakDefs.get(d.kind);
+        return this.pick(b?.tell, "broke", e.t, d.kind) ?? `broke down${b?.label ? " (" + b.label + ")" : ""}`;
+      }
+      case "told":
+        return this.phrase("told", { to: name(d.to), about: about2(d.key) }, e.t, d.key, d.to);
+      // (someone who saw a crime done to them was in it: the crime tells it)
+      case "witnessed":
+        return d.what === e.who ? null : d.recognized ? this.phrase("saw", { about: `${name(d.actor)}'s ${d.kind}${typeof d.what === "string" && w.s.people[d.what] ? " against " + name(d.what) : ""}` }, e.t, d.actor, d.kind) : `saw ${article(d.kind)} without seeing who did it`;
+      case "report": {
+        const what = d.actor === "someone" ? article(d.kind) : name(d.actor) + "'s " + d.kind;
+        return d.to ? this.phrase("report", { about: what, to: name(d.to) }, e.t, d.actor, d.kind) : `reported ${what}`;
+      }
+      case "gave-up":
+        return `gave up on ${task(d.task)} (${d.why})`;
+      case "done-plan":
+        return `saw ${task(d.task)} through`;
+      case "wished":
+        return this.pick(w.wishes.get(d.wish)?.tell, "wished", e.t, d.wish) ?? `wished for ${wish(d.wish)}`;
+      case "granted":
+        return this.phrase("granted", { wish: wish(d.wish) }, e.t, d.wish);
+      case "faded":
+        return `stopped wishing for ${wish(d.wish)}`;
+      case "sentiment":
+        return `thought ${Number(d.by) < 0 ? "less" : "well"} of ${name(d.target)}: "${d.label}"`;
+      case "regard":
+        return `thought ${Number(d.by) < 0 ? "less" : "more"} of ${name(d.target)}`;
+      case "met":
+        return `spent time with ${name(d.target)}`;
+      case "did": {
+        const t = d.for ?? d.to ?? d.target;
+        return `${d.verb}${t === void 0 ? "" : " " + name(t)}`;
+      }
+      case "owes":
+        return `owed ${name(d.target)} ${d.n === 1 ? "a favor" : d.n + " favors"}`;
+      case "skill":
+        return `became ${d.level} at ${(w.skills.defs.get(d.skill)?.label ?? d.skill).toLowerCase()}`;
+      case "afflicted": {
+        const def = w.athelas?.courses.get(d.course);
+        return `${this.pick(def?.tell?.on, "on", e.t, d.course) ?? `came down with ${course(d.course)}`}${d.again ? " again" : ""}${d.from && def?.contagion ? " from " + name(d.from) : ""}`;
+      }
+      case "recovered":
+      case "healed":
+        return this.pick(w.athelas?.courses.get(d.course)?.tell?.over, "over", e.t, d.course) ?? `got over ${course(d.course)}`;
+      case "course":
+        return `${course(d.course)} turned to ${w.athelas?.courses.get(d.course)?.phases.find((p) => p.id === d.phase)?.label ?? d.phase}`;
+      case "shows":
+        return `was ${w.athelas?.courses.get(d.course)?.phases.find((p) => p.id === d.phase)?.label ?? d.phase}`;
+      case "tended":
+        return `was seen to${d.by ? " by " + name(d.by) : ""}`;
+      // Bree
+      case "saw":
+        return `saw ${kind(d.kind)} between ${name(d.actor)} and ${name(d.against)}`;
+      case "grudge":
+        return `bore ${name(d.against)} ${deep(d.strength)}grudge over ${over(d.why)}`;
+      case "feud":
+        return Number(d.strength) > 0 ? `was in ${deep(d.strength)}feud with ${name(d.with)}` : `ended the feud with ${name(d.with)}`;
+      case "mended":
+        return `made it up with ${name(d.with)}`;
+      case "escalated":
+        return `turned ${kind(d.from)} with ${name(d.against)} into ${kind(d.to)}`;
+      case "exchange":
+        return `${this.pick(w.bree?.kinds.get(d.kind)?.tell, "kind", e.t, d.kind)?.replace(/\{with\}/g, names(d.with)) ?? `had ${kind(d.kind)} with ${names(d.with)}`}`;
+      // Morgul
+      case "harm": {
+        const badly = Number(d.severity) >= 0.6 ? "badly " : "";
+        const by = d.by && !(d.quiet && this.pov !== void 0 && this.pov !== d.by) ? name(d.by) : "someone";
+        const how = d.via === "trap" ? `was ${badly}hurt in ${by === "someone" ? "a" : by + "'s"} trap` : d.via === "dose" || d.via === "taint" ? `was ${badly}hurt by ${by === "someone" ? "tainted food" : by + "'s tainted food"}` : `was ${badly}hurt${d.by ? " by " + by : ""}`;
+        return how + (d.intent === "careless" ? ", by accident" : "");
+      }
+      case "blamed":
+        return `blamed ${name(d.by)}${because(d.why)}`;
+      case "suspect":
+        return `suspected ${name(d.suspect)}${because(d.why)}`;
+      case "noticed":
+        return `realized it was ${course(d.course)}`;
+      case "down":
+        return "went down";
+      case "up":
+        return `got back up${d.by ? " with " + name(d.by) + "'s help" : ""}`;
+      case "set":
+        return `set ${article(d.kind)}${where}${d.for ? " for " + name(d.for) : ""}`;
+      case "sprung":
+        return `was caught in ${article(d.kind)}${where}`;
+      case "disarmed":
+        return `found and disarmed ${article(d.kind)}${where}`;
+      case "tainted":
+        return `slipped ${course(d.course)} into ${d.item ? "the " + d.item : "the food"}${d.place ? " " + this.at(d.place, e.who) : d.owner ? " of " + name(d.owner) : ""}`;
+      case "yielded":
+        return `gave in to ${name(d.to)}`;
+      case "warned":
+        return `warned ${name(d.to)} of ${d.trap !== void 0 ? "a trap" : "something in the food"}`;
+      case "killed":
+        return `was killed${d.by ? " by " + name(d.by) : ""}`;
+    }
+    return w.westmarch.describe(e);
   }
 };
 
@@ -2896,6 +4118,8 @@ var DEFAULT_CONFIG = {
   backoff: 15,
   budgetMs: 4,
   logSize: 1e3,
+  storySize: 0,
+  storyMin: 0.3,
   decisions: 12,
   checksOnce: false,
   habitFast: 0.25,
@@ -2996,6 +4220,7 @@ var World = class {
     this.clock = new Entmoot(this);
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
+    this.irulan = new Irulan(this);
     this.strangers = new Strangers(this);
     this.skills = new Skills(this);
     this.registerCore();
@@ -3515,14 +4740,14 @@ var World = class {
    * always the event's name (`kind` is too, unless the payload has its own).
    */
   on(kind, fn) {
-    const list = this.listeners.get(kind) || [];
-    list.push(fn);
-    this.listeners.set(kind, list);
+    const list2 = this.listeners.get(kind) || [];
+    list2.push(fn);
+    this.listeners.set(kind, list2);
     return () => this.off(kind, fn);
   }
   off(kind, fn) {
-    const list = this.listeners.get(kind);
-    if (list) this.listeners.set(kind, list.filter((f) => f !== fn));
+    const list2 = this.listeners.get(kind);
+    if (list2) this.listeners.set(kind, list2.filter((f) => f !== fn));
   }
   /** Tells the game something happened (silent while Esper replays). */
   emit(kind, data = {}) {
@@ -3977,14 +5202,14 @@ var DEFAULT_REVERIE = {
   againstStress: 0.3
 };
 var BUILTIN_FEELINGS = [
-  { id: "catharsis", label: "Got it out of my system", weight: 0.25, minutes: 2 * DAY, emotion: "relieved" },
-  { id: "conscience", label: "A guilty conscience", weight: -0.1, minutes: DAY, stack: 3, emotion: "guilty" },
-  { id: "witnessed", label: "Saw something bad", weight: -0.06, minutes: 12 * HOUR, stack: 2, emotion: "tense" },
-  { id: "frustrated", label: "Nothing went right", weight: -0.06, minutes: 6 * HOUR, stack: 3, emotion: "angry" },
-  { id: "grief", label: "Grieving", weight: -0.3, minutes: 7 * DAY, emotion: "sad" },
-  { id: "scared", label: "Frightened", weight: -0.15, minutes: DAY, stack: 2, emotion: "scared" },
-  { id: "helped", label: "Someone helped me", weight: 0.1, minutes: DAY, stack: 3, emotion: "happy" },
-  { id: "wronged", label: "Someone did me wrong", weight: -0.12, minutes: 2 * DAY, stack: 3, emotion: "angry" }
+  { id: "catharsis", label: "Got it out of my system", tell: "got it out of their system", weight: 0.25, minutes: 2 * DAY, emotion: "relieved" },
+  { id: "conscience", label: "A guilty conscience", tell: ["felt guilty", "had a guilty conscience"], weight: -0.1, minutes: DAY, stack: 3, emotion: "guilty" },
+  { id: "witnessed", label: "Saw something bad", tell: ["was shaken by what they saw", "was unsettled by what they saw"], weight: -0.06, minutes: 12 * HOUR, stack: 2, emotion: "tense" },
+  { id: "frustrated", label: "Nothing went right", tell: ["was frustrated", "was fed up"], weight: -0.06, minutes: 6 * HOUR, stack: 3, emotion: "angry" },
+  { id: "grief", label: "Grieving", tell: "grieved", weight: -0.3, minutes: 7 * DAY, emotion: "sad" },
+  { id: "scared", label: "Frightened", tell: "was frightened", weight: -0.15, minutes: DAY, stack: 2, emotion: "scared" },
+  { id: "helped", label: "Someone helped me", tell: ["was glad of the help", "was grateful for the help"], weight: 0.1, minutes: DAY, stack: 3, emotion: "happy" },
+  { id: "wronged", label: "Someone did me wrong", tell: "felt wronged", weight: -0.12, minutes: 2 * DAY, stack: 3, emotion: "angry" }
 ];
 var Reverie = class {
   constructor(cfg = {}) {
@@ -4083,8 +5308,8 @@ var Reverie = class {
     const p = this.w.s.people[id];
     if (!def || !p) return;
     const now2 = this.w.s.now;
-    const list = ((_a = this.st.f)[id] || (_a[id] = [])).filter((f) => f.until > now2);
-    const same = list.filter((f) => f.id === feeling);
+    const list2 = ((_a = this.st.f)[id] || (_a[id] = [])).filter((f) => f.until > now2);
+    const same = list2.filter((f) => f.id === feeling);
     const cap = def.stack ?? 1;
     let w = def.weight;
     if (same.length >= cap) {
@@ -4096,9 +5321,9 @@ var Reverie = class {
       w = def.weight * Math.pow(def.stackMul ?? this.c.stackMul, same.length);
       const f = { id: feeling, t: now2, until: now2 + def.minutes, w: round(w, 4) };
       if (cause) f.cause = cause;
-      list.push(f);
+      list2.push(f);
     }
-    this.st.f[id] = list;
+    this.st.f[id] = list2;
     const stress = def.stress ?? (def.weight < 0 ? -def.weight * this.c.feelingStress : 0);
     if (stress) this.addStress(id, stress);
     this.w.log("felt", id, { feeling, label: def.label ?? feeling, ...cause ? { cause } : {} });
@@ -4188,13 +5413,13 @@ var Reverie = class {
     if (m.about) mem.about = m.about;
     if (m.place) mem.place = m.place;
     if (m.text) mem.text = m.text;
-    const list = (_a = this.st.m)[id] || (_a[id] = []);
-    list.push(mem);
-    const loose = list.filter((x) => !x.core);
+    const list2 = (_a = this.st.m)[id] || (_a[id] = []);
+    list2.push(mem);
+    const loose = list2.filter((x) => !x.core);
     if (loose.length > this.c.memoryCap) {
       let worst = loose[0];
       for (const x of loose) if (this.strength(x, id) < this.strength(worst, id)) worst = x;
-      list.splice(list.indexOf(worst), 1);
+      list2.splice(list2.indexOf(worst), 1);
     }
   }
   /** How strongly a memory is held now (by whom, for their own pace of forgetting): importance, faded by time. Core memories don't fade. */
@@ -4217,8 +5442,8 @@ var Reverie = class {
   }
   /** Recalls inside the simulation (copies of the memories recalled). */
   applyRecall(id, match = {}, n = 3) {
-    const list = (this.st.m[id] || []).filter((m) => (!match.about || m.about === match.about) && (!match.k || m.k === match.k) && (!match.place || m.place === match.place));
-    const out = list.sort((a, b) => this.strength(b, id) - this.strength(a, id)).slice(0, n);
+    const list2 = (this.st.m[id] || []).filter((m) => (!match.about || m.about === match.about) && (!match.k || m.k === match.k) && (!match.place || m.place === match.place));
+    const out = list2.sort((a, b) => this.strength(b, id) - this.strength(a, id)).slice(0, n);
     const c = this.c;
     for (const m of out) {
       m.recalls++;
@@ -4623,9 +5848,9 @@ var Fellowship = class {
   }
   applyJoin(g, id, on) {
     var _a;
-    const list = (_a = this.st.joined)[g] || (_a[g] = []);
-    if (on && !list.includes(id)) list.push(id);
-    if (!on) this.st.joined[g] = list.filter((x) => x !== id);
+    const list2 = (_a = this.st.joined)[g] || (_a[g] = []);
+    if (on && !list2.includes(id)) list2.push(id);
+    if (!on) this.st.joined[g] = list2.filter((x) => x !== id);
   }
   // -------------------------------------------------------------------------
   // Relationships
@@ -5325,8 +6550,8 @@ var Cityspeak = class {
           none.push(i);
           return;
         }
-        const list = by.get(l.topic);
-        if (list) list.push(i);
+        const list2 = by.get(l.topic);
+        if (list2) list2.push(i);
         else by.set(l.topic, [i]);
       });
       ix = this.index = { n: this.lines.length, by, none };
@@ -6118,9 +7343,9 @@ var Gaff = class {
    * place. It doesn't read focus: focus isn't state, so a replay (which may
    * run with any focus) couldn't make the same choice.
    */
-  emptyPlace(tag) {
+  emptyPlace(tag2) {
     const w = this.w;
-    const options = w.ring.tagged(tag).filter((id) => !w.ring.present(id).length);
+    const options = w.ring.tagged(tag2).filter((id) => !w.ring.present(id).length);
     return w.worldStream("unseen").pick(options) ?? null;
   }
   /**
@@ -6128,11 +7353,11 @@ var Gaff = class {
    * a focused region). Looking only: it changes nothing. To fire a storylet
    * there, pass it to trigger(id, place), which records the place.
    */
-  unseenPlace(tag) {
+  unseenPlace(tag2) {
     const w = this.w;
     const focus = new Set(w.clock.regionsInFocus());
-    const options = w.ring.tagged(tag).filter((id) => !focus.has(w.ring.region(id)) && !w.ring.present(id).length);
-    return w.worldStreamPeek("unseen", tag, w.s.now, w.s.n).pick(options) ?? null;
+    const options = w.ring.tagged(tag2).filter((id) => !focus.has(w.ring.region(id)) && !w.ring.present(id).length);
+    return w.worldStreamPeek("unseen", tag2, w.s.now, w.s.n).pick(options) ?? null;
   }
   /** What's fired recently. */
   history() {
@@ -6531,7 +7756,7 @@ var Ceres = class {
         w.log("rent", id, { missed: r.amount });
         w.emit("rent-missed", { id, amount: r.amount });
         if (w.reverie) {
-          if (!w.reverie.feelingDefs.has("behind_on_rent")) w.reverie.feeling({ id: "behind_on_rent", label: "Behind on the rent", weight: -0.15, minutes: 7 * DAY, emotion: "tense" });
+          if (!w.reverie.feelingDefs.has("behind_on_rent")) w.reverie.feeling({ id: "behind_on_rent", label: "Behind on the rent", tell: "worried about the rent", weight: -0.15, minutes: 7 * DAY, emotion: "tense" });
           w.reverie.applyFeel(id, "behind_on_rent");
           if (r.to && w.s.people[r.to]) w.reverie.applyBelieve(r.to, `behind:${id}`, true, "saw");
         }
@@ -7739,8 +8964,8 @@ var Voice = class {
     });
     L.term("promise", (c, a) => {
       if (!c.person) return null;
-      const list = (this.st?.promises || []).filter((x) => x.who === c.person?.id && x.id === a && (!by(c) || x.by === by(c)));
-      return list.length ? list[list.length - 1].state : null;
+      const list2 = (this.st?.promises || []).filter((x) => x.who === c.person?.id && x.id === a && (!by(c) || x.by === by(c)));
+      return list2.length ? list2[list2.length - 1].state : null;
     });
     L.effect("learn", (c, a, _op, v) => {
       if (c.person && c.target) this.applyLearn(c.person.id, c.target, a, v === null ? true : v);
@@ -8198,10 +9423,10 @@ var Voice = class {
     return false;
   }
   sayText(talk, who, text) {
-    const list = (Array.isArray(text) ? text : [text]).filter((t2) => t2);
-    if (!list.length) return false;
-    const fresh = list.filter((t2) => !talk.said.includes(t2));
-    const t = this.stream(talk).pick(fresh.length ? fresh : list);
+    const list2 = (Array.isArray(text) ? text : [text]).filter((t2) => t2);
+    if (!list2.length) return false;
+    const fresh = list2.filter((t2) => !talk.said.includes(t2));
+    const t = this.stream(talk).pick(fresh.length ? fresh : list2);
     talk.lines.push({ who, text: this.fill(talk, t) });
     talk.said.push(t);
     return true;
@@ -8411,14 +9636,14 @@ var DEFAULT_BREE = {
   pairDays: 30
 };
 var BREE_FEELINGS = [
-  { id: "good_talk", label: "A good talk", weight: 0.05, minutes: 4 * HOUR, emotion: "happy" },
-  { id: "long_chat", label: "A proper long talk", weight: 0.07, minutes: 7 * HOUR, emotion: "happy" },
-  { id: "had_words", label: "Had words with someone", weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: "angry" },
-  { id: "snubbed", label: "Brushed off", weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: "sad" },
-  { id: "fought", label: "In a fight", weight: -0.2, minutes: DAY, stack: 2, emotion: "angry" },
-  { id: "made_up", label: "Made it up", weight: 0.1, minutes: DAY, emotion: "relieved" },
-  { id: "saw_row", label: "Saw a row", weight: -0.04, minutes: 4 * HOUR, emotion: "tense" },
-  { id: "comforted", label: "Someone was kind", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
+  { id: "good_talk", label: "A good talk", tell: ["enjoyed the talk", "came away cheered"], weight: 0.05, minutes: 4 * HOUR, emotion: "happy" },
+  { id: "long_chat", label: "A proper long talk", tell: "enjoyed a proper long talk", weight: 0.07, minutes: 7 * HOUR, emotion: "happy" },
+  { id: "had_words", label: "Had words with someone", tell: "was sore from the words", weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: "angry" },
+  { id: "snubbed", label: "Brushed off", tell: ["felt brushed off", "felt snubbed"], weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: "sad" },
+  { id: "fought", label: "In a fight", tell: "was shaken by the fight", weight: -0.2, minutes: DAY, stack: 2, emotion: "angry" },
+  { id: "made_up", label: "Made it up", tell: "was glad to have made it up", weight: 0.1, minutes: DAY, emotion: "relieved" },
+  { id: "saw_row", label: "Saw a row", tell: "was rattled by the row", weight: -0.04, minutes: 4 * HOUR, emotion: "tense" },
+  { id: "comforted", label: "Someone was kind", tell: "felt comforted", weight: 0.08, minutes: 6 * HOUR, emotion: "happy" }
 ];
 var pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
 var hasKeys = (o) => {
@@ -8432,6 +9657,7 @@ function breeStarter(opts = {}) {
     {
       id: "chat",
       label: "a chat",
+      tell: "chatted with {with}",
       tags: ["talk", "friendly"],
       topics: ["*"],
       group: true,
@@ -8442,6 +9668,7 @@ function breeStarter(opts = {}) {
     {
       id: "deep_talk",
       label: "a heart to heart",
+      tell: "had a heart to heart with {with}",
       tags: ["talk", "friendly"],
       topics: ["tag:deep", "*"],
       to: ["regard>0.3"],
@@ -8456,6 +9683,7 @@ function breeStarter(opts = {}) {
     {
       id: "joke",
       label: "a joke",
+      tell: "joked with {with}",
       tags: ["friendly"],
       relieves: { [fun]: 0.1 },
       base: 0.25,
@@ -8467,6 +9695,7 @@ function breeStarter(opts = {}) {
     {
       id: "compliment",
       label: "a compliment",
+      tell: "paid {with} a compliment",
       tags: ["friendly"],
       to: ["regard>0"],
       base: 1,
@@ -8477,6 +9706,7 @@ function breeStarter(opts = {}) {
     {
       id: "tease",
       label: "some teasing",
+      tell: "teased {with}",
       tags: ["friendly"],
       to: ["regard>0.2"],
       relieves: { [fun]: 0.1 },
@@ -8488,6 +9718,7 @@ function breeStarter(opts = {}) {
     {
       id: "flirt",
       label: "flirting",
+      tell: "flirted with {with}",
       tags: ["romantic", "talk"],
       topics: ["tag:romantic", "small_talk"],
       who: ["!is:child"],
@@ -8499,6 +9730,7 @@ function breeStarter(opts = {}) {
     {
       id: "comfort",
       label: "a word of comfort",
+      tell: "comforted {with}",
       tags: ["friendly"],
       to: ["target.mood<0.4", "regard>0"],
       relieves: { [co]: 0.2 },
@@ -8508,10 +9740,11 @@ function breeStarter(opts = {}) {
       weight: [nature("warmth", 0.2, 1.5)],
       on: { warm: { feel: [null, "comforted"] }, good: { feel: [null, "comforted"] } }
     },
-    { id: "favor", label: "asking a favor", to: ["regard>0.1"], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ["regard>0.4"], by: 1 }], owes: 1, weight: 0.2 },
+    { id: "favor", label: "asking a favor", tell: "asked {with} a favor", to: ["regard>0.1"], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ["regard>0.4"], by: 1 }], owes: 1, weight: 0.2 },
     {
       id: "gift",
       label: "a gift",
+      tell: "gave {with} a gift",
       tags: ["friendly"],
       to: ["regard>0"],
       base: 1.5,
@@ -8520,11 +9753,12 @@ function breeStarter(opts = {}) {
       weight: 0.1,
       on: { warm: { sentiment: { label: "gave me a present", by: 0.1, minutes: 7 * DAY } } }
     },
-    { id: "help", label: "a hand", tags: ["friendly"], to: ["regard>0.1"], base: 1, regard: 1.5, mends: 0.1, deed: "helped", weight: 0.2 },
-    { id: "teach", label: "a lesson", tags: ["friendly"], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
+    { id: "help", label: "a hand", tell: "gave {with} a hand", tags: ["friendly"], to: ["regard>0.1"], base: 1, regard: 1.5, mends: 0.1, deed: "helped", weight: 0.2 },
+    { id: "teach", label: "a lesson", tell: "taught {with} something", tags: ["friendly"], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
     {
       id: "argue",
       label: "an argument",
+      tell: "argued with {with}",
       tags: ["hostile", "talk"],
       topics: ["grievance", "*"],
       turns: [3, 5],
@@ -8538,6 +9772,7 @@ function breeStarter(opts = {}) {
     {
       id: "insult",
       label: "an insult",
+      tell: "insulted {with}",
       tags: ["hostile"],
       to: ["regard<-0.2"],
       base: -2.5,
@@ -8551,6 +9786,7 @@ function breeStarter(opts = {}) {
     {
       id: "fight",
       label: "a fight",
+      tell: "fought {with}",
       tags: ["hostile"],
       turns: 2,
       base: -4,
@@ -8564,6 +9800,7 @@ function breeStarter(opts = {}) {
     {
       id: "apologize",
       label: "an apology",
+      tell: "apologized to {with}",
       tags: ["friendly"],
       to: ["grudged>0.05"],
       base: 0.5,
@@ -8576,6 +9813,7 @@ function breeStarter(opts = {}) {
     {
       id: "make_up",
       label: "making up",
+      tell: "made up with {with}",
       tags: ["friendly"],
       to: ["grudge>0.05", "grudged>0.05"],
       turns: 3,
@@ -8588,6 +9826,7 @@ function breeStarter(opts = {}) {
     {
       id: "avoid",
       label: "the cold shoulder",
+      tell: "gave {with} the cold shoulder",
       tags: ["hostile"],
       to: ["grudge>0.3"],
       turns: 1,
@@ -8618,7 +9857,7 @@ function breeStarter(opts = {}) {
     { id: "shy", label: "shy", traits: { talkative: -2 } },
     { id: "gloomy", label: "gloomy", base: -0.6, fits: [{ if: ["mood<0.35"], by: 1.2 }], lands: [{ by: -0.25 }, { if: ["nature.warmth>0.6"], by: 0.25 }] }
   ];
-  const keep = (list, ids) => ids ? list.filter((d) => ids.includes(d.id)) : list;
+  const keep = (list2, ids) => ids ? list2.filter((d) => ids.includes(d.id)) : list2;
   return { kinds: keep(kinds, opts.kinds), topics: keep(topics, opts.topics), manners: keep(manners, opts.manners) };
 }
 var Bree = class {
@@ -9270,11 +10509,11 @@ var Bree = class {
   }
   /** Does a topic fit a kind? */
   fits(t, def) {
-    const list = def.topics;
-    if (!list?.length) return false;
-    if (list.includes(t.id)) return true;
-    if (t.tags && list.some((x) => x.startsWith("tag:") && t.tags?.includes(x.slice(4)))) return true;
-    if (!list.includes("*")) return false;
+    const list2 = def.topics;
+    if (!list2?.length) return false;
+    if (list2.includes(t.id)) return true;
+    if (t.tags && list2.some((x) => x.startsWith("tag:") && t.tags?.includes(x.slice(4)))) return true;
+    if (!list2.includes("*")) return false;
     return !t.kinds || t.kinds.some((k) => k === def.id || k.startsWith("tag:") && !!def.tags?.includes(k.slice(4)));
   }
   /** How much someone (they love doing it) likes an action: instinct times habit. */
@@ -9984,15 +11223,15 @@ var Bree = class {
       }
     }
     const from = this.c.avoidFrom;
-    const list = [];
+    const list2 = [];
     for (const id of [...ids].sort()) {
       if (id === p.id) continue;
       const a = this.animosity(p.id, id);
-      if (a >= from) list.push({ id, a });
+      if (a >= from) list2.push({ id, a });
     }
-    list.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
-    this.foeCache = { st, id: p.id, now: w.s.now, seq: w.s.seq, v: st.v, list };
-    return list;
+    list2.sort((x, y) => y.a - x.a || (x.id < y.id ? -1 : 1));
+    this.foeCache = { st, id: p.id, now: w.s.now, seq: w.s.seq, v: st.v, list: list2 };
+    return list2;
   }
   /**
    * Avoidance: someone with a grudge or in a feud weighs what they might do
@@ -10225,11 +11464,11 @@ var DEFAULT_MORGUL = {
   traits: {}
 };
 var MORGUL_FEELINGS = [
-  { id: "in_pain", label: "In pain", weight: -0.15, minutes: 12 * 60, stack: 2, emotion: "sad" },
-  { id: "furious", label: "Furious", weight: -0.1, minutes: DAY, stack: 2, emotion: "angry" },
-  { id: "shaken", label: "Shaken", weight: -0.08, minutes: 2 * DAY, stack: 2, emotion: "tense" },
-  { id: "saw_harm", label: "Saw someone hurt", weight: -0.06, minutes: 6 * 60, stack: 2, emotion: "tense" },
-  { id: "cared_for", label: "Someone looked after me", weight: 0.1, minutes: DAY, emotion: "happy" }
+  { id: "in_pain", label: "In pain", tell: "was in pain", weight: -0.15, minutes: 12 * 60, stack: 2, emotion: "sad" },
+  { id: "furious", label: "Furious", tell: "was furious", weight: -0.1, minutes: DAY, stack: 2, emotion: "angry" },
+  { id: "shaken", label: "Shaken", tell: "was shaken", weight: -0.08, minutes: 2 * DAY, stack: 2, emotion: "tense" },
+  { id: "saw_harm", label: "Saw someone hurt", tell: "was upset to see someone hurt", weight: -0.06, minutes: 6 * 60, stack: 2, emotion: "tense" },
+  { id: "cared_for", label: "Someone looked after me", tell: "felt looked after", weight: 0.1, minutes: DAY, emotion: "happy" }
 ];
 var ARMS = ["strike", "throw", "shoot", "cast"];
 var hasKeys2 = (o) => {
@@ -10799,14 +12038,14 @@ var Morgul = class {
       if (a >= 0.05) add(id, a * c.suspectGrudge, "bore a grudge");
     }
     for (const id of rec.about || []) add(id, c.suspectAbout, "was about");
-    const list = [];
+    const list2 = [];
     for (const [id, v] of cands) {
       const regard = fs ? fs.regard(former, id) : 0;
       const wgt = v.w * (1 + Math.max(0, -regard) * c.suspectSpite) * Math.max(0.1, 1 - Math.max(0, regard) * c.suspectLoyal);
-      list.push({ id, w: round(wgt, 6), why: v.why });
+      list2.push({ id, w: round(wgt, 6), why: v.why });
     }
-    list.sort((a, b) => a.id < b.id ? -1 : 1);
-    const pick = r.weighted(list, (x) => x.w);
+    list2.sort((a, b) => a.id < b.id ? -1 : 1);
+    const pick = r.weighted(list2, (x) => x.w);
     if (!pick || !(pick.w > 0)) return;
     const str = round(Math.min(c.suspectMax, pick.w * c.suspectStrength * k), 4);
     if (str < c.suspectFloor) return;
@@ -11116,7 +12355,7 @@ var Morgul = class {
         if (hits > 0) eaten.push({ t, hits });
       }
     }
-    if (a.tags?.some((tag) => c.eats.includes(tag))) for (const k of ids) {
+    if (a.tags?.some((tag2) => c.eats.includes(tag2))) for (const k of ids) {
       const t = st.taints[k];
       if (!t || t.item || !t.place || w.ring.root(t.place) !== root || t.for && t.for !== p.id) continue;
       t.n--;
@@ -11341,9 +12580,9 @@ var Morgul = class {
     if (w.actions.has(c.fighting) && this.inFight(p.id)) out.push({ id: c.fighting, kind: "action", place: p.place, rank: c.fightRank, layer: "fight", weight: 0, parts: [] });
     const held = st.held[p.id];
     if (held && w.tasks.get(c.avenge)?.target === "person") {
-      const list = Object.keys(held).sort().map((id) => ({ id, v: this.vengeance(p.id, id) })).filter((x) => x.v >= c.vengeAt && w.s.people[x.id]?.status === "active");
-      list.sort((x, y) => y.v - x.v || (x.id < y.id ? -1 : 1));
-      for (const x of list.slice(0, 2)) out.push({ id: c.avenge, kind: "task", place: null, target: x.id, rank: 0, layer: "need", weight: 0, parts: [] });
+      const list2 = Object.keys(held).sort().map((id) => ({ id, v: this.vengeance(p.id, id) })).filter((x) => x.v >= c.vengeAt && w.s.people[x.id]?.status === "active");
+      list2.sort((x, y) => y.v - x.v || (x.id < y.id ? -1 : 1));
+      for (const x of list2.slice(0, 2)) out.push({ id: c.avenge, kind: "task", place: null, target: x.id, rank: 0, layer: "need", weight: 0, parts: [] });
     }
   }
   block(p, cand) {

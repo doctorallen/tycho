@@ -616,6 +616,390 @@ test('a chronicle from the entries a game kept reaches past the log', () => {
   assert.deepEqual(all.slice(-tail.length), tail);
 });
 
+test('Irulan tells a day of Rocinante as a story, and changes nothing', () => {
+  for (const opts of [{}, { bree: true, harm: true }]) {
+    const w = rocinante(opts);
+    const kept = [];
+    w.on('log', (e) => kept.push(e));
+    w.advance(DAY);
+    const before = w.hash();
+    const beats = w.irulan.beats(kept);
+    // folded: far fewer beats than entries, each a sentence in words of its own
+    assert.ok(beats.length > 20 && beats.length < kept.length / 2, `${beats.length} beats of ${kept.length}`);
+    for (const b of beats) {
+      assert.match(b.text, /^[A-Z].*\.$/, b.text);
+      assert.ok(!/undefined|NaN|\[object|\{|apt_\d|did:/.test(b.text), b.text);
+      assert.ok(b.score >= 0 && b.score <= 1 && b.entries.length, b.text);
+    }
+    assert.deepEqual(beats.map((b) => b.t), beats.map((b) => b.t).slice().sort((a, b) => a - b));
+    // paragraphs by the time of day
+    const story = w.irulan.tell(kept);
+    assert.match(story[0], /^Day 0, early morning\. /);
+    assert.equal(w.hash(), before);
+  }
+});
+
+test('Irulan folds a walk, an action, its company, its feeling and a shift into one sentence each', () => {
+  const w = rocinante();
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const text = w.irulan.beats(kept, { vary: false }).map((b) => b.text);
+  const has = (re) => assert.ok(text.some((t) => re.test(t)), `${re}\n${text.join('\n')}`);
+  // the walk there and the hour-long bakes one after another: one shift
+  has(/^Mara went to Mara's Cafe and baked bread for eight hours/);
+  // the company kept, and the feeling that came of it
+  has(/^Lena showered at home for half an hour, with Kofi home too, and felt fresh\.$/);
+  // the same beat for several people at once, told once
+  has(/^Mara, Ruth and Kofi wished for some fresh air\.$/);
+  // a plan that fell through, and how they felt, in the same minute
+  has(/^Kofi gave up on dinner at home \(no way to get food\) and was frustrated\.$/);
+  // gossip by what it's about
+  has(/^Dev told Ines about Sam's theft\.$/);
+  // and nobody felt "A good meal": the feeling went with the meal
+  assert.ok(!text.some((t) => /felt A good meal/.test(t)));
+});
+
+test('Irulan leaves out what matters little, and tells one person\'s day', () => {
+  const w = rocinante();
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const all = w.irulan.beats(kept), some = w.irulan.beats(kept, { min: 0.5 });
+  assert.ok(some.length && some.length < all.length / 3, `${some.length} of ${all.length}`);
+  assert.ok(some.every((b) => b.score >= 0.5));
+  assert.ok(!some.some((b) => /slept/.test(b.text)));
+  // a kind weighed to nothing is left out
+  assert.ok(!w.irulan.beats(kept, { weights: { told: 0 } }).some((b) => /told/.test(b.text)));
+  const ruth = w.irulan.beats(kept, { who: 'ruth' });
+  assert.ok(ruth.length && ruth.every((b) => b.who.includes('ruth') || b.with.includes('ruth') || b.entries.some((e) => w.westmarch.about(e, 'ruth'))));
+  const day = w.irulan.day('ruth', kept);
+  assert.match(day, /^Ruth /);
+  assert.ok(day.split('. ').length >= 3, day);
+  // from the log itself, by a time
+  assert.deepEqual(w.irulan.beats(w.now - 6 * HOUR).map((b) => b.t).filter((t) => t < w.now - 6 * HOUR), []);
+});
+
+test('Irulan takes the game\'s words, and falls back to the label and describe', () => {
+  const w = rocinante();
+  w.action({ id: 'juggle', label: 'juggling', at: 'home', minutes: 45 });
+  w.action({ id: 'kip', label: 'a kip', at: 'home', minutes: 20 });
+  const at = (t, k, d) => ({ t, k, who: 'ruth', d });
+  const said = (entries) => w.irulan.beats(entries, { vary: false }).map((b) => b.text);
+  // Rocinante's words for the rain, and the words a game gives that leave an entry out
+  assert.deepEqual(said([{ t: 0, k: 'fact', d: { key: 'raining', value: true } }]), ['Rain set in.']);
+  assert.deepEqual(said([{ t: 0, k: 'fact', d: { key: 'other', value: 1 } }]), ['Other became 1.']);
+  w.irulan.words('fact', () => null);
+  assert.deepEqual(said([{ t: 0, k: 'fact', d: { key: 'raining', value: true } }]), []);
+  // an action with no tell, by its label; one still going at the end
+  assert.deepEqual(said([at(0, 'started', { action: 'juggle', place: 'apt_4' }), at(45, 'finished', { action: 'juggle', place: 'apt_4', frac: 1 })]), ['Ruth spent 45 minutes juggling at home.']);
+  assert.deepEqual(said([at(0, 'started', { action: 'kip', place: 'apt_4' }), at(20, 'finished', { action: 'kip', place: 'apt_4', frac: 1 })]), ['Ruth had a kip at home.']);
+  assert.deepEqual(said([at(0, 'started', { action: 'read', place: 'apt_1' })]), ['Ruth was reading at Mara\'s place.']);
+  // an illness by its tell, coming on and over; one without, by its label
+  assert.deepEqual(said([at(0, 'afflicted', { course: 'cold', from: 'kofi' }), at(5, 'afflicted', { course: 'ale', again: true }), at(10, 'recovered', { course: 'cold' })]),
+    ['Ruth caught a cold from Kofi.', 'Ruth had a few drinks too many again.', 'Ruth shook off the cold.']);
+  w.athelas.course({ id: 'gout', label: 'A touch of gout', phases: [{ id: 'sore', minutes: 60 }] });
+  assert.deepEqual(said([at(0, 'afflicted', { course: 'gout' }), at(90, 'recovered', { course: 'gout' })]), ['Ruth came down with a touch of gout.', 'Ruth got over a touch of gout.']);
+  // company is being about, not doing it together: at home, home too (or there too, visiting); elsewhere, there
+  const shower = (place, company) => [at(0, 'started', { action: 'shower', place }), ...company.map((id) => at(0, 'met', { target: id, minutes: 15 })), at(15, 'finished', { action: 'shower', place, frac: 1 })];
+  assert.deepEqual(said(shower('apt_4', ['kofi'])), ['Ruth showered at home, with Kofi there too.']);
+  assert.deepEqual(said(shower('apt_1', ['pip', 'tomas'])), ['Ruth showered at Mara\'s place, with Pip and Tomas home too.']);
+  assert.deepEqual(w.irulan.beats(shower('apt_1', ['tomas', 'pip']).map((e) => ({ ...e, who: 'mara' })), { as: 'tomas', voice: 'first', vary: false }).map((b) => b.text), ['Mara showered at home, with Pip and me home too.']);
+  assert.deepEqual(said([at(0, 'started', { action: 'sit_park', place: 'park' }), at(0, 'met', { target: 'kofi', minutes: 40 }), at(40, 'finished', { action: 'sit_park', place: 'park', frac: 1 })]), ['Ruth sat in Ring Park for 40 minutes, with Kofi there.']);
+  // one thing two modules write in the same minute is said once
+  const hurt = rocinante({ harm: true });
+  assert.deepEqual(hurt.irulan.beats([at(0, 'recovered', { course: 'nightshade' }), at(0, 'healed', { course: 'nightshade' })], { vary: false }).map((b) => b.text), ['Ruth pulled through the poisoning.']);
+  // a kind Irulan has no words of its own for, in describe's
+  assert.deepEqual(said([at(0, 'arrived', { place: 'market' }), at(5, 'rent', { paid: 25 })]), ['Ruth went to The Market.', 'Ruth paid the rent (25).']);
+  // and its own for what describe says tersely
+  assert.deepEqual(said([at(0, 'skill', { skill: 'lore', level: 'skilled' }), at(0, 'grudge', { against: 'dev', strength: 0.7, why: 'fight' })]), ['Ruth became skilled at lore and bore Dev a deep grudge over fight.']);
+});
+
+test('Irulan tells a talk from its first word to its last (Bree)', () => {
+  const w = rocinante({ bree: true });
+  const by = (who, t, k, d) => ({ t, k, who, d });
+  const text = w.irulan.beats([
+    by('dev', 0, 'arrived', { place: 'cafe' }),
+    by('dev', 10, 'exchange', { id: 7, kind: 'argue', with: ['lena'], why: 'meet' }),
+    by('dev', 14, 'escalated', { id: 7, from: 'argue', to: 'fight', against: 'lena' }),
+    by('dev', 16, 'exchanged', { id: 7, kind: 'fight', with: ['lena'], outcome: 'row', turns: 6, why: 'done' }),
+  ], { vary: false }).map((b) => b.text);
+  assert.deepEqual(text, ['Dev went to Mara\'s Cafe.', 'Dev argued with Lena at Mara\'s Cafe, which turned into a fight, and it ended in a row.']);
+});
+
+test('Irulan gives every sentence in parts, the people and places in it tagged', () => {
+  const w = rocinante();
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  for (const b of w.irulan.beats(kept)) {
+    assert.equal(b.parts.map((p) => p.text).join(''), b.text);
+    assert.ok(!/[\u0001-\u0003]/.test(b.text), b.text);
+    for (const p of b.parts) {
+      if (p.person) assert.equal(p.text, w.get(p.person).name);
+      if (p.place) assert.ok(w.ring.get(p.place), p.place);
+    }
+    // everyone a beat is about is tagged in it
+    for (const id of b.who) assert.ok(b.parts.some((p) => p.person === id), b.text);
+  }
+  const lena = w.irulan.beats(kept, { vary: false }).find((b) => /^Lena showered/.test(b.text));
+  assert.deepEqual(lena.parts, [{ text: 'Lena', person: 'lena' }, { text: ' showered at ' }, { text: 'home', place: 'apt_5' }, { text: ' for half an hour, with ' }, { text: 'Kofi', person: 'kofi' }, { text: ' home too, and felt fresh.' }]);
+});
+
+test('Irulan finds the storylines: a theft and what came of it, a snare, a poisoning', () => {
+  const w = rocinante({ seed: 'voight-kampff', harm: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(2 * DAY);
+  const before = w.hash();
+  const { threads, rest } = w.irulan.threads(kept, { vary: false });
+  const titled = (t) => threads.find((th) => th.title === t);
+  // the theft: done, seen, told and reported, with how the thief felt
+  const theft = titled('Sam\'s theft');
+  assert.ok(theft, threads.map((th) => th.title).join(', '));
+  assert.match(theft.beats[0].text, /^Sam went to The Market and pocketed some food/);
+  assert.ok(theft.beats.some((b) => /reported Sam's theft to the Watch/.test(b.text)));
+  assert.ok(theft.beats.some((b) => /^Sam felt guilty/.test(b.text)));
+  // a theft nobody saw the doer of is still the doer's
+  const pip = titled('Pip\'s theft');
+  assert.ok(pip && pip.beats.some((b) => /saw a theft without seeing who did it/.test(b.text)));
+  // the snare, from setting it to the harm it did and the gossip
+  const snare = titled('Pip\'s snare');
+  assert.ok(snare && snare.keys.includes('trap:t1') && snare.beats.some((b) => /hurt in Pip's trap/.test(b.text)));
+  // the poisoning, and whom it was blamed on
+  const poison = titled('Sam\'s nightshade');
+  assert.ok(poison && poison.beats.some((b) => /blamed Mara, who served it/.test(b.text)));
+  assert.deepEqual(poison.people.slice(0, 2).sort(), ['sam', 'tomas']);
+  // the most that matters first, every thread a story of two beats or more, nothing in both a thread and the rest
+  assert.deepEqual(threads.map((th) => th.score), threads.map((th) => th.score).slice().sort((a, b) => b - a));
+  assert.ok(threads.every((th) => th.beats.length >= 2 && th.parts.map((p) => p.text).join('') === th.title));
+  const inThreads = new Set(threads.flatMap((th) => th.beats));
+  assert.ok(rest.length && rest.every((b) => !inThreads.has(b) && b.score >= 0.4));
+  // a chat that went fine is no story, and doesn't tie one to another
+  assert.ok(!threads.some((th) => th.keys.some((k) => k.startsWith('pair:')) && th.keys.some((k) => !k.startsWith('pair:'))));
+  // someone's own
+  assert.ok(w.irulan.threads(kept, { who: 'pip' }).threads.every((th) => th.people.includes('pip')));
+  // no two titles alike
+  assert.equal(new Set(threads.map((th) => th.title)).size, threads.length);
+  assert.equal(w.hash(), before);
+});
+
+test('Irulan varies its words, the same way every time, and still tells the same thing once', () => {
+  const w = rocinante();
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const plain = w.irulan.beats(kept, { vary: false }), varied = w.irulan.beats(kept), again = w.irulan.beats(kept);
+  assert.deepEqual(varied.map((b) => b.text), again.map((b) => b.text));
+  assert.equal(varied.length, plain.length);
+  const differ = varied.filter((b, i) => b.text !== plain[i].text);
+  assert.ok(differ.length > 10, `${differ.length} differ`);
+  // Irulan's own phrases and the town's variants both turn up
+  const all = varied.map((b) => b.text).join('\n');
+  assert.match(all, / (headed|made their way) /);
+  assert.match(all, /curled up with a book|sat and read|had a meal at|grabbed a bite at/);
+  assert.ok(varied.some((b) => b.who.length > 1));
+  // another seed, other words
+  const v = rocinante({ seed: 'another' });
+  const k2 = [];
+  v.on('log', (e) => k2.push(e));
+  v.advance(DAY);
+  assert.ok(v.irulan.beats(k2).some((b, i, bs) => b.text !== v.irulan.beats(k2, { vary: false })[i]?.text));
+});
+
+test('Irulan tells what someone knows, as they know it, in their own words', () => {
+  const w = rocinante({ seed: 'voight-kampff', harm: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(2 * DAY);
+  const before = w.hash();
+  // Tomas: what he did, what was done to him or in front of him, what he was told; nobody else's inner life
+  const tomas = w.irulan.beats(kept, { as: 'tomas', vary: false });
+  assert.ok(tomas.length > 10);
+  for (const b of tomas) {
+    assert.ok(b.who.includes('tomas') || b.with.includes('tomas') || b.entries.some((e) => w.westmarch.about(e, 'tomas')), b.text);
+    assert.ok(b.who.includes('tomas') || !b.kinds.some((k) => ['felt', 'wished', 'grudge', 'suspect', 'sentiment'].includes(k)), b.text);
+  }
+  // poisoned without seeing it done, he doesn't know by whom; Sam does
+  assert.ok(tomas.some((b) => /^Tomas was poisoned.* hurt by tainted food\.$/.test(b.text)), tomas.map((b) => b.text).join('\n'));
+  assert.ok(!tomas.some((b) => /Sam's tainted food|slipped nightshade/.test(b.text)));
+  const sam = w.irulan.beats(kept, { as: 'sam', voice: 'first', vary: false }).map((b) => b.text);
+  assert.ok(sam.some((t) => t.startsWith('I slipped nightshade into the stew at Mara\'s Cafe')), sam.join('\n'));
+  assert.ok(sam.includes('Tomas was hurt by my tainted food.'), sam.join('\n'));
+  // a crime done in front of someone is theirs to tell only if they caught it
+  const ruth = w.irulan.beats(kept, { as: 'ruth', vary: false }).map((b) => b.text);
+  assert.ok(!ruth.some((t) => /pocketed some food/.test(t)));
+  const dev = w.irulan.beats(kept, { as: 'dev', voice: 'first', vary: false }).map((b) => b.text);
+  assert.ok(dev.some((t) => /^Sam went to The Market and pocketed some food, with me there\.$/.test(t)), dev.join('\n'));
+  // their own words: I, me, my, and "they" become theirs
+  const mine = w.irulan.beats(kept, { as: 'tomas', voice: 'first', vary: false });
+  assert.ok(mine.every((b) => !b.parts.some((p) => p.person === 'tomas' && p.text === 'Tomas')));
+  assert.ok(mine.some((b) => /^I broke down and walked out to clear my head/.test(b.text)), mine.map((b) => b.text).join('\n'));
+  assert.ok(mine.some((b) => / me[ .,]/.test(b.text) && !b.text.startsWith('I ')));
+  for (const b of mine) assert.equal(b.parts.map((p) => p.text).join(''), b.text);
+  // what they'd say, with when
+  const said = w.irulan.recount('tomas', kept, { limit: 3, vary: false });
+  assert.equal(said.length, 3);
+  for (const b of said) assert.match(b.text, /^(Last night|Early this morning|This morning|This afternoon|This evening|Tonight|The night before last|Early yesterday|Yesterday \w+|Last night|\w+ days ago|A while back), /);
+  assert.equal(w.irulan.ago(2 * DAY + 9 * HOUR, 2 * DAY + 12 * HOUR), 'this morning');
+  assert.equal(w.irulan.ago(DAY + 19 * HOUR, 2 * DAY + 12 * HOUR), 'yesterday evening');
+  assert.equal(w.irulan.ago(DAY + 22 * HOUR, 2 * DAY + 1 * HOUR), 'last night');
+  assert.equal(w.irulan.ago(9 * HOUR, 3 * DAY), 'three days ago');
+  assert.equal(w.hash(), before);
+});
+
+test('Irulan keeps the story beyond the log, so storylines last the week, and it saves and rewinds', () => {
+  // off by default: no story, the world as it was
+  const plain = rocinante({ harm: true });
+  plain.advance(DAY);
+  assert.equal(plain.s.story, undefined);
+  assert.deepEqual(plain.irulan.book(), []);
+  const w = rocinante({ harm: true, config: { logSize: 200, storySize: 400 } });
+  w.advance(DAY);
+  // the same people living the same day, story or not
+  assert.equal(JSON.stringify(w.s.people), JSON.stringify(plain.s.people));
+  const day1 = w.irulan.threads();
+  w.advance(4 * DAY);
+  const book = w.irulan.book();
+  assert.ok(book.length <= 400 && book.length > 200);
+  assert.ok(book[0].t < w.s.log[0].t, 'the story reaches back further than the log');
+  // what's kept matters: no walks, no company, no routine action
+  assert.ok(!book.some((e) => ['set-out', 'arrived', 'met'].includes(e.k)));
+  assert.ok(book.every((e) => e.k !== 'started' || w.actions.get(e.d.action).crime || w.actions.get(e.d.action).deed));
+  // told without entries, from the story; a storyline keeps its id from one telling to the next
+  const day5 = w.irulan.threads();
+  assert.ok(day5.threads.some((th) => th.end - th.t > 2 * DAY), 'a storyline over days');
+  const again = day1.threads.filter((th) => day5.threads.some((x) => x.id === th.id));
+  assert.ok(again.length, day1.threads.map((th) => th.id).join(' ') + ' / ' + day5.threads.map((th) => th.id).join(' '));
+  assert.ok(day5.threads.some((th) => th.active) && day5.threads.every((th) => th.active === w.now - th.end <= DAY));
+  // it saves, loads and rewinds with the world
+  const copy = rocinante({ harm: true, config: { logSize: 200, storySize: 400 } });
+  copy.load(JSON.stringify(w.save()));
+  assert.deepEqual(copy.irulan.book(), book);
+  assert.equal(copy.hash(), w.hash());
+  const t = w.now, n = book.length, last = book[book.length - 1];
+  w.advance(12 * HOUR);
+  w.seek(t);
+  assert.equal(w.irulan.book().length, n);
+  assert.deepEqual(w.irulan.book()[n - 1], last);
+});
+
+test('Irulan tells the story as it happens: each beat once, complete, in order, and again after a rewind', () => {
+  const quiet = rocinante({ seed: 'voight-kampff', harm: true });
+  quiet.advance(2 * DAY);
+  const w = rocinante({ seed: 'voight-kampff', harm: true });
+  const got = [];
+  const stop = w.irulan.feed((b) => got.push({ b, now: w.now }), { min: 0.6, vary: false });
+  w.advance(2 * DAY);
+  // listening changes nothing
+  assert.equal(w.hash(), quiet.hash());
+  assert.ok(got.length > 20, `${got.length}`);
+  const seen = new Set();
+  for (const { b, now } of got) {
+    assert.ok(b.score >= 0.6, b.text);
+    // told once it's over and its minute has gone by
+    assert.ok(b.entries[b.entries.length - 1].t < Math.floor(now), b.text);
+    assert.ok(!b.kinds.includes('started') || b.kinds.includes('finished') || b.kinds.includes('stopped'), b.text);
+    for (const e of b.entries) { const id = `${e.t}|${e.k}|${e.who}|${JSON.stringify(e.d)}`; assert.ok(!seen.has(id), b.text); seen.add(id); }
+  }
+  // each telling has what was done since the one before, in the order it began
+  const done = (b) => b.entries[b.entries.length - 1].t;
+  const groups = [...new Set(got.map((x) => x.now))].map((now) => got.filter((x) => x.now === now).map((x) => x.b));
+  for (const g of groups) assert.deepEqual(g.map((b) => b.t), g.map((b) => b.t).slice().sort((a, b) => a - b));
+  for (let i = 1; i < groups.length; i++) assert.ok(Math.max(...groups[i - 1].map(done)) < Math.min(...groups[i].map(done)) + 1);
+  assert.ok(got.some(({ b }) => b.text.startsWith('Sam slipped nightshade into the stew')));
+  // a rewind: what comes after the time gone back to is told again, as it happens anew
+  const back = w.now - 6 * HOUR, before = got.length;
+  const after = got.filter(({ b }) => b.entries[b.entries.length - 1].t > back + 10).length;
+  w.seek(back);
+  w.advance(6 * HOUR);
+  assert.ok(got.length - before >= after - 2 && after > 0, `${got.length - before} again of ${after}`);
+  // stopped, it tells nothing more
+  stop();
+  const n = got.length;
+  w.advance(6 * HOUR);
+  assert.equal(got.length, n);
+});
+
+test('Irulan gives the headlines, and more of the people who matter to the game', () => {
+  const w = rocinante({ bree: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const top = w.irulan.recap(kept, { limit: 4 });
+  assert.equal(top.length, 4);
+  assert.deepEqual(top.map((b) => b.t), top.map((b) => b.t).slice().sort((a, b) => a - b));
+  const least = Math.min(...top.map((b) => b.score));
+  assert.ok(w.irulan.beats(kept).filter((b) => b.score > least).length <= 4);
+  // focus: Ruth's beats count for more, nobody else's change
+  const plain = w.irulan.beats(kept), focused = w.irulan.beats(kept, { focus: { ruth: 2 } });
+  assert.equal(plain.length, focused.length);
+  plain.forEach((b, i) => {
+    if (b.who.includes('ruth') || b.with.includes('ruth') || b.around.includes('ruth')) assert.ok(focused[i].score >= b.score);
+    else assert.equal(focused[i].score, b.score);
+  });
+  assert.ok(focused.some((b, i) => b.score > plain[i].score));
+  assert.equal(w.irulan.when(DAY + 9 * HOUR), 'Day 1, morning');
+});
+
+test('an action done together: the target joins in for its length, in a slot beside them; others there are only about', () => {
+  const w = rocinante({ together: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(7 * DAY);
+  const joins = kept.filter((e) => e.k === 'started' && e.d.layer === 'together');
+  assert.ok(joins.length >= 1, 'someone joined in');
+  for (const j of joins) {
+    // begun by their partner that minute, with them as its target
+    const lead = kept.find((e) => e.k === 'started' && e.who === j.d.with && e.t === j.t && e.d.action === j.d.action);
+    assert.ok(lead && lead.d.target === j.who, JSON.stringify(j));
+    // and over for both at once
+    const end = (who) => kept.find((e) => (e.k === 'finished' || e.k === 'stopped') && e.who === who && e.t > j.t && e.d.action === j.d.action);
+    assert.equal(end(j.who).t, end(j.d.with).t);
+  }
+  // alone is still the usual way, with the others only about
+  assert.ok(kept.filter((e) => e.k === 'started' && e.d.action === 'shower' && e.d.place === 'apt_1').length > joins.length * 3);
+  // nobody in Rocinante without the option does anything together
+  const plain = rocinante();
+  const k2 = [];
+  plain.on('log', (e) => k2.push(e));
+  plain.advance(2 * DAY);
+  assert.ok(!k2.some((e) => e.d?.layer === 'together'));
+  // and it holds up: the same seed, the same world; going back and forth, the same
+  const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed, together: true }), days: 3 });
+  assert.ok(report.passed, report.failures.join('\n'));
+});
+
+test('Irulan tells doing something together apart from others being about', () => {
+  const w = rocinante({ together: true });
+  const by = (who, t, k, d) => ({ t, k, who, d });
+  const beats = (entries) => w.irulan.beats(entries, { vary: false });
+  // Mara showers; Tomas and Pip are only home
+  const alone = beats([
+    by('mara', 0, 'started', { action: 'shower', place: 'apt_1' }), by('mara', 0, 'met', { target: 'tomas', minutes: 15 }), by('mara', 0, 'met', { target: 'pip', minutes: 15 }),
+    by('mara', 15, 'finished', { action: 'shower', place: 'apt_1', frac: 1 }),
+  ]);
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].text, 'Mara showered at home, with Tomas and Pip home too.');
+  assert.deepEqual([alone[0].with, alone[0].around], [[], ['tomas', 'pip']]);
+  // Mara and Tomas shower together; Pip is only home
+  const both = beats([
+    by('mara', 0, 'started', { action: 'shower_together', place: 'apt_1', target: 'tomas' }),
+    by('tomas', 0, 'started', { action: 'shower_together', place: 'apt_1', layer: 'together', target: 'mara', with: 'mara' }),
+    by('mara', 0, 'met', { target: 'tomas', minutes: 20 }), by('mara', 0, 'met', { target: 'pip', minutes: 20 }),
+    by('mara', 20, 'finished', { action: 'shower_together', place: 'apt_1', frac: 1 }), by('tomas', 20, 'finished', { action: 'shower_together', place: 'apt_1', frac: 1 }),
+  ]);
+  assert.equal(both.length, 1);
+  assert.equal(both[0].text, 'Mara showered with Tomas at home, with Pip home too.');
+  assert.deepEqual([both[0].with, both[0].around], [['tomas'], ['pip']]);
+  // told once, with everyone's entries
+  assert.equal(both[0].entries.filter((e) => e.k === 'finished').length, 2);
+  // an action done together with no words of its own says with whom
+  w.action({ id: 'dance', label: 'dancing', at: 'home', minutes: 30, target: 'person', together: true });
+  assert.equal(beats([by('mara', 0, 'started', { action: 'dance', place: 'apt_1', target: 'tomas' }), by('mara', 30, 'finished', { action: 'dance', place: 'apt_1', frac: 1 })])[0].text,
+    'Mara spent half an hour dancing with Tomas at home.');
+});
+
 test('Voight-Kampff: Rocinante behaves like people for a week', () => {
   const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed }), days: 7 });
   assert.deepEqual(report.failures, []);

@@ -16,6 +16,7 @@ import { Entmoot } from './entmoot';
 import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
+import { Irulan } from '../tools/irulan';
 import { Strangers } from './strangers';
 import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
@@ -60,6 +61,8 @@ export const DEFAULT_CONFIG: Config = {
   backoff: 15,
   budgetMs: 4,
   logSize: 1000,
+  storySize: 0,
+  storyMin: 0.3,
   decisions: 12,
   checksOnce: false,
   habitFast: 0.25,
@@ -142,6 +145,7 @@ export class World {
   readonly esper: Esper;
   readonly westmarch: Westmarch;
   readonly palantir: Palantir;
+  readonly irulan: Irulan;
   readonly strangers: Strangers;
   /** Skills: levels that grow with practice. */
   readonly skills: Skills;
@@ -183,6 +187,7 @@ export class World {
     this.clock = new Entmoot(this);
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
+    this.irulan = new Irulan(this);
     this.strangers = new Strangers(this);
     this.skills = new Skills(this);
     this.registerCore();

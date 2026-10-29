@@ -93,6 +93,8 @@ world.remove('tomas', 'moved away');
 
 **Following.** With `world.follow(id, leader)`, whenever the leader starts a walk or an action, the follower stops what they're doing (unless it outranks the leader's) and does the same, ending at the same time, taking the same slot if it's free. Their doing has layer `'follow'`. Following only reacts to the leader starting things: a follower doesn't seek the leader out.
 
+**Doing something together.** Following is a standing order from the game. An action can instead be done together of the people's own accord: with `together: true` on the action ([Deciding](deciding.md#actions)), whoever it's aimed at joins in for its length (a shower for two, a dance), if they're at the same place, doing nothing that outranks it, and there's room in its slot. Their doing has layer `'together'`, and their `started` entry names who they joined (`with`). Anyone else at the place is only about, not taking part: Fellowship's `met` entries, and Irulan's `around` ([Tools](tools.md#irulan)).
+
 **Gone.** `world.remove(id, why)` takes someone out for good (`status: 'gone'`): their slot is let go, followers stop following them, modules hear about it, and a `gone` event (`{ id, why }`) is emitted. With Cradle, use `cradle.depart` instead to get grief and inheritance too.
 
 ## How Esper works
@@ -181,7 +183,7 @@ Pass these in `Tyrell.create({ esper: { ... } })`:
 
 Make `sparseEvery` a multiple of `every`, or the thinned region keeps fewer snapshots than you expect (only those at times divisible by `sparseEvery` survive). With the defaults that's about `240 / 15 + (1440 - 240) / 60 + 1 = 37` snapshots.
 
-Each snapshot is the whole state as a string, so memory is roughly snapshots × state size. The state grows with people, with the log (`config.logSize` entries, 1000 by default, kept in every snapshot) and with what the modules remember. For Rocinante (ten people), a snapshot is about 70 KB after a day and about 150 KB after a week, so the defaults hold about 2.5 to 5.5 MB. Lowering `logSize` to 200 roughly halves it. Check yours with:
+Each snapshot is the whole state as a string, so memory is roughly snapshots × state size. The state grows with people, with the log (`config.logSize` entries, 1000 by default, kept in every snapshot) and with what the modules remember. For Rocinante (ten people), a snapshot is about 70 KB after a day and about 150 KB after a week, so the defaults hold about 2.5 to 5.5 MB. Lowering `logSize` to 200 roughly halves it. Irulan's story (`config.storySize`, off by default) is in every snapshot too, at about 100 bytes an entry. Check yours with:
 
 ```js
 world.esper.size();   // { snapshots, inputs, bytes }

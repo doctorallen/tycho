@@ -48,6 +48,7 @@ b.kind({ id: 'apologize', to: ['grudged>0.05'], base: 0.5, traits: { forgiveness
 |---|---|---|
 | `id` | required | |
 | `label` | none | Words for it (memories use it) |
+| `tell` | none | Its words in a story ([Irulan](../tools.md#irulan)), as they'd follow the name of the one who started it, `{with}` naming the others: `'argued with {with}'`. The starter set's kinds have theirs; without it, `'had <label> with {with}'`. A list is variants, one drawn for each telling |
 | `tags` | none | Free labels. Bree reads `'hostile'` (quarrels, avoidance) and `'romantic'` (attraction) |
 | `who` | anyone | Conditions on the one who starts it (the other is the target) |
 | `to` | anyone | Conditions on the other, read from the starter's side: `'regard>0.3'`, `'grudge>0.2'`, `'target.mood<0.4'` |

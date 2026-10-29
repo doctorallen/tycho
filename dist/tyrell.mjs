@@ -7412,6 +7412,8 @@ var DEFAULT_VOICE = {
   revealPull: 1.5,
   salientFloor: 0.05,
   variety: 0.2,
+  reshuffle: false,
+  followPull: 1,
   promiseDays: 3,
   promiseKeep: 30
 };
@@ -7483,6 +7485,7 @@ var Voice = class {
     L.term("warmth", (c) => talkOf(c)?.warmth ?? 0);
     L.term("patience", (c) => talkOf(c)?.patience ?? 0);
     L.term("landed", (c) => talkOf(c)?.landed ?? null);
+    L.term("about", (c, a) => !!talkOf(c)?.about?.includes(a));
     L.term("learned", (c, a) => c.person && by(c) ? this.peekBond(c.person.id, by(c))?.known?.[a] ?? false : false);
     L.term("sore", (c, a) => c.person && by(c) ? (this.peekBond(c.person.id, by(c))?.sore?.[a] ?? -1) > w.s.now : false);
     L.term("talked", (c, a) => {
@@ -7509,6 +7512,11 @@ var Voice = class {
       if (!thread) return;
       const b = this.bond(c.person.id, c.target);
       (b.sore || (b.sore = {}))[thread] = this.w.s.now + (v === null || v === true ? this.c.soreDays : Number(v)) * DAY;
+    });
+    L.effect("about", (c, a) => {
+      const talk = c.target ? this.st?.talks[c.target] : void 0;
+      if (!talk || !c.person || talk.who !== c.person.id || !a) return;
+      if (!(talk.about || (talk.about = [])).includes(a)) talk.about.push(a);
     });
     L.effect("warmth", (c, _a, op, v) => {
       const talk = c.target ? this.st?.talks[c.target] : void 0;
@@ -7618,7 +7626,7 @@ var Voice = class {
     try {
       w.log("talk", who, { by });
       w.emit("voice:start", { who, by });
-      this.say(talk, "them", this.c.greet);
+      if (!this.opening(talk)) this.say(talk, "them", this.c.greet);
       if (!this.theirTurn(talk)) this.refresh(talk);
     } finally {
       this.live = null;
@@ -7687,6 +7695,8 @@ var Voice = class {
     talk.thread = { id: def.id, beat: def.start ?? "start", label };
     if (theirs) talk.thread.theirs = true;
     if (!talk.done.includes(def.id)) talk.done.push(def.id);
+    if (def.about?.length) talk.about = [...def.about];
+    else if (talk.about) delete talk.about;
     if (!theirs && !door) {
       const open = typeof def.open === "string" ? def.open : def.open ? def.approach && def.open[def.approach] || def.open[Object.keys(def.open)[0]] : label;
       if (open) this.say(talk, "you", open, true);
@@ -7718,6 +7728,7 @@ var Voice = class {
     b.seen[th.id] = this.w.s.now;
     b.lastThread = th.id;
     talk.thread = void 0;
+    if (!reached && talk.about) delete talk.about;
     if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
     if (talk.patience <= 0 && !talk.over) {
       talk.over = true;
@@ -7759,6 +7770,25 @@ var Voice = class {
     const ctx = this.ctx(talk);
     return s.replace(/\{learned\.([^}:]+)(?::([^}]*))?\}/g, (m, key2, form) => known[key2] === void 0 ? m : String(this.w.peek(() => this.remembered(ctx, key2, known[key2], form ?? null)) ?? ""));
   }
+  /** They open the talk with a subject, when one can: its first beat is their greeting. Returns whether they did. */
+  opening(talk) {
+    const w = this.w, now2 = w.s.now;
+    const b = this.peekBond(talk.who, talk.by);
+    const ctx = this.ctx(talk);
+    const c = this.c;
+    const cands = [...this.threads.values()].filter((def2) => {
+      if (!def2.opens) return false;
+      if (def2.recalls && b?.known?.[def2.recalls] === void 0) return false;
+      const seen = b?.seen[def2.id];
+      if (seen !== void 0 && now2 - seen < (def2.cooldown ?? c.cooldown)) return false;
+      return !def2.if || w.peek(() => w.lang.all(def2.if, ctx));
+    }).sort((x, y) => x.id < y.id ? -1 : 1);
+    if (!cands.length) return false;
+    const def = cands.length === 1 ? cands[0] : this.stream(talk).weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
+    if (!def) return false;
+    this.enter(talk, def, true);
+    return true;
+  }
   /** Now and then they raise something of their own. Returns whether they did. */
   theirTurn(talk) {
     if (talk.over || talk.thread) return false;
@@ -7793,7 +7823,7 @@ var Voice = class {
     const c = this.c;
     const scored = [];
     for (const def of this.threads.values()) {
-      if (def.theirs || talk.done.includes(def.id)) continue;
+      if (def.theirs || def.opens || talk.done.includes(def.id)) continue;
       if (def.recalls && b?.known?.[def.recalls] === void 0) continue;
       if (def.if && !w.lang.all(def.if, ctx)) continue;
       const seen = b?.seen[def.id];
@@ -7801,8 +7831,10 @@ var Voice = class {
       let s = this.weightOf(def, ctx) * fresh;
       if ((b?.sore?.[def.id] ?? -1) > now2) s *= c.soreWeight;
       if (def.reveals && b?.known?.[def.reveals] === void 0) s *= c.revealPull;
+      if (c.followPull !== 1 && talk.about && def.about?.some((t) => talk.about?.includes(t))) s *= c.followPull;
       if (s < c.salientFloor) continue;
-      s += w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id).next() * c.variety;
+      const peek = c.reshuffle ? w.worldStreamPeek("voice", talk.who, talk.by, talk.t, talk.done.length, def.id) : w.worldStreamPeek("voice", talk.who, talk.by, Math.floor(now2 / DAY), def.id);
+      s += peek.next() * c.variety;
       scored.push([s, def]);
     }
     return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, c.offers).map(([, d]) => d);

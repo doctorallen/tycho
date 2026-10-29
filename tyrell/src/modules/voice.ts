@@ -27,6 +27,12 @@
 // or a subject can recall something learned (`recalls`: offered only once
 // it's known, and landing better), and the words can say it
 // ({learned.<key>}).
+//
+// A game can have a talk follow itself, too: a subject can open the talk
+// (`opens`: their greeting is its first beat, with answers, so what they
+// say first can be answered), and subjects can say what they're about
+// (`about`), so that the ones sharing a topic with what was just said are
+// offered first (followPull).
 import type { Module } from '../core/module';
 import type { Cond, Ctx, Effect, Id, PersonState, Value } from '../core/types';
 import type { World } from '../core/world';
@@ -99,6 +105,15 @@ export interface ThreadDef {
   cooldown?: number;
   /** They raise it themselves (at the start, or between subjects), instead of being offered it. */
   theirs?: boolean;
+  /**
+   * They open the talk with it: when one can (its `if` holds, not talked of
+   * within its cooldown), its first beat is their greeting, with answers,
+   * in place of the plain one (one drawn by weight, if several can). It's
+   * never offered.
+   */
+  opens?: boolean;
+  /** What it's about: once it's talked of, subjects sharing a topic with it are offered first (config.followPull). */
+  about?: string[];
   /** A key it's for learning: it's more wanted until the speaker has learned it. */
   reveals?: string;
   /** Something learned about them that it recalls: it comes up only once the speaker has learned it, and its opener lands better (config.recallLand). */
@@ -193,6 +208,10 @@ export interface VoiceConfig {
   salientFloor: number;
   /** A little variety in what's offered: up to this much added to each subject's worth, the same for a pair all day. Default 0.2. */
   variety: number;
+  /** Variety drawn afresh each time the subjects are offered (each talk, and each return to them), not once a day. Default false. */
+  reshuffle: boolean;
+  /** A subject sharing a topic (`about`) with the one just talked of is worth this much more. Default 1 (it doesn't count). */
+  followPull: number;
   /** Days before a promise comes due, for a promise with no `days`. Default 3. */
   promiseDays: number;
   /** Days a settled promise is remembered (the `promise:` term reads it). Default 30. */
@@ -204,7 +223,7 @@ export const DEFAULT_VOICE: VoiceConfig = {
   greet: 'greet', bye: 'bye', close: 'close', react: 'react', deed: null,
   chatter: 1,
   warmthRegard: 3, warmthMin: -1, warmthMax: 3, familiarTalk: 0.5, familiarLearned: 1, familiarLand: 0, familiarLandMax: 1, recallLand: 1, cooldown: 3 * DAY, soreDays: 2, soreWeight: 0.1,
-  revealPull: 1.5, salientFloor: 0.05, variety: 0.2, promiseDays: 3, promiseKeep: 30,
+  revealPull: 1.5, salientFloor: 0.05, variety: 0.2, reshuffle: false, followPull: 1, promiseDays: 3, promiseKeep: 30,
 };
 
 /** A line said in a talk. */
@@ -271,6 +290,8 @@ interface Talk {
   options: TalkOption[];
   landed?: 'well' | 'badly' | 'even';
   over?: boolean;
+  /** What's being talked of: the topics of the subject on now, or the one just talked through (and any an effect added). */
+  about?: string[];
 }
 interface Bond {
   /** Talks they've had (counted at the end of each). */
@@ -344,6 +365,7 @@ export class Voice implements Module {
     L.term('warmth', (c) => talkOf(c)?.warmth ?? 0);
     L.term('patience', (c) => talkOf(c)?.patience ?? 0);
     L.term('landed', (c) => talkOf(c)?.landed ?? null);
+    L.term('about', (c, a) => !!talkOf(c)?.about?.includes(a));
     L.term('learned', (c, a) => (c.person && by(c) ? this.peekBond(c.person.id, by(c) as Id)?.known?.[a] ?? false : false));
     L.term('sore', (c, a) => (c.person && by(c) ? (this.peekBond(c.person.id, by(c) as Id)?.sore?.[a] ?? -1) > w.s.now : false));
     L.term('talked', (c, a) => {
@@ -366,6 +388,12 @@ export class Voice implements Module {
       if (!thread) return;
       const b = this.bond(c.person.id, c.target);
       (b.sore ||= {})[thread] = this.w.s.now + (v === null || v === true ? this.c.soreDays : Number(v)) * DAY;
+    });
+    // the talk turns to a topic (it pulls subjects about it, with followPull)
+    L.effect('about', (c, a) => {
+      const talk = c.target ? this.st?.talks[c.target] : undefined;
+      if (!talk || !c.person || talk.who !== c.person.id || !a) return;
+      if (!(talk.about ||= []).includes(a)) talk.about.push(a);
     });
     L.effect('warmth', (c, _a, op, v) => {
       const talk = c.target ? this.st?.talks[c.target] : undefined;
@@ -471,7 +499,8 @@ export class Voice implements Module {
     try {
       w.log('talk', who, { by });
       w.emit('voice:start', { who, by });
-      this.say(talk, 'them', this.c.greet);
+      // they open with a subject of their own making, if one can, else the plain greeting
+      if (!this.opening(talk)) this.say(talk, 'them', this.c.greet);
       if (!this.theirTurn(talk)) this.refresh(talk);
     } finally { this.live = null; }
     return this.view(talk, false);
@@ -537,6 +566,9 @@ export class Voice implements Module {
     talk.thread = { id: def.id, beat: def.start ?? 'start', label };
     if (theirs) talk.thread.theirs = true;
     if (!talk.done.includes(def.id)) talk.done.push(def.id);
+    // what's being talked of now (kept only by a game whose subjects say)
+    if (def.about?.length) talk.about = [...def.about];
+    else if (talk.about) delete talk.about;
     if (!theirs && !door) {
       const open = typeof def.open === 'string' ? def.open : def.open ? (def.approach && def.open[def.approach]) || def.open[Object.keys(def.open)[0]] : label;
       if (open) this.say(talk, 'you', open, true);
@@ -567,6 +599,7 @@ export class Voice implements Module {
     b.seen[th.id] = this.w.s.now;
     b.lastThread = th.id;
     talk.thread = undefined;
+    if (!reached && talk.about) delete talk.about; // (let lie: nothing to follow)
     if (reached && def?.then) this.w.lang.applyAll(def.then, this.ctx(talk));
     if (talk.patience <= 0 && !talk.over) {
       talk.over = true;
@@ -611,6 +644,26 @@ export class Voice implements Module {
     return s.replace(/\{learned\.([^}:]+)(?::([^}]*))?\}/g, (m, key: string, form?: string) => (known[key] === undefined ? m : String(this.w.peek(() => this.remembered(ctx, key, known[key], form ?? null)) ?? '')));
   }
 
+  /** They open the talk with a subject, when one can: its first beat is their greeting. Returns whether they did. */
+  private opening(talk: Talk): boolean {
+    const w = this.w, now = w.s.now;
+    const b = this.peekBond(talk.who, talk.by);
+    const ctx = this.ctx(talk);
+    const c = this.c;
+    const cands = [...this.threads.values()].filter((def) => {
+      if (!def.opens) return false;
+      if (def.recalls && b?.known?.[def.recalls] === undefined) return false;
+      const seen = b?.seen[def.id];
+      if (seen !== undefined && now - seen < (def.cooldown ?? c.cooldown)) return false;
+      return !def.if || w.peek(() => w.lang.all(def.if, ctx));
+    }).sort((x, y) => (x.id < y.id ? -1 : 1));
+    if (!cands.length) return false;
+    const def = cands.length === 1 ? cands[0] : this.stream(talk).weighted(cands, (d) => Math.max(0, this.weightOf(d, ctx)));
+    if (!def) return false;
+    this.enter(talk, def, true);
+    return true;
+  }
+
   /** Now and then they raise something of their own. Returns whether they did. */
   private theirTurn(talk: Talk): boolean {
     if (talk.over || talk.thread) return false;
@@ -648,7 +701,7 @@ export class Voice implements Module {
     const c = this.c;
     const scored: Array<[number, ThreadDef]> = [];
     for (const def of this.threads.values()) {
-      if (def.theirs || talk.done.includes(def.id)) continue;
+      if (def.theirs || def.opens || talk.done.includes(def.id)) continue;
       if (def.recalls && b?.known?.[def.recalls] === undefined) continue;
       if (def.if && !w.lang.all(def.if, ctx)) continue;
       const seen = b?.seen[def.id];
@@ -656,9 +709,12 @@ export class Voice implements Module {
       let s = this.weightOf(def, ctx) * fresh;
       if ((b?.sore?.[def.id] ?? -1) > now) s *= c.soreWeight;
       if (def.reveals && b?.known?.[def.reveals] === undefined) s *= c.revealPull;
+      // following on from what was just said
+      if (c.followPull !== 1 && talk.about && def.about?.some((t) => talk.about?.includes(t))) s *= c.followPull;
       if (s < c.salientFloor) continue;
-      // a little variety, the same for this pair all day
-      s += w.worldStreamPeek('voice', talk.who, talk.by, Math.floor(now / DAY), def.id).next() * c.variety;
+      // a little variety, the same for this pair all day (or afresh each time, with reshuffle)
+      const peek = c.reshuffle ? w.worldStreamPeek('voice', talk.who, talk.by, talk.t, talk.done.length, def.id) : w.worldStreamPeek('voice', talk.who, talk.by, Math.floor(now / DAY), def.id);
+      s += peek.next() * c.variety;
       scored.push([s, def]);
     }
     return scored.sort((x, y) => y[0] - x[0] || (x[1].id < y[1].id ? -1 : 1)).slice(0, c.offers).map(([, d]) => d);

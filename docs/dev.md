@@ -12,6 +12,7 @@ The dev tools, for the people making a game; players never see them. Testing swi
 - [The events](#the-events)
 - [A mind in the drawer](#a-mind-in-the-drawer)
 - [Its look](#its-look)
+- [Merryfolk's drawer, on these options](#merryfolks-drawer-on-these-options)
 
 ## The address and the flags
 
@@ -137,3 +138,19 @@ tabs: [{ id: 'mind', every: 0.5, html: (d) => d.sel ? Tycho.inspect.mind(world, 
 ## Its look
 
 Compact, dark and monospace, put first in the page's head (so the game's own CSS overrides it) unless `style: false`; `drawerCss(prefix)` is the stylesheet. Every class and id carries the prefix (`dev` by default: `#dev`, `.dev-head`, `.dev-tabs`, `.dev-overlays`, `#dev-fps`, `.dev-body`, `.dev-chips`, `.dev-bar`, `.dev-ev`, `#dev-tag`, `#dev-layer`). Its colors are CSS variables on it, for a game to give its own: `--dv-bg`, `--dv-fg`, `--dv-dim`, `--dv-line`, `--dv-btn`, `--dv-acc` (tabs, links, what's on), `--dv-hi` (titles, and what's off its default), `--dv-up`, `--dv-down`, and its width `--dv-w`.
+
+## Merryfolk's drawer, on these options
+
+Merryfolk keeps its own drawer until its harm work lands; every part of it is one of these options, so it can move without changing:
+
+| Merryfolk's | The drawer's |
+|---|---|
+| The ` key, the Dev button (`#btn-dev`, `active` while open), `body.dev-on`, always there | `keys` (the default), `button: () => $('btn-dev')`, `bodyClass` (`dev-on`, the default), `always: true` |
+| `<aside id="dev">` in `#game`, "Developer mode" | `prefix: 'dev'` (the default), `parent: () => $('game')`, `label` |
+| Brain, Events, World, Tools; Brain and World every 0.4 s, Events when there's something new, Tools only when something's done | `tabs` (`every` 0.4 by default, `events: true`, `every: 0`) |
+| The overlays' row (labels, paths, grid & lots, cliffs, chunks, the land's choice), drawn only while it's open | `overlays` (a checkbox each, `options` for the land), `overlay(id)` |
+| The frame line (fps, sim, paint, draw, the folk, the speed, the chunks, the buckets, a red ! while an error's been caught) | `frame(d)`, with `time('sim', ms)` and the rest from the loop |
+| `devLog(cat, text)`, the last 600, 250 shown, `Game.time`, `d1 08:23`, the chips by kind with their counts, pause and clear, a hint for decide and talk, the kinds' colors | `note`, `events.most`, `shown`, `clock`, `when`, `kinds` (`DEV_CATS`), `hint`, `colors` (or its CSS on `.dev-ev.k-<kind> .dev-k`) |
+| A villager's link (`data-v`) picks them and shows the Brain; `data-act` runs a tool; `data-tune` changes a number in TUNE | `click: { v }` (or `data-devsel` with `selectTab: 'brain'`), `acts` (or `click: { act }`), `change: { tune }` |
+| Its settings under `merryfolk-dev` | `flags` (the drawer's own state under `flags.s.drawer`) |
+| Its look and its phone layout (a sheet at the foot under 720 px, the panel and the bottom bar stepping aside) | Its own CSS over the drawer's (on `#dev`, `body.dev-on`) |

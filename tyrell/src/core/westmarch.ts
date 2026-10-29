@@ -1,7 +1,8 @@
 // Westmarch: the log of what happened, named for the Red Book of Westmarch,
 // where the story was written down. It's part of the world's state (so it
 // saves and rewinds), bounded to config.logSize entries, and every entry is
-// also sent to the game as a 'log' event.
+// also sent to the game as a 'log' event. With config.storySize, Irulan keeps
+// what matters beyond it.
 import type { Id, LogEntry, Minutes } from './types';
 import type { World } from './world';
 import { clockOf } from './util';
@@ -30,6 +31,7 @@ export class Westmarch {
     log.push(e);
     const over = log.length - w.cfg.logSize;
     if (over > 0) log.splice(0, over);
+    if (w.cfg.storySize > 0) w.irulan.keep(e);
     w.emit('log', e);
   }
 

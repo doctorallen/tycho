@@ -323,6 +323,21 @@ world.gaff.trigger('blackout');
 
 Directives outrank jobs and routines (see [Deciding](deciding.md#directives)); facts change what conditions see; Gaff's storylets pace events on their own (see [Gaff](modules/gaff.md)).
 
+## Telling what happened
+
+Irulan, the narrator ([Tools](tools.md#irulan)), turns the log into sentences the game can show: an inspector's "their day so far" (`world.irulan.day(id, since)`), a journal of storylines (`threads`), a recap after time away (`recap`), a notice when something that matters happens (`feed`), and what someone says when asked what's new (`recount`, in their own words, only what they know).
+
+```js
+const kept = [];
+world.on('log', (e) => kept.push(e));                 // or config.storySize, to keep what matters in the world's state
+world.on('seek', (e) => { if (e.to < e.from) kept.splice(0, kept.length, ...kept.filter((x) => x.t <= e.to)); });
+const stop = world.irulan.feed((beat) => toast(beat.parts), { min: 0.7, focus: { [playerFriend]: 2 } });
+journal.show(world.irulan.threads(kept).threads);     // { id, title, parts, people, beats, active }
+npc.say(world.irulan.recount(npcId, kept, { limit: 2 }).map((b) => b.text));
+```
+
+Show sentences from their `parts`, not their text: each person and place in them comes tagged with its id, for links, portraits and colors. A beat's `with` is who took part in it and `around` who was only there. Give the town its own words with each definition's `tell` (an action's, a feeling's, a wish's) and `world.irulan.words(kind, fn)`. If the game keeps its own entries, drop those past the time gone back to on a rewind, as above; the log and the story rewind with the world on their own.
+
 ## Custom inputs
 
 Some changes have no ready-made input: setting a need when the player feeds someone, changing a person's definition. Define an input, and call it through `world.input`, so Esper records and replays it:

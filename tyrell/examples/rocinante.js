@@ -13,7 +13,8 @@
 // (Morgul, with Bree: a brawl at the Belt comes out blow by blow, Pip sets a
 // snare in the barn, Sam slips nightshade into the cafe's stew; wounds that
 // heal or fester, grudges, fear, suspicion, revenge, and Lena's first aid),
-// `seed`, `start`, `modules`, `config`, `esper` and `moduleConfig` (over its
+// `together` (now and then, partners shower together: room for two in the
+// Okafors' shower, and an action done together), `seed`, `start`, `modules`, `config`, `esper` and `moduleConfig` (over its
 // own). Without them, Rocinante runs as it always has.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -30,6 +31,8 @@
   const harm = !!opts.harm;
   // With opts.bree, Bree's interactions between the townsfolk, and the natures they read
   const bree = !!opts.bree || harm;
+  // With opts.together, partners now and then shower together (an action done `together`)
+  const together = !!opts.together;
   const own = { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } };
   if (tuned) {
     own.fellowship = { friendship: 1.5, fading: 0.5 };   // friendships form half as fast again, and fade half as fast
@@ -80,7 +83,7 @@
 
   // ---- places ---------------------------------------------------------------
   const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
-  for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
+  for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: together && f === 'apt_1' ? 2 : 1 } });
   w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara',
     stock: { bread: 30, flour: 12, ...kit({ stew: 16 }) }, restock: { flour: [8, 24], ...kit({ stew: [12, 24] }) } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
@@ -99,36 +102,39 @@
   // ---- actions --------------------------------------------------------------
   const night = { name: 'night', input: 'hour', range: [0, 24], curve: [[0, 1], [6 / 24, 1], [8 / 24, 0.12], [20 / 24, 0.3], [22.5 / 24, 1], [1, 1]] };
   const daylight = { name: 'daylight', input: 'hour', range: [0, 24], curve: [[0, 0.05], [7 / 24, 0.05], [9 / 24, 1], [19 / 24, 1], [21 / 24, 0.1], [1, 0.05]] };
-  w.action({ id: 'sleep', label: 'sleeping', at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
-  w.action({ id: 'nap', label: 'a nap', at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
-  w.action({ id: 'shower', at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
-  w.action({ id: 'read', label: 'reading', at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
-  w.action({ id: 'eat_cafe', label: 'eating at the cafe', at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
-  w.action({ id: 'eat_home', label: 'eating at home', at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'buy_food', label: 'shopping', at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
-  w.action({ id: 'steal_food', label: 'pocketing food', at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
-  w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'drink', label: 'drinking at the Belt', at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
-  w.action({ id: 'walk', label: 'a walk in the park', at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
-  w.action({ id: 'sit_park', label: 'sitting in the park', at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
-  w.action({ id: 'chat', label: 'chatting', target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
-  w.action({ id: 'help_out', label: 'helping out', target: 'person', at: 'here', minutes: 30, base: 0.04, relieves: { company: 0.2 }, deed: 'helped', tags: ['social'], targetIf: ['regard>0.2'], cooldown: DAY });
-  w.action({ id: 'sulk', label: 'sulking', at: 'home', minutes: 120, pose: 'sit', rank: -1 });
-  w.action({ id: 'bender', label: 'a bender', at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
+  w.action({ id: 'sleep', label: 'sleeping', tell: { did: 'slept', doing: 'was asleep' }, at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
+  w.action({ id: 'nap', label: 'a nap', tell: { did: ['had a nap', 'dozed'], doing: 'was napping' }, at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
+  w.action({ id: 'shower', tell: { did: ['showered', 'had a shower'], doing: 'was in the shower' }, at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
+  // (with together: a shower for two, partners only; the one asked joins in, if they're home and free)
+  if (together) w.action({ id: 'shower_together', label: 'a shower together', tell: { did: 'showered with {target}', doing: 'was in the shower with {target}' }, at: 'home', slot: 'shower', minutes: 20,
+    target: 'person', targetIf: ['bond:partner'], together: true, relieves: { hygiene: 0.85, company: 0.2 }, base: 0.03, pose: 'stand', feels: ['fresh'], tags: ['romantic'], cooldown: DAY });
+  w.action({ id: 'read', label: 'reading', tell: { did: ['read', 'curled up with a book', 'sat and read'], doing: 'was reading' }, at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
+  w.action({ id: 'eat_cafe', label: 'eating at the cafe', tell: { did: ['ate at {place}', 'had a meal at {place}', 'grabbed a bite at {place}'], doing: 'was eating at {place}' }, at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
+  w.action({ id: 'eat_home', label: 'eating at home', tell: { did: 'ate', doing: 'was eating' }, at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
+  w.action({ id: 'buy_food', label: 'shopping', tell: { did: 'bought food at {place}', doing: 'was shopping at {place}' }, at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
+  w.action({ id: 'steal_food', label: 'pocketing food', tell: { did: 'pocketed some food at {place}' }, at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
+  w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', tell: { did: 'had a bowl of noodles at {place}' }, at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
+  w.action({ id: 'drink', label: 'drinking at the Belt', tell: { did: ['drank at {place}', 'had a few at {place}'], doing: 'was drinking at {place}' }, at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
+  w.action({ id: 'walk', label: 'a walk in the park', tell: { did: ['took a walk in {place}', 'went for a stroll in {place}'], doing: 'was walking in {place}' }, at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'sit_park', label: 'sitting in the park', tell: { did: ['sat in {place}', 'sat on a bench in {place}'], doing: 'was sitting in {place}' }, at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'chat', label: 'chatting', tell: { did: ['chatted with {target}', 'had a chat with {target}', 'passed the time with {target}'], doing: 'was chatting with {target}' }, target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
+  w.action({ id: 'help_out', label: 'helping out', tell: { did: 'helped {target} out', doing: 'was helping {target}' }, target: 'person', at: 'here', minutes: 30, base: 0.04, relieves: { company: 0.2 }, deed: 'helped', tags: ['social'], targetIf: ['regard>0.2'], cooldown: DAY });
+  w.action({ id: 'sulk', label: 'sulking', tell: { did: 'sulked', doing: 'was sulking' }, at: 'home', minutes: 120, pose: 'sit', rank: -1 });
+  w.action({ id: 'bender', label: 'a bender', tell: { did: 'went on a bender at {place}', doing: 'was on a bender at {place}' }, at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
   // work: only done on shift (rank -1 means "only when required")
   // Mara bakes the cafe's bread from its flour, an hour at a time (fill: false), more of it the better she is
-  w.action({ id: 'bake', label: 'baking', at: 'cafe', slot: 'counter', minutes: 60, fill: false, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 },
+  w.action({ id: 'bake', label: 'baking', tell: { did: 'baked bread', doing: 'was baking' }, at: 'cafe', slot: 'counter', minutes: 60, fill: false, job: 'baker', rank: -1, pose: 'work', tags: ['work'], trains: { baking: 1 },
     store: 'here', uses: { flour: 1 }, makes: { bread: 2 }, yields: [{ input: 'skill.baking', out: [0.6, 1.4] }] });
-  w.action({ id: 'fix', label: 'fixing things', at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'], trains: { repair: 1 } });
-  w.action({ id: 'serve', label: 'serving drinks', at: 'bar', slot: 'bar', minutes: 60, job: 'bartender', rank: -1, pose: 'work', tags: ['work'], relieves: { company: 0.15 } });
-  w.action({ id: 'sell', label: 'minding the till', at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work', tags: ['work'] });
-  w.action({ id: 'treat', label: 'seeing patients', at: 'clinic', slot: 'desk', minutes: 60, job: 'doctor', rank: -1, pose: 'work', tags: ['work'] });
-  w.action({ id: 'patrol', label: 'on patrol', at: 'park', minutes: 60, job: 'officer', rank: -1, pose: 'walk', tags: ['work'] });
+  w.action({ id: 'fix', label: 'fixing things', tell: { did: 'fixed things at {place}', doing: 'was at the bench' }, at: 'workshop', slot: 'bench', minutes: 60, job: 'mechanic', rank: -1, pose: 'work', tags: ['work'], trains: { repair: 1 } });
+  w.action({ id: 'serve', label: 'serving drinks', tell: { did: 'served drinks', doing: 'was behind the bar' }, at: 'bar', slot: 'bar', minutes: 60, job: 'bartender', rank: -1, pose: 'work', tags: ['work'], relieves: { company: 0.15 } });
+  w.action({ id: 'sell', label: 'minding the till', tell: { did: 'minded the till', doing: 'was minding the till' }, at: 'market', slot: 'till', minutes: 60, job: 'grocer', rank: -1, pose: 'work', tags: ['work'] });
+  w.action({ id: 'treat', label: 'seeing patients', tell: { did: 'saw patients', doing: 'was seeing patients' }, at: 'clinic', slot: 'desk', minutes: 60, job: 'doctor', rank: -1, pose: 'work', tags: ['work'] });
+  w.action({ id: 'patrol', label: 'on patrol', tell: { did: 'patrolled {place}', doing: 'was on patrol' }, at: 'park', minutes: 60, job: 'officer', rank: -1, pose: 'walk', tags: ['work'] });
   // the radio repair: a service, a purchase, or nothing
-  w.action({ id: 'repair_service', label: 'getting a radio fixed', at: 'tag:repairs', minutes: 20, price: 15, uses: { broken_radio: 1 }, gives: { radio: 1 }, pose: 'stand', deed: 'paid' });
-  w.action({ id: 'buy_radio', label: 'buying a radio', at: 'market', minutes: 10, price: 40, buys: { radio: 1 }, pose: 'stand' });
-  w.action({ id: 'listen', label: 'listening to the radio', at: 'home', minutes: 60, relieves: { fun: 0.35 }, if: ['has:radio'], pose: 'sit', tags: ['comfort'] });
-  w.action({ id: 'shrug', label: 'giving up on the radio', minutes: 1, then: ['take:broken_radio'] });
+  w.action({ id: 'repair_service', label: 'getting a radio fixed', tell: { did: 'had the radio fixed at {place}' }, at: 'tag:repairs', minutes: 20, price: 15, uses: { broken_radio: 1 }, gives: { radio: 1 }, pose: 'stand', deed: 'paid' });
+  w.action({ id: 'buy_radio', label: 'buying a radio', tell: { did: 'bought a radio' }, at: 'market', minutes: 10, price: 40, buys: { radio: 1 }, pose: 'stand' });
+  w.action({ id: 'listen', label: 'listening to the radio', tell: { did: 'listened to the radio', doing: 'was listening to the radio' }, at: 'home', minutes: 60, relieves: { fun: 0.35 }, if: ['has:radio'], pose: 'sit', tags: ['comfort'] });
+  w.action({ id: 'shrug', label: 'giving up on the radio', tell: { did: 'gave up on the radio' }, minutes: 1, then: ['take:broken_radio'] });
 
   // ---- skills: levels that grow with practice, at each person's own pace -----
   w.skill({ id: 'baking', label: 'Baking', rate: 0.01, levels: [[0.5, 'skilled'], [0.8, 'expert']] });
@@ -156,8 +162,8 @@
     id: 'catch_up', label: 'A good talk with a friend', minutes: 2 * DAY, toward: ['chat', 'help_out'], by: ['chat', 'help_out'],
     about: (ctx) => (ctx.world.fellowship ? ctx.world.fellowship.friends(ctx.person.id, 1)[0] : undefined),
   });
-  w.wish({ id: 'master_baker', label: 'Become an expert baker', dream: true, if: ['job:baker'], toward: ['bake'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8 });
-  w.wish({ id: 'master_mechanic', label: 'Become an expert mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
+  w.wish({ id: 'master_baker', label: 'Become an expert baker', tell: 'dreamed of becoming an expert baker', dream: true, if: ['job:baker'], toward: ['bake'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'baking') / 0.8 });
+  w.wish({ id: 'master_mechanic', label: 'Become an expert mechanic', tell: 'dreamed of becoming an expert mechanic', dream: true, if: ['job:mechanic'], toward: ['fix'], progress: (ctx) => ctx.world.skillOf(ctx.person.id, 'repair') / 0.8 });
 
   // ---- tasks (Mentat) ------------------------------------------------------
   w.task({
@@ -253,12 +259,12 @@
   // ---- Reverie: feelings, breaks, memories ----------------------------------
   const rv = w.reverie;
   if (rv) {
-    rv.feeling({ id: 'good_meal', label: 'A good meal', weight: 0.08, minutes: 4 * HOUR, emotion: 'happy' });
-    rv.feeling({ id: 'fresh', label: 'Freshly showered', weight: 0.05, minutes: 3 * HOUR, emotion: 'happy' });
-    rv.feeling({ id: 'lonely', label: 'Lonely', weight: -0.1, minutes: 12 * HOUR, emotion: 'sad', boost: { social: 1.5 } });
-    rv.breakdown({ id: 'sulk', level: 'minor', do: 'sulk', label: 'sulking at home' });
-    rv.breakdown({ id: 'bender', level: 'major', do: 'bender', label: 'a bender', weight: [{ input: 'trait.courage', out: [0.3, 1.5] }] });
-    rv.breakdown({ id: 'walkout', level: 'extreme', do: 'walk', label: 'walking it off' });
+    rv.feeling({ id: 'good_meal', label: 'A good meal', tell: ['enjoyed a good meal', 'enjoyed the food'], weight: 0.08, minutes: 4 * HOUR, emotion: 'happy' });
+    rv.feeling({ id: 'fresh', label: 'Freshly showered', tell: ['felt fresh', 'felt refreshed'], weight: 0.05, minutes: 3 * HOUR, emotion: 'happy' });
+    rv.feeling({ id: 'lonely', label: 'Lonely', tell: ['felt lonely', 'felt alone'], weight: -0.1, minutes: 12 * HOUR, emotion: 'sad', boost: { social: 1.5 } });
+    rv.breakdown({ id: 'sulk', level: 'minor', do: 'sulk', label: 'sulking at home', tell: 'broke down and sulked at home' });
+    rv.breakdown({ id: 'bender', level: 'major', do: 'bender', label: 'a bender', tell: 'broke down and went on a bender', weight: [{ input: 'trait.courage', out: [0.3, 1.5] }] });
+    rv.breakdown({ id: 'walkout', level: 'extreme', do: 'walk', label: 'walking it off', tell: 'broke down and walked out to clear their head' });
     rv.memoryKind({ id: 'saw:theft', importance: 6, shifts: { honesty: 0.05 } });
     rv.memoryKind({ id: 'helped', importance: 6, shifts: { talkative: 0.03 } });
   }
@@ -379,7 +385,7 @@
   const br = w.bree;
   if (bree && br) {
     br.starter({ company: 'company', fun: 'fun' });
-    w.action({ id: 'natter', label: 'a natter', target: 'person', at: 'here', minutes: 25, relieves: { company: 0.3, fun: 0.05 }, tags: ['social'], interact: 'chat', pose: 'stand', cooldown: 60, targetIf: ['regard>0'] });
+    w.action({ id: 'natter', label: 'a natter', tell: { did: 'nattered with {target}', doing: 'was nattering with {target}' }, target: 'person', at: 'here', minutes: 25, relieves: { company: 0.3, fun: 0.05 }, tags: ['social'], interact: 'chat', pose: 'stand', cooldown: 60, targetIf: ['regard>0'] });
     if (w.wormtongue) w.wormtongue.crime({ kind: 'fight', severity: 0.3, reportTo: 'watch' });
     if (cs) cs.addLines([
       { key: 'bree_small_open', topic: 'small_talk.open', text: ['Busy day?', 'Keeping well?', 'How\'s things?'] },
@@ -420,12 +426,12 @@
   // ---- Athelas: courses that run their course -------------------------------
   const athelas = w.athelas;
   if (athelas) {
-    athelas.course({ id: 'ale', label: 'A few drinks', again: 'extend', phases: [
+    athelas.course({ id: 'ale', label: 'A few drinks', tell: { on: 'had a few drinks too many', over: 'slept off the drink' }, again: 'extend', phases: [
       { id: 'merry', label: 'merry', minutes: 180, rates: { energy: 1.3 }, weigh: { 'tag:work': 0.7, chat: 1.3 } },
       { id: 'sore_head', label: 'a sore head', minutes: 360, weigh: { nap: 1.5, 'tag:social': 0.8 } },
     ] });
     athelas.course({
-      id: 'cold', label: 'A cold', tags: ['illness'], immunity: 5 * DAY,
+      id: 'cold', label: 'A cold', tell: { on: 'caught a cold', over: 'shook off the cold' }, tags: ['illness'], immunity: 5 * DAY,
       contagion: { chance: 0.05, resist: [{ name: 'courage', input: 'trait.courage', out: [1.3, 0.7] }] },
       phases: [
         { id: 'coming_on', label: 'coming on', minutes: [300, 540], spreads: false },
@@ -459,17 +465,17 @@
     mg.wound({ id: 'bruised', kinds: ['blunt'], at: [0, 0.3], course: 'bruised' });
     mg.wound({ id: 'beaten', kinds: ['blunt'], at: [0.3, 1], course: 'beaten' });
     mg.wound({ id: 'cut', kinds: ['cut'], course: 'cut' });
-    athelas.course({ id: 'bruised', label: 'Bruised', tags: ['wound'], again: 'worsen', phases: [
+    athelas.course({ id: 'bruised', label: 'Bruised', tell: { on: 'was bruised', over: 'stopped hurting' }, tags: ['wound'], again: 'worsen', phases: [
       { id: 'sore', label: 'sore', minutes: [120, 240], weigh: { 'tag:work': 0.8, nap: 1.3 }, feel: 'sore' },
       { id: 'stiff', label: 'stiff', minutes: [300, 600], hurts: 0.4 },
     ] });
-    athelas.course({ id: 'beaten', label: 'A beating', tags: ['wound'], again: 'worsen', phases: [
+    athelas.course({ id: 'beaten', label: 'A beating', tell: { on: 'took a beating', over: 'got over the beating' }, tags: ['wound'], again: 'worsen', phases: [
       { id: 'battered', label: 'battered', minutes: [300, 480], stop: true, rates: { energy: 1.5 }, weigh: { sleep: 1.6, nap: 2, 'tag:work': 0.5, 'tag:social': 0.7 }, feel: 'battered' },
       { id: 'aching', label: 'aching', minutes: [720, 1440], hurts: 0.5, weigh: { 'tag:work': 0.8 } },
       { id: 'mending', label: 'mending', minutes: 1440, hurts: 0.15 },
     ] });
     // a cut tended heals; untended, it festers, and a bad one can go bad (it would kill, at a lethality above 0)
-    athelas.course({ id: 'cut', label: 'A cut', tags: ['wound'], again: 'worsen', phases: [
+    athelas.course({ id: 'cut', label: 'A cut', tell: { on: 'was cut', over: 'had the cut heal' }, tags: ['wound'], again: 'worsen', phases: [
       { id: 'bleeding', label: 'bleeding', minutes: [60, 120], next: [{ if: ['tended:cut'], to: 'healing' }, { to: 'festering' }] },
       { id: 'festering', label: 'festering', minutes: [600, 1200], hurts: 1.3, rates: { energy: 1.4 }, weigh: { sleep: 1.3, 'tag:work': 0.6 }, feel: 'festering',
         next: [{ if: ['tended:cut'], to: 'healing' }, { if: ['sev:cut>0.6'], to: 'gone_bad' }, { to: 'healing' }] },
@@ -477,16 +483,16 @@
       { id: 'healing', label: 'healing', minutes: [1440, 2880], hurts: 0.3 },
     ] });
     // nightshade works unnoticed for hours, then tells
-    athelas.course({ id: 'nightshade', label: 'Nightshade', tags: ['illness', 'poison'], phases: [
+    athelas.course({ id: 'nightshade', label: 'Nightshade', tell: { on: 'was poisoned', over: 'pulled through the poisoning' }, tags: ['illness', 'poison'], phases: [
       { id: 'working', minutes: [180, 360], quiet: true, rates: { hunger: 0.6 } },
       { id: 'sick', label: 'violently sick', minutes: [600, 1080], tells: true, stop: true, rates: { energy: 1.8, hunger: 0.2 }, weigh: { sleep: 2, nap: 2, '*': 0.4 }, blocks: ['tag:work'], feel: 'poisoned' },
       { id: 'weak', label: 'weak', minutes: [720, 1440], hurts: 0.3, rates: { energy: 1.3 } },
     ] });
     if (rv) {
-      rv.feeling({ id: 'sore', label: 'Sore', weight: -0.05, minutes: 4 * HOUR, emotion: 'sad' });
-      rv.feeling({ id: 'battered', label: 'Battered', weight: -0.15, minutes: DAY, emotion: 'sad' });
-      rv.feeling({ id: 'festering', label: 'A cut gone angry', weight: -0.12, minutes: 12 * HOUR, emotion: 'sad' });
-      rv.feeling({ id: 'poisoned', label: 'Sick as a dog', weight: -0.2, minutes: 12 * HOUR, emotion: 'sad' });
+      rv.feeling({ id: 'sore', label: 'Sore', tell: 'was sore', weight: -0.05, minutes: 4 * HOUR, emotion: 'sad' });
+      rv.feeling({ id: 'battered', label: 'Battered', tell: 'felt battered', weight: -0.15, minutes: DAY, emotion: 'sad' });
+      rv.feeling({ id: 'festering', label: 'A cut gone angry', tell: 'had a cut gone angry', weight: -0.12, minutes: 12 * HOUR, emotion: 'sad' });
+      rv.feeling({ id: 'poisoned', label: 'Sick as a dog', tell: 'was sick as a dog', weight: -0.2, minutes: 12 * HOUR, emotion: 'sad' });
     }
     if (w.wormtongue) {
       w.wormtongue.crime({ kind: 'assault', severity: 0.5, reportTo: 'watch' });
@@ -494,23 +500,23 @@
       w.wormtongue.crime({ kind: 'murder', severity: 1, reportTo: 'watch' });
     }
     // Tomas's timber, and a barn to play in
-    w.action({ id: 'fetch_timber', label: 'fetching timber', at: 'barn', minutes: 15, rank: -1, pose: 'work', tags: ['work'] });
-    w.action({ id: 'play_barn', label: 'playing in the barn', at: 'barn', minutes: 40, relieves: { fun: 0.35 }, who: ['is:child'], tags: ['outdoors'], pose: 'play', palls: 'park' });
+    w.action({ id: 'fetch_timber', label: 'fetching timber', tell: { did: 'fetched timber from {place}' }, at: 'barn', minutes: 15, rank: -1, pose: 'work', tags: ['work'] });
+    w.action({ id: 'play_barn', label: 'playing in the barn', tell: { did: 'played in {place}', doing: 'was playing in {place}' }, at: 'barn', minutes: 40, relieves: { fun: 0.35 }, who: ['is:child'], tags: ['outdoors'], pose: 'play', palls: 'park' });
     // mischief: a snare by the barn door, as a prank
-    w.action({ id: 'set_snare', label: 'setting a snare', at: 'barn', minutes: 10, base: 0.08, who: ['is:child', 'nature.humor>0.6'], if: ['has:snare'], then: ['take:snare', 'set:snare'], tags: ['harm', 'mischief'], pose: 'kneel', cooldown: DAY });
+    w.action({ id: 'set_snare', label: 'setting a snare', tell: { did: 'set a snare in {place}' }, at: 'barn', minutes: 10, base: 0.08, who: ['is:child', 'nature.humor>0.6'], if: ['has:snare'], then: ['take:snare', 'set:snare'], tags: ['harm', 'mischief'], pose: 'kneel', cooldown: DAY });
     // nightshade in the stew, when nobody's watching
     const unwatched = (ctx) => ctx.world.ring.present('cafe').every((id) => id === ctx.person.id);
-    w.action({ id: 'eat_stew', label: 'a bowl of stew', at: 'cafe', slot: 'seat', minutes: [25, 40], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 5, store: 'here', uses: { stew: 1 }, pose: 'sit', tags: ['social', 'food'] });
-    w.action({ id: 'dose_stew', label: 'stirring the stew', at: 'cafe', minutes: 4, base: 0.12, who: ['trait.honesty<0.3'], if: ['has:nightshade', unwatched], then: ['take:nightshade', 'taint:nightshade.stew=2'], tags: ['harm', 'illegal'], pose: 'stand', cooldown: DAY });
+    w.action({ id: 'eat_stew', label: 'a bowl of stew', tell: { did: 'had a bowl of stew at {place}' }, at: 'cafe', slot: 'seat', minutes: [25, 40], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 5, store: 'here', uses: { stew: 1 }, pose: 'sit', tags: ['social', 'food'] });
+    w.action({ id: 'dose_stew', label: 'stirring the stew', tell: { did: 'stirred something into the stew' }, at: 'cafe', minutes: 4, base: 0.12, who: ['trait.honesty<0.3'], if: ['has:nightshade', unwatched], then: ['take:nightshade', 'taint:nightshade.stew=2'], tags: ['harm', 'illegal'], pose: 'stand', cooldown: DAY });
     // a brawl at the Belt: a few drinks, and someone there they've a grudge against
-    w.action({ id: 'pick_a_fight', label: 'picking a fight', target: 'person', at: 'tag:drink', minutes: 20, base: 0.15, who: ['under:ale'], targetIf: ['grudge>0.15'], interact: 'fight', tags: ['harm'], pose: 'stand', cooldown: DAY });
+    w.action({ id: 'pick_a_fight', label: 'picking a fight', tell: { did: 'picked a fight with {target}' }, target: 'person', at: 'tag:drink', minutes: 20, base: 0.15, who: ['under:ale'], targetIf: ['grudge>0.15'], interact: 'fight', tags: ['harm'], pose: 'stand', cooldown: DAY });
     // care, and getting away
-    w.action({ id: 'tend', label: 'seeing to someone', target: 'person', at: 'here', minutes: 20, base: 0.05, targetIf: ['target.hurt>0.05'], then: ['tend'], tags: ['care', 'social'], trains: { first_aid: 0.5 }, pose: 'kneel', cooldown: 2 * HOUR });
-    w.action({ id: 'slip_home', label: 'slipping off home', at: 'home', minutes: 30, base: 0.01, if: ['fleeing>0'], tags: ['flee'], pose: 'sit' });
+    w.action({ id: 'tend', label: 'seeing to someone', tell: { did: 'saw to {target}' }, target: 'person', at: 'here', minutes: 20, base: 0.05, targetIf: ['target.hurt>0.05'], then: ['tend'], tags: ['care', 'social'], trains: { first_aid: 0.5 }, pose: 'kneel', cooldown: 2 * HOUR });
+    w.action({ id: 'slip_home', label: 'slipping off home', tell: { did: 'slipped off home' }, at: 'home', minutes: 30, base: 0.01, if: ['fleeing>0'], tags: ['flee'], pose: 'sit' });
     // getting even: have it out with them, or spike their supper
-    w.action({ id: 'confront', label: 'having it out', target: 'person', at: 'target', minutes: 15, rank: -1, interact: 'fight', tags: ['harm'], pose: 'stand' });
-    w.action({ id: 'spike', label: 'spiking a supper', target: 'person', at: 'cafe', minutes: 5, rank: -1, if: ['has:nightshade'], then: ['take:nightshade', 'taint:nightshade'], tags: ['harm', 'illegal'], pose: 'stand' });
-    w.action({ id: 'brood', label: 'brooding', at: 'home', minutes: 30, rank: -1, if: ['planning:avenge'], pose: 'sit' });
+    w.action({ id: 'confront', label: 'having it out', tell: { did: 'had it out with {target}' }, target: 'person', at: 'target', minutes: 15, rank: -1, interact: 'fight', tags: ['harm'], pose: 'stand' });
+    w.action({ id: 'spike', label: 'spiking a supper', tell: { did: 'spiked {target}\'s supper' }, target: 'person', at: 'cafe', minutes: 5, rank: -1, if: ['has:nightshade'], then: ['take:nightshade', 'taint:nightshade'], tags: ['harm', 'illegal'], pose: 'stand' });
+    w.action({ id: 'brood', label: 'brooding', tell: { did: 'brooded', doing: 'was brooding' }, at: 'home', minutes: 30, rank: -1, if: ['planning:avenge'], pose: 'sit' });
     w.task({ id: 'avenge', label: 'getting even', target: 'person', tags: ['harm'], cooldown: DAY, methods: [
       { name: 'have it out', if: ['odds>0.5'], do: [{ action: 'confront', target: 'target' }] },
       { name: 'spike their supper', if: ['has:nightshade'], do: [{ action: 'spike', target: 'target' }] },
@@ -547,6 +553,13 @@
     ],
     data: (r) => ({ coat: r.pick(['gray', 'navy', 'rust', 'olive']) }),
   });
+
+  // ---- Irulan: the town's own words for its story (actions, feelings and kinds have their `tell`; a list is variants) ----
+  const facts = {
+    raining: ['rain set in', 'the rain stopped'],
+    'closed:bar': ['the lights went out at the Belt', 'the power came back on at the Belt'],
+  };
+  w.irulan.words('fact', (e) => (facts[e.d.key] ? facts[e.d.key][e.d.value ? 0 : 1] : undefined));
 
   return w;
 });

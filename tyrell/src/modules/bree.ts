@@ -69,6 +69,8 @@ export interface OutcomeDo {
 export interface KindDef {
   id: Id;
   label?: string;
+  /** Its words in a story (Irulan), as they'd follow the name of the one who started it, {with} naming the others: 'argued with {with}'. Without it, 'had <label> with {with}'. A list is variants. */
+  tell?: string | string[];
   /** Free labels. The module reads 'hostile' (quarrels, avoidance) and 'romantic' (attraction). */
   tags?: string[];
   /** Who may start it: conditions on the one who starts it (the other is the target). */
@@ -442,14 +444,14 @@ export const DEFAULT_BREE: BreeConfig = {
 
 /** Feelings Bree gives (declared when Reverie is on; a game declares its own with the same ids to change them). */
 const BREE_FEELINGS = [
-  { id: 'good_talk', label: 'A good talk', weight: 0.05, minutes: 4 * HOUR, emotion: 'happy' },
-  { id: 'long_chat', label: 'A proper long talk', weight: 0.07, minutes: 7 * HOUR, emotion: 'happy' },
-  { id: 'had_words', label: 'Had words with someone', weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: 'angry' },
-  { id: 'snubbed', label: 'Brushed off', weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: 'sad' },
-  { id: 'fought', label: 'In a fight', weight: -0.2, minutes: DAY, stack: 2, emotion: 'angry' },
-  { id: 'made_up', label: 'Made it up', weight: 0.1, minutes: DAY, emotion: 'relieved' },
-  { id: 'saw_row', label: 'Saw a row', weight: -0.04, minutes: 4 * HOUR, emotion: 'tense' },
-  { id: 'comforted', label: 'Someone was kind', weight: 0.08, minutes: 6 * HOUR, emotion: 'happy' },
+  { id: 'good_talk', label: 'A good talk', tell: ['enjoyed the talk', 'came away cheered'], weight: 0.05, minutes: 4 * HOUR, emotion: 'happy' },
+  { id: 'long_chat', label: 'A proper long talk', tell: 'enjoyed a proper long talk', weight: 0.07, minutes: 7 * HOUR, emotion: 'happy' },
+  { id: 'had_words', label: 'Had words with someone', tell: 'was sore from the words', weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: 'angry' },
+  { id: 'snubbed', label: 'Brushed off', tell: ['felt brushed off', 'felt snubbed'], weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: 'sad' },
+  { id: 'fought', label: 'In a fight', tell: 'was shaken by the fight', weight: -0.2, minutes: DAY, stack: 2, emotion: 'angry' },
+  { id: 'made_up', label: 'Made it up', tell: 'was glad to have made it up', weight: 0.1, minutes: DAY, emotion: 'relieved' },
+  { id: 'saw_row', label: 'Saw a row', tell: 'was rattled by the row', weight: -0.04, minutes: 4 * HOUR, emotion: 'tense' },
+  { id: 'comforted', label: 'Someone was kind', tell: 'felt comforted', weight: 0.08, minutes: 6 * HOUR, emotion: 'happy' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -616,36 +618,36 @@ export function breeStarter(opts: StarterOptions = {}): { kinds: KindDef[]; topi
   const co = opts.company ?? 'company', fun = opts.fun ?? 'fun';
   const nature = (role: string, lo: number, hi: number): Consideration => ({ name: role, input: 'nature.' + role, out: [lo, hi] });
   const kinds: KindDef[] = [
-    { id: 'chat', label: 'a chat', tags: ['talk', 'friendly'], topics: ['*'], group: true, relieves: { [co]: 0.15, [fun]: 0.05 }, escalates: 'argue',
+    { id: 'chat', label: 'a chat', tell: 'chatted with {with}', tags: ['talk', 'friendly'], topics: ['*'], group: true, relieves: { [co]: 0.15, [fun]: 0.05 }, escalates: 'argue',
       weight: [nature('talkative', 0.5, 1.5)] },
-    { id: 'deep_talk', label: 'a heart to heart', tags: ['talk', 'friendly'], topics: ['tag:deep', '*'], to: ['regard>0.3'], relieves: { [co]: 0.3 }, base: 0.25, traits: { warmth: 0.5 }, regard: 1.5, escalates: 'argue',
+    { id: 'deep_talk', label: 'a heart to heart', tell: 'had a heart to heart with {with}', tags: ['talk', 'friendly'], topics: ['tag:deep', '*'], to: ['regard>0.3'], relieves: { [co]: 0.3 }, base: 0.25, traits: { warmth: 0.5 }, regard: 1.5, escalates: 'argue',
       weight: [nature('warmth', 0.2, 1)], on: { long: { memory: 4 } } },
-    { id: 'joke', label: 'a joke', tags: ['friendly'], relieves: { [fun]: 0.1 }, base: 0.25, traits: { humor: 1.5, temper: -0.5 }, skill: { humor: 1 }, escalates: 'argue',
+    { id: 'joke', label: 'a joke', tell: 'joked with {with}', tags: ['friendly'], relieves: { [fun]: 0.1 }, base: 0.25, traits: { humor: 1.5, temper: -0.5 }, skill: { humor: 1 }, escalates: 'argue',
       weight: [nature('humor', 0.1, 1.2)] },
-    { id: 'compliment', label: 'a compliment', tags: ['friendly'], to: ['regard>0'], base: 1, traits: { warmth: 0.5 }, weight: 0.4,
+    { id: 'compliment', label: 'a compliment', tell: 'paid {with} a compliment', tags: ['friendly'], to: ['regard>0'], base: 1, traits: { warmth: 0.5 }, weight: 0.4,
       on: { warm: { sentiment: { label: 'said something kind', by: 0.05, minutes: 2 * DAY } } } },
-    { id: 'tease', label: 'some teasing', tags: ['friendly'], to: ['regard>0.2'], relieves: { [fun]: 0.1 }, traits: { humor: 1, temper: -1.5 }, skill: { humor: 0.5 }, escalates: 'argue',
+    { id: 'tease', label: 'some teasing', tell: 'teased {with}', tags: ['friendly'], to: ['regard>0.2'], relieves: { [fun]: 0.1 }, traits: { humor: 1, temper: -1.5 }, skill: { humor: 0.5 }, escalates: 'argue',
       weight: [nature('humor', 0.1, 0.8)] },
-    { id: 'flirt', label: 'flirting', tags: ['romantic', 'talk'], topics: ['tag:romantic', 'small_talk'], who: ['!is:child'], to: ['attraction>0.1', '!target.is:child'], traits: { warmth: 0.5 }, skill: { humor: 0.5, warmth: 0.5 },
+    { id: 'flirt', label: 'flirting', tell: 'flirted with {with}', tags: ['romantic', 'talk'], topics: ['tag:romantic', 'small_talk'], who: ['!is:child'], to: ['attraction>0.1', '!target.is:child'], traits: { warmth: 0.5 }, skill: { humor: 0.5, warmth: 0.5 },
       weight: [{ name: 'attraction', input: 'attraction', range: [0, 1], out: [0.2, 2.5] }] },
-    { id: 'comfort', label: 'a word of comfort', tags: ['friendly'], to: ['target.mood<0.4', 'regard>0'], relieves: { [co]: 0.2 }, base: 0.5, lands: [{ if: ['mood<0.35'], by: 1 }], skill: { warmth: 1 },
+    { id: 'comfort', label: 'a word of comfort', tell: 'comforted {with}', tags: ['friendly'], to: ['target.mood<0.4', 'regard>0'], relieves: { [co]: 0.2 }, base: 0.5, lands: [{ if: ['mood<0.35'], by: 1 }], skill: { warmth: 1 },
       weight: [nature('warmth', 0.2, 1.5)], on: { warm: { feel: [null, 'comforted'] }, good: { feel: [null, 'comforted'] } } },
-    { id: 'favor', label: 'asking a favor', to: ['regard>0.1'], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ['regard>0.4'], by: 1 }], owes: 1, weight: 0.2 },
-    { id: 'gift', label: 'a gift', tags: ['friendly'], to: ['regard>0'], base: 1.5, regard: 2, mends: 0.2, weight: 0.1,
+    { id: 'favor', label: 'asking a favor', tell: 'asked {with} a favor', to: ['regard>0.1'], base: -0.25, traits: { warmth: 1 }, lands: [{ if: ['regard>0.4'], by: 1 }], owes: 1, weight: 0.2 },
+    { id: 'gift', label: 'a gift', tell: 'gave {with} a gift', tags: ['friendly'], to: ['regard>0'], base: 1.5, regard: 2, mends: 0.2, weight: 0.1,
       on: { warm: { sentiment: { label: 'gave me a present', by: 0.1, minutes: 7 * DAY } } } },
-    { id: 'help', label: 'a hand', tags: ['friendly'], to: ['regard>0.1'], base: 1, regard: 1.5, mends: 0.1, deed: 'helped', weight: 0.2 },
-    { id: 'teach', label: 'a lesson', tags: ['friendly'], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
-    { id: 'argue', label: 'an argument', tags: ['hostile', 'talk'], topics: ['grievance', '*'], turns: [3, 5], base: -1, traits: { temper: -1, patience: 1 }, regard: 1.5, escalates: 'fight',
+    { id: 'help', label: 'a hand', tell: 'gave {with} a hand', tags: ['friendly'], to: ['regard>0.1'], base: 1, regard: 1.5, mends: 0.1, deed: 'helped', weight: 0.2 },
+    { id: 'teach', label: 'a lesson', tell: 'taught {with} something', tags: ['friendly'], turns: 3, base: 0.5, traits: { patience: 0.5 }, skill: { patience: 1 }, teaches: 1, weight: 0.15 },
+    { id: 'argue', label: 'an argument', tell: 'argued with {with}', tags: ['hostile', 'talk'], topics: ['grievance', '*'], turns: [3, 5], base: -1, traits: { temper: -1, patience: 1 }, regard: 1.5, escalates: 'fight',
       weight: [{ name: 'grudge', input: 'grudge', out: [0.05, 2] }, { name: 'regard', input: 'regard', range: [-1, 0.5], out: [1.5, 0.2] }], on: { row: { memory: 5 } } },
-    { id: 'insult', label: 'an insult', tags: ['hostile'], to: ['regard<-0.2'], base: -2.5, traits: { temper: -1, forgiveness: 0.5 }, skill: { humor: 0.5 }, regard: 1.5, grudge: 1.5, escalates: 'fight',
+    { id: 'insult', label: 'an insult', tell: 'insulted {with}', tags: ['hostile'], to: ['regard<-0.2'], base: -2.5, traits: { temper: -1, forgiveness: 0.5 }, skill: { humor: 0.5 }, regard: 1.5, grudge: 1.5, escalates: 'fight',
       weight: [{ name: 'dislike', input: 'regard', range: [-1, -0.2], out: [1, 0.1] }] },
-    { id: 'fight', label: 'a fight', tags: ['hostile'], turns: 2, base: -4, traits: { courage: 0.5 }, regard: 2, grudge: 2, crime: 'fight', weight: 0,
+    { id: 'fight', label: 'a fight', tell: 'fought {with}', tags: ['hostile'], turns: 2, base: -4, traits: { courage: 0.5 }, regard: 2, grudge: 2, crime: 'fight', weight: 0,
       on: { sour: { feel: 'fought', memory: 6 }, row: { feel: 'fought', memory: 7 } } },
-    { id: 'apologize', label: 'an apology', tags: ['friendly'], to: ['grudged>0.05'], base: 0.5, traits: { forgiveness: 1.5, temper: -0.5 }, skill: { warmth: 0.5 }, mends: 0.5,
+    { id: 'apologize', label: 'an apology', tell: 'apologized to {with}', tags: ['friendly'], to: ['grudged>0.05'], base: 0.5, traits: { forgiveness: 1.5, temper: -0.5 }, skill: { warmth: 0.5 }, mends: 0.5,
       weight: [{ name: 'their grudge', input: 'grudged', out: [0.3, 3] }, nature('warmth', 0.3, 1.5)], on: { sour: { feel: ['snubbed', null] }, row: { feel: ['snubbed', null] } } },
-    { id: 'make_up', label: 'making up', tags: ['friendly'], to: ['grudge>0.05', 'grudged>0.05'], turns: 3, base: 0.5, traits: { forgiveness: 1.5 }, mends: 0.6, mutual: true,
+    { id: 'make_up', label: 'making up', tell: 'made up with {with}', tags: ['friendly'], to: ['grudge>0.05', 'grudged>0.05'], turns: 3, base: 0.5, traits: { forgiveness: 1.5 }, mends: 0.6, mutual: true,
       weight: [nature('forgiveness', 0.3, 2)] },
-    { id: 'avoid', label: 'the cold shoulder', tags: ['hostile'], to: ['grudge>0.3'], turns: 1, base: -1, regard: 0.5, grudge: 0,
+    { id: 'avoid', label: 'the cold shoulder', tell: 'gave {with} the cold shoulder', tags: ['hostile'], to: ['grudge>0.3'], turns: 1, base: -1, regard: 0.5, grudge: 0,
       weight: [{ name: 'grudge', input: 'grudge', out: [0, 2] }], on: { end: { feel: [null, 'snubbed'] } } },
   ];
   const topics: TopicDef[] = [

@@ -6,6 +6,7 @@ import { Entmoot } from './entmoot';
 import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
+import { Irulan } from '../tools/irulan';
 import { Strangers } from './strangers';
 import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
@@ -58,6 +59,7 @@ export declare class World {
     readonly esper: Esper;
     readonly westmarch: Westmarch;
     readonly palantir: Palantir;
+    readonly irulan: Irulan;
     readonly strangers: Strangers;
     /** Skills: levels that grow with practice. */
     readonly skills: Skills;

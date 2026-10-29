@@ -366,11 +366,11 @@ export const DEFAULT_MORGUL: MorgulConfig = {
 
 /** Feelings Morgul gives (declared when Reverie is on; a game declares its own with the same ids to change them; Reverie's own 'scared' is used too). */
 const MORGUL_FEELINGS = [
-  { id: 'in_pain', label: 'In pain', weight: -0.15, minutes: 12 * 60, stack: 2, emotion: 'sad' },
-  { id: 'furious', label: 'Furious', weight: -0.1, minutes: DAY, stack: 2, emotion: 'angry' },
-  { id: 'shaken', label: 'Shaken', weight: -0.08, minutes: 2 * DAY, stack: 2, emotion: 'tense' },
-  { id: 'saw_harm', label: 'Saw someone hurt', weight: -0.06, minutes: 6 * 60, stack: 2, emotion: 'tense' },
-  { id: 'cared_for', label: 'Someone looked after me', weight: 0.1, minutes: DAY, emotion: 'happy' },
+  { id: 'in_pain', label: 'In pain', tell: 'was in pain', weight: -0.15, minutes: 12 * 60, stack: 2, emotion: 'sad' },
+  { id: 'furious', label: 'Furious', tell: 'was furious', weight: -0.1, minutes: DAY, stack: 2, emotion: 'angry' },
+  { id: 'shaken', label: 'Shaken', tell: 'was shaken', weight: -0.08, minutes: 2 * DAY, stack: 2, emotion: 'tense' },
+  { id: 'saw_harm', label: 'Saw someone hurt', tell: 'was upset to see someone hurt', weight: -0.06, minutes: 6 * 60, stack: 2, emotion: 'tense' },
+  { id: 'cared_for', label: 'Someone looked after me', tell: 'felt looked after', weight: 0.1, minutes: DAY, emotion: 'happy' },
 ];
 
 /** The uses that arm someone for a fight. */

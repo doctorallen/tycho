@@ -49,6 +49,7 @@ world.tick(1 / 60);                        // every frame
 | **Morgul** | The Morgul-blade, whose wound won't heal | Harm between people: wounds that heal or fester, hurt, down and (only if the game says) dead, pain, fear, grudges and revenge, witnesses and crimes, traps, poison that works unnoticed, suspicion that can be wrong, fights by numbers |
 | **Palantír** (tool) | The seeing-stones | The inspector: every choice with its scores, "why not that?", a readable account |
 | **Westmarch** (tool) | The Red Book of Westmarch | The log of what happened, and chronicles of anyone's day |
+| **Irulan** (tool) | Princess Irulan, Muad'Dib's historian | The narrator: the log told as a story, the routine left out, its storylines and headlines, in parts a game can style |
 | **Voight-Kampff** (tool) | Blade Runner's test | Headless seeded runs that check people still behave like people |
 | **Rocinante** (example) | The Expanse's ship | A sample town of ten people that exercises everything |
 

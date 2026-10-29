@@ -112,6 +112,18 @@ export type PlaceSpec = Id | `tag:${string}` | 'home' | 'work' | 'here' | `perso
 export interface ActionDef {
     id: Id;
     label?: string;
+    /**
+     * Its words in a story (Irulan), as they'd follow the person's name: what
+     * they did ('read', 'took a walk in {place}', 'chatted with {target}') and
+     * what they were doing when the story ends ('was reading'). {place} and
+     * {target} are named; without {place}, where comes after ('at home').
+     * Without it, the label is used. A list is variants, one drawn for each
+     * telling ('read', 'curled up with a book').
+     */
+    tell?: {
+        did?: string | string[];
+        doing?: string | string[];
+    };
     /** How much each need drops when the action is done: a number or [min, max]. */
     relieves?: Record<Id, number | [number, number]>;
     /** A flat appeal added to the relief, for actions people do for their own sake. */
@@ -151,6 +163,14 @@ export interface ActionDef {
     target?: 'person';
     /** Conditions on the target (the ctx's target is the candidate). */
     targetIf?: Cond[];
+    /**
+     * Done together: the target joins in for its length (a shower for two, a
+     * dance), if they're at the same place, doing nothing that outranks it,
+     * and there's room in its slot; they leave what they were doing. Without
+     * it, the target is only who it's aimed at, and others there are only
+     * about. Their 'started' names who they joined (`with`).
+     */
+    together?: boolean;
     /** What the game should show: a pose name ('sit', 'work', 'walk'...). */
     pose?: string;
     /** A line topic said on starting (Cityspeak): the person's best line on it, to the target if there is one, as with cityspeak.say. */
@@ -264,6 +284,8 @@ export interface PastimeDef {
 export interface WishDef {
     id: Id;
     label?: string;
+    /** Its words in a story (Irulan) when it's wished, as they'd follow the person's name: 'dreamed of becoming an expert baker'. Without it, 'wished for <label>'. A list is variants. */
+    tell?: string | string[];
     /** Who may wish it, and when: conditions on the person. */
     if?: Cond[];
     /** How likely it is to be wished, against the others that fit: a number, considerations multiplied, or a function. Default 1. */
@@ -580,6 +602,8 @@ export interface WorldState {
     q: QueueItem[];
     /** Westmarch: the log of what happened (a bounded list). */
     log: LogEntry[];
+    /** Irulan: what matters, kept beyond the log (with config.storySize). */
+    story?: LogEntry[];
     /** Module state, by module name. */
     mod: Record<string, any>;
     /** State the game keeps with the world so it rewinds too. */
@@ -639,6 +663,14 @@ export interface Config {
     budgetMs: number;
     /** Westmarch log size. Default 1000. */
     logSize: number;
+    /**
+     * Irulan's story: entries that matter kept beyond the log, so storylines
+     * can be followed for weeks (world.s.story; it saves and rewinds). This
+     * many at most, the least that matters going first. Default 0: off.
+     */
+    storySize: number;
+    /** What an entry must weigh to be kept in the story (Irulan's weights). Default 0.3. */
+    storyMin: number;
     /** Palantír keeps this many decisions per person. Default 12. */
     decisions: number;
     /**

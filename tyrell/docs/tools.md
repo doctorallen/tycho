@@ -51,13 +51,17 @@ world.westmarch.find({ k: 'started', who: 'ruth', since: world.now - 1440 });
 world.westmarch.since(world.now - 60, ['told', 'report']);
 world.westmarch.chronicle('ruth', world.now - 1440);
 // ['08:10 set out for market', '08:14 got to market', '08:14 shopping at market', ...]
+world.on('log', (e) => console.log(world.westmarch.describe(e)));
+// 'set out for The Market', 'got to The Market', 'told Kofi about did:sam:theft', ...
 ```
 
 | Call | Returns |
 |---|---|
 | `find({ k?, who?, since?, until? })` | Entries matching, oldest first. `k` is a kind or a list of kinds; `who` matches the entry's person, or an entry whose data names them as `target`, `for` or `to` (a deed done for them, gossip told to them); `since` and `until` are times |
 | `since(t, k?)` | `find({ since: t, k })` |
-| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks and arrivals (places by their `name`, when they have one), actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them or for them, and what they heard (entries that name them as `target`, `for` or `to`) |
+| `chronicle(who, since)` | A short account in plain lines, `'HH:MM text'`: walks and arrivals (places by their `name`, when they have one), actions (by `label`), failures, feelings, what they told and heard, breaks, time spent with people, deeds; and what others did with them or for them, and what they heard (entries that name them as `target`, `for` or `to`). `since` is a time, or a list of entries (ones the game kept from the `log` events, to reach back further than the log keeps) |
+| `describe(entry)` | One entry in plain words, as they'd follow the person's name, in the chronicle's wording: `'got to The Market'`, `'felt Nothing went right'`, `'chat with Lena ended fine after 3 turns'`. People and places by their names, actions, tasks and wishes by their labels; an entry with no person reads on its own (`'day 2 began'`). Every kind in the table below has words, and a kind it doesn't know comes out as its name and its data (`'party: size 3'`). A look: it reads the state and changes nothing |
+| `about(entry, who)` | Whether an entry is about someone, as `find` judges it |
 
 A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 
@@ -179,8 +183,23 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `--save file` | Write the report to a file (for a baseline) |
 | `--baseline file` | Compare with a saved report |
 | `--tolerance x` | The comparison tolerance (default 0.05) |
+| `--log` | Print every log entry as it's written, a line each: the day and time, the person's name, and what happened in Westmarch's words (`describe`), with where they were when the entry doesn't say |
+| `--log all` | Every event besides (`world.on('*')`): decisions, Bree's exchanges and each turn's words, Morgul's harms, and the rest by their names and data |
+| `--log kind,kind` | Only those kinds of entry, or events by those names (`--log started,arrived`, `--log bree:turn`) |
+| `--who id` | With `--log`, only what's about one person: entries by them or naming them as `target`, `for` or `to`, and events with a field that names them |
+| `--chronicle id` | Print that person's chronicle at the end, a day at a time, from every entry written in the run (not only what the log still holds) |
 
-It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted or harmed each other, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check, and `npm run vk:harm` a week of it with harm (Morgul) and the `harm` check.
+```
+day 0 09:44  Ruth           got to The Market
+day 0 09:44  Ruth           shopping at The Market
+day 0 09:50  Dev            felt Saw something bad · at The Market
+day 0 09:50  Dev            saw theft by Sam · at The Market
+day 0 10:44  Dev            told Kofi about did:sam:theft · at The Market
+```
+
+Only the run's own world is watched: the `deterministic` and `save-load` checks build more worlds with the same seed, and those would tell it all again. Nothing is printed past the run's last minute (the checks run the world on a little after it), and listening changes nothing in the world: the report and its hash are the same with or without `--log`.
+
+It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted or harmed each other, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check, `npm run vk:harm` a week of it with harm (Morgul) and the `harm` check, and `npm run vk:log` one day of it printed in full (`--log all`).
 
 ## Rocinante
 

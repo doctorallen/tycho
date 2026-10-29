@@ -582,6 +582,40 @@ test('a chronicle shows deeds done for someone, what they heard, at the right mi
   assert.match(w.describe('ruth'), /day 0 07:20/);
 });
 
+test('Westmarch describes every kind Rocinante writes in a day, and changes nothing', () => {
+  for (const opts of [{}, { bree: true, harm: true }]) {
+    const w = rocinante(opts);
+    const entries = [];
+    w.on('log', (e) => entries.push(e));
+    w.advance(DAY);
+    const kinds = new Set(entries.map((e) => e.k));
+    assert.ok(kinds.size > 20, [...kinds].join(' '));
+    const before = w.hash();
+    for (const e of entries) {
+      const words = w.westmarch.describe(e);
+      assert.equal(typeof words, 'string');
+      // in words of its own, not the fallback's name and data
+      assert.ok(words && !words.startsWith(e.k + ':') && !/undefined|\[object|NaN/.test(words), `${e.k}: ${words} ${JSON.stringify(e.d)}`);
+    }
+    assert.equal(w.hash(), before);
+  }
+  const w = rocinante();
+  assert.equal(w.westmarch.describe({ t: 0, k: 'party', who: 'ruth', d: { size: 3, host: 'mara' } }), 'party: size 3, host mara');
+  assert.equal(w.westmarch.describe({ t: 0, k: 'party' }), 'party');
+  assert.equal(w.westmarch.describe({ t: 0, k: 'arrived', who: 'ruth', d: { place: 'market' } }), 'got to The Market');
+});
+
+test('a chronicle from the entries a game kept reaches past the log', () => {
+  const w = rocinante({ config: { logSize: 300 } });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const all = w.westmarch.chronicle('ruth', kept);
+  const tail = w.westmarch.chronicle('ruth', 0);
+  assert.ok(tail.length && all.length > tail.length);
+  assert.deepEqual(all.slice(-tail.length), tail);
+});
+
 test('Voight-Kampff: Rocinante behaves like people for a week', () => {
   const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed }), days: 7 });
   assert.deepEqual(report.failures, []);

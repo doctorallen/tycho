@@ -2,8 +2,10 @@
 // Components (everything the town is made of, to see, add, change and
 // remove), the Catalog (the living documentation), Inspect (Palantír's
 // account of anyone) and the Log (Westmarch's entries, in plain words).
+// Every one filters with `/`: type words, and what holds them all stays,
+// the matches picked out.
 import { Box, Text, useInput } from 'ink';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { Catalog, Kind } from '../catalog';
 import { kindOf } from '../catalog';
 import { readArgs, type Scope } from '../code';
@@ -11,8 +13,9 @@ import { callName, type Call } from '../recorder';
 import { LAYOUTS, when, type Line, type Sandbox, type StorySettings } from '../sandbox';
 import type { TyrellLib } from '../tyrell';
 import { apiRows, erosPage, kindPage, modulePage, settingRows, signature } from './pages';
+import { highlight, matchRows, matches, queryWords } from './filter';
 import { codeRows, dedent, partsSegs, wrap, wrapText, type Row } from './text';
-import { Hints, List, Panel, Rows, scrollNote } from './widgets';
+import { Hints, List, Panel, RowView, Rows, scrollNote } from './widgets';
 
 /** What every screen gets. */
 export interface Ctx {
@@ -33,6 +36,45 @@ export interface Ctx {
   edit: (kind: Kind, call: Call | null, code: string, asCode?: boolean) => void;
   confirm: (text: string, onYes: () => void) => void;
   scope: () => Scope;
+  /** Whether a screen is taking typed text (a filter): the keys that work everywhere wait. */
+  typing: (on: boolean) => void;
+}
+
+// ---------------------------------------------------------------------------
+// Filtering: `/`, words, enter to keep, esc to clear
+// ---------------------------------------------------------------------------
+
+function useFilter(ctx: Ctx) {
+  const [query, setQuery] = useState('');
+  const [editing, setEditing] = useState(false);
+  const stop = (keep: boolean) => { setEditing(false); ctx.typing(false); if (!keep) setQuery(''); };
+  /** The filter's keys: true when it took the key. */
+  const keys = (input: string, key: any): boolean => {
+    if (editing) {
+      if (key.return) stop(true);
+      else if (key.escape) stop(false);
+      else if (key.backspace || key.delete) setQuery((q) => q.slice(0, -1));
+      else if (key.ctrl && input === 'u') setQuery('');
+      else if (input && !key.ctrl && !key.meta && !key.tab && !key.upArrow && !key.downArrow && !key.leftArrow && !key.rightArrow) setQuery((q) => q + input.replace(/[\r\n]/g, ''));
+      return true;
+    }
+    if (input === '/') { setEditing(true); ctx.typing(true); return true; }
+    if (key.escape && query) { setQuery(''); return true; }
+    return false;
+  };
+  return { query, editing, words: queryWords(query), keys, on: editing || !!query };
+}
+
+/** The foot of a screen: its keys, or, filtering, the filter (what's typed, how many match). */
+function Foot({ f, count, width, hints, jump }: { f: ReturnType<typeof useFilter>; count: number; width: number; hints: Array<[string, string]>; jump?: boolean }) {
+  if (!f.on) return <Hints width={width} hints={[['/', 'filter'], ...hints]} />;
+  return (
+    <RowView width={width} row={[
+      { text: '/', bold: true, color: 'yellow' }, { text: f.query, bold: true }, ...(f.editing ? [{ text: ' ', inverse: true }] : []),
+      { text: `  ${count} match${count === 1 ? '' : 'es'}`, color: count ? 'green' : 'red' },
+      { text: f.editing ? '  · enter keep · esc clear · words in any order' : `  · / change · esc clear${jump ? ' · ] [ next / previous' : ''} · ${hints.map(([k, v]) => `${k} ${v}`).join(' · ')}`, dim: true },
+    ]} />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +133,25 @@ export function storyRows(lines: Line[], width: number): Row[] {
   return rows;
 }
 
+/**
+ * The story's lines that hold every word: a heading (a storyline's title)
+ * that matches keeps all of its section; otherwise a section keeps its
+ * heading only for the lines in it that match.
+ */
+export function filterStory(lines: Line[], words: string[]): Line[] {
+  if (!words.length) return lines;
+  const out: Line[] = [];
+  let head: Line[] = [], body: Line[] = [], whole = false;
+  const flush = () => { if (body.length) out.push(...head, ...body); head = []; body = []; whole = false; };
+  for (const l of lines) {
+    if (l.kind === 'head') { flush(); head = [l]; whole = matches(l.text, words); continue; }
+    if (l.kind === 'sub') { if (body.length) body.push(l); else head.push(l); continue; }
+    if (whole || matches(l.text, words)) body.push(l);
+  }
+  flush();
+  return out;
+}
+
 export function StoryScreen({ ctx, settings, setSettings }: { ctx: Ctx; settings: StorySettings; setSettings: (s: StorySettings) => void }) {
   const { sb, width, height, active } = ctx;
   const [at, setAt] = useState(0);
@@ -110,12 +171,16 @@ export function StoryScreen({ ctx, settings, setSettings }: { ctx: Ctx; settings
   ];
   const sideW = 30, outW = width - sideW;
   const bodyH = height - 3;
-  const lines = useMemo(() => (ctx.visible ? sb.story(settings) : []), [sb, settings, ctx.version, sb.entries.length, sb.now, ctx.visible]);
-  const rows = useMemo(() => storyRows(lines, outW - 4), [lines, outW]);
+  const f = useFilter(ctx);
+  const all = useMemo(() => (ctx.visible ? sb.story(settings) : []), [sb, settings, ctx.version, sb.entries.length, sb.now, ctx.visible]);
+  const lines = useMemo(() => filterStory(all, f.words), [all, f.query]);
+  const rows = useMemo(() => highlight(storyRows(lines, outW - 4), f.words), [lines, outW, f.query]);
+  const count = lines.filter((l) => l.kind !== 'head' && l.kind !== 'sub').length;
   const followable = settings.layout === 'timeline' || settings.layout === 'feed';
   const scroll = useScroll(rows.length, bodyH - 2, followable);
 
   useInput((input, key) => {
+    if (f.keys(input, key)) return;
     if (key.upArrow) { setAt((a) => Math.max(0, a - 1)); return; }
     if (key.downArrow) { setAt((a) => Math.min(rowsDef.length - 1, a + 1)); return; }
     if (key.leftArrow || key.rightArrow) {
@@ -140,11 +205,11 @@ export function StoryScreen({ ctx, settings, setSettings }: { ctx: Ctx; settings
         <Panel title="Telling" width={sideW} height={bodyH} focused={active}>
           <Rows rows={sideRows} height={bodyH - 3} offset={0} width={sideW - 4} />
         </Panel>
-        <Panel title={`Irulan · ${settings.layout}`} width={outW} height={bodyH} note={`${scrollNote(scroll.at, bodyH - 3, rows.length)}${scroll.follow && followable ? ' · following' : ''}`}>
-          <Rows rows={rows.length ? rows : [[{ text: 'Nothing to tell yet: press space to play, or n to step an hour.', dim: true }]]} height={bodyH - 3} offset={scroll.at} width={outW - 4} />
+        <Panel title={`Irulan · ${settings.layout}${f.query ? ` · /${f.query}` : ''}`} width={outW} height={bodyH} note={`${scrollNote(scroll.at, bodyH - 3, rows.length)}${scroll.follow && followable ? ' · following' : ''}`}>
+          <Rows rows={rows.length ? rows : [[{ text: f.query ? `Nothing told holds all of: ${f.words.join(', ')}.` : 'Nothing to tell yet: press space to play, or n to step an hour.', dim: true }]]} height={bodyH - 3} offset={scroll.at} width={outW - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['↑↓', 'setting'], ['←→', 'change it'], ['j/k PgUp/PgDn', 'scroll'], ['g/G', 'top / end']]} />
+      <Foot f={f} count={count} width={width} hints={[['↑↓', 'setting'], ['←→', 'change it'], ['j/k PgUp/PgDn', 'scroll'], ['g/G', 'top / end']]} />
     </Box>
   );
 }
@@ -184,6 +249,8 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
   const [e, setE] = useState(0);
   const [detail, setDetail] = useState(0);
   const cache = useMemo(() => new Map<string, string>(), [sb]);
+  const f = useFilter(ctx);
+  const scope0 = ctx.scope();
   const order = (k: Kind) => { const i = cat.modules.findIndex((m) => m.title === k.module); return k.module === 'Core' ? -1 : i < 0 ? 99 : i; };
   const groups = useMemo(() => {
     const by = new Map<string, { kind: Kind; calls: Call[]; first: number }>();
@@ -193,8 +260,16 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
       gr.calls.push(c);
       by.set(key, gr);
     });
-    return [...by.values()].sort((a, b) => order(a.kind) - order(b.kind) || Number(!!a.kind.input) - Number(!!b.kind.input) || a.first - b.first);
-  }, [sb.model, cat]);
+    const sorted = [...by.values()].sort((a, b) => order(a.kind) - order(b.kind) || Number(!!a.kind.input) - Number(!!b.kind.input) || a.first - b.first);
+    if (!f.words.length) return sorted.map((x) => ({ ...x, total: x.calls.length }));
+    // (filtered: across every kind, by the kind, the call's number, its summary and its code)
+    return sorted.map((x) => ({
+      ...x, total: x.calls.length,
+      calls: x.calls.filter((c) => matches(`${x.kind.name} ${plural(x.kind.name)} ${x.kind.module} ${x.kind.key} #${c.id} ${summary(c, scope0, cache)} ${c.code}`, f.words)),
+    })).filter((x) => x.calls.length);
+  }, [sb.model, cat, f.query]);
+  const found = groups.reduce((n, x) => n + x.calls.length, 0);
+  useEffect(() => { setG(0); setE(0); setDetail(0); }, [f.query]);
   const gi = Math.min(g, groups.length - 1);
   const group = groups[gi];
   const calls = group?.calls ?? [];
@@ -211,10 +286,11 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
     if (call) rows.push([], [{ text: `${callName(call)} #${call.id}`, bold: true }], ...codeRows(`${callName(call)}(${dedent(call.code)});`, dw - 4));
     const errs = sb.errors.filter((x) => x.id === call?.id);
     for (const er of errs) rows.push([], [{ text: '! ' + er.message, color: 'red' }]);
-    return rows;
-  }, [group, call, dw, sb.errors]);
+    return highlight(rows, f.words);
+  }, [group, call, dw, sb.errors, f.query]);
 
   useInput((input, key) => {
+    if (f.keys(input, key)) return;
     if (key.leftArrow) { setPanel(0); return; }
     if (key.rightArrow) { setPanel(1); return; }
     if (key.upArrow) { if (panel === 0) { setG(Math.max(0, gi - 1)); setE(0); } else setE(Math.max(0, ei - 1)); setDetail(0); return; }
@@ -233,14 +309,14 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
     }
   }, { isActive: active });
 
-  const gItems = groups.map((x) => ({ label: `${x.kind.module === 'Core' ? '' : x.kind.module + ' · '}${plural(x.kind.name)} (${x.calls.length})`, dim: x.kind.input }));
+  const gItems = groups.map((x) => ({ label: `${x.kind.module === 'Core' ? '' : x.kind.module + ' · '}${plural(x.kind.name)} (${f.words.length ? `${x.calls.length} of ${x.total}` : x.calls.length})`, dim: x.kind.input }));
   const eItems = calls.map((c) => ({ label: `#${c.id} ${summary(c, scope, cache)}`, color: sb.errors.some((x) => x.id === c.id) ? 'red' : undefined }));
   if (!ctx.visible) return null;
   return (
     <Box flexDirection="column" height={height}>
       <Box>
-        <Panel title={`The town (${sb.model.calls.length} calls)`} width={gw} height={bodyH} focused={active && panel === 0}>
-          <List items={gItems} selected={gi} height={bodyH - 3} width={gw - 4} focused={active && panel === 0} />
+        <Panel title={f.query ? `/${f.query}: ${found} of ${sb.model.calls.length}` : `The town (${sb.model.calls.length} calls)`} width={gw} height={bodyH} focused={active && panel === 0}>
+          <List items={gItems.length ? gItems : [{ label: 'Nothing matches', dim: true }]} selected={gi} height={bodyH - 3} width={gw - 4} focused={active && panel === 0} />
         </Panel>
         <Panel title={group ? plural(group.kind.name) : ''} width={ew} height={bodyH} focused={active && panel === 1}>
           <List items={eItems} selected={ei} height={bodyH - 3} width={ew - 4} focused={active && panel === 1} />
@@ -249,7 +325,7 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
           <Rows rows={detailRows} height={bodyH - 3} offset={detail} width={dw - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['←→', 'kinds / things'], ['↑↓', 'pick'], ['enter', 'edit'], ['x', 'as code'], ['a', 'add'], ['D', 'duplicate'], ['d', 'remove'], ['PgUp/Dn', 'scroll code'], ['3', 'new kinds']]} />
+      <Foot f={f} count={found} width={width} hints={[['←→', 'kinds / things'], ['↑↓', 'pick'], ['enter', 'edit'], ['x', 'as code'], ['a', 'add'], ['D', 'duplicate'], ['d', 'remove'], ['PgUp/Dn', 'scroll code']]} />
     </Box>
   );
 }
@@ -258,7 +334,7 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
 // Catalog
 // ---------------------------------------------------------------------------
 
-interface Page { label: string; head?: boolean; render?: (w: number) => Row[]; kind?: Kind }
+interface Page { label: string; head?: boolean; render?: (w: number) => Row[]; kind?: Kind; /** What it says, for filtering. */ text?: string }
 
 export function CatalogScreen({ ctx }: { ctx: Ctx }) {
   const { sb, cat, Tyrell, width, height, active, examples } = ctx;
@@ -266,7 +342,8 @@ export function CatalogScreen({ ctx }: { ctx: Ctx }) {
   const [panel, setPanel] = useState(0);
   const [offset, setOffset] = useState(0);
   const counts = useMemo(() => { const m = new Map<string, number>(); for (const c of sb.model.calls) m.set(`${c.target}.${c.method}`, (m.get(`${c.target}.${c.method}`) || 0) + 1); return m; }, [sb.model]);
-  const pages: Page[] = useMemo(() => {
+  const f = useFilter(ctx);
+  const every: Page[] = useMemo(() => {
     const out: Page[] = [{ label: 'Eros: how this works', render: erosPage }];
     out.push({ label: 'Kinds a town declares', head: true });
     const mods = ['Core', ...cat.modules.map((m) => m.title)];
@@ -284,16 +361,43 @@ export function CatalogScreen({ ctx }: { ctx: Ctx }) {
     for (const c of cat.config) if (c.type !== 'Config' && c.module) out.push({ label: `${c.module} settings`, render: (w) => [[{ text: `${c.module} settings`, bold: true, color: 'cyan' }, { text: `  Tyrell.create({ moduleConfig: { ${c.module}: {...} } })`, dim: true }], [], ...settingRows(c.fields, (Tyrell.MODULE_DEFAULTS as any)?.[c.module], w)] });
     out.push({ label: 'Methods (the API)', head: true });
     for (const a of cat.api) out.push({ label: `${a.target === 'world' ? 'The world' : a.target} (${a.methods.length})`, render: (w) => [[{ text: a.className, bold: true, color: 'cyan' }, { text: `  ${a.file}`, dim: true }], ...(a.doc ? wrapText(a.doc, w, 0, { dim: true }) : []), [], ...apiRows(a, w)] });
+    // what each page says, for filtering: its title, and everything on it
+    for (const p of out) if (p.render) p.text = `${p.label}\n${p.render(100).map((r) => r.map((s) => s.text).join('')).join('\n')}`;
     return out;
   }, [cat, examples, counts, Tyrell]);
-  const page = pages[Math.min(at, pages.length - 1)];
+  // (filtered: the pages that say every word, under the headings they had)
+  const pages: Page[] = useMemo(() => {
+    if (!f.words.length) return every;
+    const out: Page[] = [];
+    let head: Page | null = null;
+    for (const p of every) {
+      if (p.head) { head = p; continue; }
+      if (!matches(p.text ?? p.label, f.words)) continue;
+      if (head) { out.push(head); head = null; }
+      out.push(p);
+    }
+    return out;
+  }, [every, f.query]);
+  const firstPage = Math.max(0, pages.findIndex((p) => !p.head));
+  useEffect(() => { setAt(firstPage); setOffset(0); }, [f.query]);
+  const page: Page = pages[Math.min(at, pages.length - 1)] ?? { label: 'Nothing matches', render: () => [[{ text: `No page says all of: ${f.words.join(', ')}.`, dim: true }]] };
   const lw = 38, rw = width - lw;
   const bodyH = height - 3;
-  const rows = useMemo(() => page.render ? page.render(rw - 4) : [], [page, rw]);
+  const rows = useMemo(() => highlight(page.render ? page.render(rw - 4) : [], f.words), [page, rw, f.query]);
+  const hits = useMemo(() => matchRows(rows, f.words), [rows]);
   const max = Math.max(0, rows.length - (bodyH - 3));
+  // a page found by a filter opens at its first match
+  useEffect(() => { if (hits.length) setOffset(Math.max(0, Math.min(max, hits[0] - 2))); }, [page, f.query]);
 
   useInput((input, key) => {
-    const move = (d: number) => { let n = at; do { n = Math.max(0, Math.min(pages.length - 1, n + d)); } while (pages[n].head && n > 0 && n < pages.length - 1); setAt(n); setOffset(0); };
+    if (f.keys(input, key)) return;
+    const move = (d: number) => { if (!pages.length) return; let n = Math.min(at, pages.length - 1); do { n = Math.max(0, Math.min(pages.length - 1, n + d)); } while (pages[n].head && n > 0 && n < pages.length - 1); setAt(n); setOffset(0); };
+    // ] and [: the next and previous match on the page
+    if ((input === ']' || input === '[') && hits.length) {
+      const next = input === ']' ? hits.find((h) => h > offset + 2) ?? hits[0] : [...hits].reverse().find((h) => h < offset + 2) ?? hits[hits.length - 1];
+      setOffset(Math.max(0, Math.min(max, next - 2)));
+      return;
+    }
     if (panel === 0) {
       if (key.upArrow) { move(-1); return; }
       if (key.downArrow) { move(1); return; }
@@ -314,14 +418,14 @@ export function CatalogScreen({ ctx }: { ctx: Ctx }) {
   return (
     <Box flexDirection="column" height={height}>
       <Box>
-        <Panel title="Catalog" width={lw} height={bodyH} focused={active && panel === 0} note={`${cat.kinds.length} kinds`}>
-          <List items={pages.map((p) => ({ label: p.label, head: p.head, dim: p.head, color: p.head ? 'magenta' : undefined }))} selected={Math.min(at, pages.length - 1)} height={bodyH - 3} width={lw - 4} focused={active && panel === 0} />
+        <Panel title={f.query ? `Catalog · /${f.query}` : 'Catalog'} width={lw} height={bodyH} focused={active && panel === 0} note={f.query ? `${pages.filter((p) => !p.head).length} pages` : `${cat.kinds.length} kinds`}>
+          <List items={pages.length ? pages.map((p) => ({ label: p.label, head: p.head, dim: p.head, color: p.head ? 'magenta' : undefined })) : [{ label: 'Nothing matches', dim: true }]} selected={Math.min(at, Math.max(0, pages.length - 1))} height={bodyH - 3} width={lw - 4} focused={active && panel === 0} />
         </Panel>
-        <Panel title={page.label} width={rw} height={bodyH} focused={active && panel === 1} note={scrollNote(offset, bodyH - 3, rows.length)}>
+        <Panel title={page.label} width={rw} height={bodyH} focused={active && panel === 1} note={`${hits.length ? `${hits.length} match${hits.length === 1 ? '' : 'es'} · ` : ''}${scrollNote(offset, bodyH - 3, rows.length)}`}>
           <Rows rows={rows} height={bodyH - 3} offset={offset} width={rw - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['↑↓', panel === 0 ? 'page' : 'scroll'], [panel === 0 ? '→/enter' : '←', panel === 0 ? 'read' : 'pages'], ['PgUp/Dn', 'faster'], ...(page.kind ? [['a', `add ${/^[aeiou]/i.test(page.kind.name) ? 'an' : 'a'} ${page.kind.name.toLowerCase()} to the town`] as [string, string]] : [])]} />
+      <Foot f={f} jump count={pages.filter((p) => !p.head).length} width={width} hints={[['↑↓', panel === 0 ? 'page' : 'scroll'], [panel === 0 ? '→/enter' : '←', panel === 0 ? 'read' : 'pages'], ['PgUp/Dn', 'faster'], ...(page.kind ? [['a', `add ${/^[aeiou]/i.test(page.kind.name) ? 'an' : 'a'} ${page.kind.name.toLowerCase()} to the town`] as [string, string]] : [])]} />
     </Box>
   );
 }
@@ -332,14 +436,17 @@ export function CatalogScreen({ ctx }: { ctx: Ctx }) {
 
 export function InspectScreen({ ctx }: { ctx: Ctx }) {
   const { sb, cat, width, height, active } = ctx;
-  const people = sb.people();
+  const f = useFilter(ctx);
+  const people = sb.people().filter((x) => matches(`${x.name} ${x.id}`, f.words));
   const [at, setAt] = useState(0);
+  useEffect(() => { setAt(0); setOffset(0); }, [f.query]);
   const [offset, setOffset] = useState(0);
   const p = people[Math.min(at, people.length - 1)];
   const lw = 26, rw = width - lw;
   const bodyH = height - 3;
-  const rows = useMemo(() => (p && ctx.visible ? sb.describe(p.id).split('\n').flatMap((l) => wrapText(l, rw - 4, 2)) : []), [p, rw, ctx.version, sb.now, ctx.visible]);
+  const rows = useMemo(() => (p && ctx.visible ? highlight(sb.describe(p.id).split('\n').flatMap((l) => wrapText(l, rw - 4, 2)), f.words) : []), [p, rw, ctx.version, sb.now, ctx.visible, f.query]);
   useInput((input, key) => {
+    if (f.keys(input, key)) return;
     if (key.upArrow) { setAt((a) => Math.max(0, a - 1)); setOffset(0); return; }
     if (key.downArrow) { setAt((a) => Math.min(people.length - 1, a + 1)); setOffset(0); return; }
     if (key.pageDown || input === 'j') { setOffset((o) => Math.min(Math.max(0, rows.length - bodyH + 3), o + (key.pageDown ? bodyH - 4 : 1))); return; }
@@ -355,13 +462,13 @@ export function InspectScreen({ ctx }: { ctx: Ctx }) {
     <Box flexDirection="column" height={height}>
       <Box>
         <Panel title="People" width={lw} height={bodyH} focused={active}>
-          <List items={people.map((x) => ({ label: x.name, dim: sb.world.s.people[x.id]?.status !== 'active' }))} selected={Math.min(at, people.length - 1)} height={bodyH - 3} width={lw - 4} focused={active} />
+          <List items={people.length ? people.map((x) => ({ label: x.name, dim: sb.world.s.people[x.id]?.status !== 'active' })) : [{ label: 'Nobody matches', dim: true }]} selected={Math.min(at, Math.max(0, people.length - 1))} height={bodyH - 3} width={lw - 4} focused={active} />
         </Panel>
         <Panel title={p ? `${p.name} (Palantír)` : 'Nobody'} width={rw} height={bodyH} note={scrollNote(offset, bodyH - 3, rows.length)}>
           <Rows rows={rows} height={bodyH - 3} offset={offset} width={rw - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['↑↓', 'person'], ['j/k PgUp/Dn', 'scroll'], ['enter', 'edit who they are']]} />
+      <Foot f={f} count={people.length} width={width} hints={[['↑↓', 'person'], ['j/k PgUp/Dn', 'scroll'], ['enter', 'edit who they are']]} />
     </Box>
   );
 }
@@ -374,12 +481,20 @@ export function LogScreen({ ctx }: { ctx: Ctx }) {
   const { sb, width, height, active } = ctx;
   const bodyH = height - 3;
   const nameW = Math.min(14, Math.max(6, ...sb.people().map((p) => p.name.length)));
-  const rows = useMemo(() => !ctx.visible ? [] : sb.entries.slice(-2000).flatMap((e: any) => {
-    const who = e.who !== undefined ? sb.world.s.people[e.who]?.name ?? e.who : '';
-    return wrap([{ text: when(e.t) + '  ', dim: true }, { text: who.padEnd(nameW).slice(0, nameW) + '  ', bold: true }, { text: e.k.padEnd(10) + ' ', color: 'magenta' }, { text: sb.world.westmarch.describe(e) }], width - 4, 15 + nameW + 13);
-  }), [sb.entries.length, sb, width, ctx.version, ctx.visible]);
+  const f = useFilter(ctx);
+  // (filtered, over every entry; unfiltered, the last 2000)
+  const [rows, count] = useMemo((): [Row[], number] => {
+    if (!ctx.visible) return [[], 0];
+    const lines = sb.entries.map((e: any) => {
+      const who = e.who !== undefined ? sb.world.s.people[e.who]?.name ?? e.who : '';
+      return { e, who, text: `${when(e.t)} ${who} ${e.k} ${sb.world.westmarch.describe(e)}` };
+    }).filter((l: any) => matches(l.text, f.words));
+    const shown = f.words.length ? lines : lines.slice(-2000);
+    return [highlight(shown.flatMap(({ e, who }: any) => wrap([{ text: when(e.t) + '  ', dim: true }, { text: who.padEnd(nameW).slice(0, nameW) + '  ', bold: true }, { text: e.k.padEnd(10) + ' ', color: 'magenta' }, { text: sb.world.westmarch.describe(e) }], width - 4, 15 + nameW + 13)), f.words), lines.length];
+  }, [sb.entries.length, sb, width, ctx.version, ctx.visible, f.query]);
   const scroll = useScroll(rows.length, bodyH - 3, true);
   useInput((input, key) => {
+    if (f.keys(input, key)) return;
     if (key.upArrow) { scroll.keys('k', {}); return; }
     if (key.downArrow) { scroll.keys('j', {}); return; }
     scroll.keys(input, key);
@@ -387,10 +502,10 @@ export function LogScreen({ ctx }: { ctx: Ctx }) {
   if (!ctx.visible) return null;
   return (
     <Box flexDirection="column" height={height}>
-      <Panel title={`Westmarch: the log (${sb.entries.length} entries${sb.entries.length > 2000 ? ', the last 2000 shown' : ''})`} width={width} height={bodyH} focused={active} note={`${scrollNote(scroll.at, bodyH - 3, rows.length)}${scroll.follow ? ' · following' : ''}`}>
-        <Rows rows={rows} height={bodyH - 3} offset={scroll.at} width={width - 4} />
+      <Panel title={f.query ? `Westmarch: the log · /${f.query}: ${count} of ${sb.entries.length} entries` : `Westmarch: the log (${sb.entries.length} entries${sb.entries.length > 2000 ? ', the last 2000 shown' : ''})`} width={width} height={bodyH} focused={active} note={`${scrollNote(scroll.at, bodyH - 3, rows.length)}${scroll.follow ? ' · following' : ''}`}>
+        <Rows rows={rows.length ? rows : [[{ text: f.query ? `No entry holds all of: ${f.words.join(', ')}.` : 'Nothing written yet.', dim: true }]]} height={bodyH - 3} offset={scroll.at} width={width - 4} />
       </Panel>
-      <Hints width={width} hints={[['↑↓ j/k PgUp/Dn', 'scroll'], ['g/G', 'top / end (and follow)']]} />
+      <Foot f={f} count={count} width={width} hints={[['↑↓ j/k PgUp/Dn', 'scroll'], ['g/G', 'top / end (and follow)']]} />
     </Box>
   );
 }

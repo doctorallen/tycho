@@ -164,3 +164,56 @@ test('the checks, play and pause, a seed', async () => {
     assert.equal(sb.seed, 'other');
   } finally { a.done(); }
 });
+
+test('filtering with /: across the town, the catalog, the log, the story and the people; the keys wait while you type', async () => {
+  const sb = sandbox({ harm: true }, 2, 'voight-kampff');
+  const a = await app(sb);
+  try {
+    // Components: one search across every kind
+    await a.press('2', '/', 'n', 'i', 'g', 'h', 't', 's', 'h', 'a', 'd', 'e');
+    assert.match(a.frame(), /\/nightshade/);
+    await a.press('enter');
+    const town = a.frame();
+    assert.match(town, /\/nightshade: \d+ of \d+/);
+    assert.match(town, /Courses \(1 of \d+\)/);
+    assert.match(town, /Actions \(\d+ of \d+\)/);
+    await a.press('esc');
+    assert.match(a.frame(), /The town \(\d+ calls\)/);
+    // typing doesn't step, quit or switch: the keys wait
+    const t = sb.now;
+    await a.press('/', 'q', 'n', '3', ' ');
+    assert.equal(sb.now, t);
+    assert.match(a.frame(), /\/qn3 /);
+    await a.press('esc');
+    // Catalog: by what a page says, opened at its first match
+    await a.press('3', '/', 's', 'l', 'o', 't', 'enter');
+    const pages = a.frame();
+    assert.match(pages, /Catalog · \/slot/);
+    assert.match(pages, /Action/);
+    assert.match(pages, /\d+ match/);
+    await a.press(']');
+    await a.press('esc');
+    // Log: every entry holding both words
+    await a.press('5', '/', 't', 'o', 'm', 'a', 's', ' ', 's', 'n', 'a', 'r', 'e', 'enter');
+    assert.match(a.frame(), /\/tomas snare: \d+ of \d+ entries/);
+    await a.press('esc');
+    // Story: the storyline whose title matches, whole
+    await a.press('1', '/', 's', 'n', 'a', 'r', 'e', 'enter');
+    assert.match(a.frame(), /Irulan · timeline · \/snare/);
+    await a.press('esc');
+    // Inspect: people by name
+    await a.press('4', '/', 'r', 'u', 't', 'enter');
+    assert.match(a.frame(), /Ruth \(Palantír\)/);
+    assert.match(a.frame(), /1 match\b/);
+  } finally { a.done(); }
+});
+
+test('the story filter keeps whole storylines whose title matches, and only matching beats otherwise', () => {
+  const lines = [
+    { kind: 'head', text: "Pip's snare" }, { kind: 'sub', text: 'Pip, Tomas' }, { kind: 'beat', text: 'Pip set a snare.' }, { kind: 'beat', text: 'Tomas was cut.' },
+    { kind: 'head', text: 'Around town' }, { kind: 'beat', text: 'Sam ate.' }, { kind: 'beat', text: 'Ruth heard of the snare.' },
+  ];
+  assert.deepEqual(UI.filterStory(lines, ['snare']).map((l) => l.text), ["Pip's snare", 'Pip, Tomas', 'Pip set a snare.', 'Tomas was cut.', 'Around town', 'Ruth heard of the snare.']);
+  assert.deepEqual(UI.filterStory(lines, ['sam']).map((l) => l.text), ['Around town', 'Sam ate.']);
+  assert.deepEqual(UI.filterStory(lines, []), lines);
+});

@@ -12,6 +12,7 @@ The first run installs Eros's own dependencies (Ink and React, in `eros/node_mod
 
 - [The screens](#the-screens)
 - [Keys](#keys)
+- [Filtering](#filtering)
 - [Changing the town](#changing-the-town)
 - [Opening and exporting](#opening-and-exporting)
 - [The living documentation](#the-living-documentation)
@@ -48,6 +49,8 @@ Above them all, a status line: the town, its options, the seed, the time, playin
 | `o` / `e` | everywhere | Open a setup file, export the town as one |
 | `?` | everywhere | Help |
 | `q`, ctrl+c | everywhere | Quit |
+| `/` | every screen | Filter: type words, and what holds them all stays (any case, any order), the matches picked out; enter keeps the filter, esc clears it. While you type, the keys above wait |
+| `]` / `[` | Catalog | The next / previous match on the page |
 | ↑↓ ←→ | Story | Pick a setting, change it |
 | `j` `k`, PgUp PgDn, `g` `G` | Story, Log | Scroll; the top; the end (and follow it) |
 | ←→ ↑↓ | Components | Kinds and things; pick |
@@ -55,6 +58,18 @@ Above them all, a status line: the town, its options, the seed, the time, playin
 | `a` / `D` / `d` | Components | Add another of the kind (from its example) / duplicate / remove |
 | ↑↓, → or enter, ← | Catalog | Pick a page, read it (↑↓ scroll), back to the pages |
 | `a` | Catalog | Add one of the kind to the town, from its example |
+
+## Filtering
+
+`/` filters every screen: type words, and what holds them all stays, in any case and any order (`/sam theft`), with the matches picked out in yellow. Enter keeps the filter (the screen's keys work again, on what's left), esc clears it.
+
+| Screen | What it searches |
+|---|---|
+| Components | Every kind at once: the kind, the call's number, its summary and its code. `/nightshade` finds the course, the actions that use it and the storylet; the kinds show how many of theirs match (`Actions (2 of 38)`) |
+| Catalog | Everything a page says: titles, fields and their meanings, defaults, examples, methods. `/slot` finds every kind with a `slot` field; a page opens at its first match, and `]` / `[` go to the next and previous |
+| Log | Every entry (not only the last 2000): its time, person, kind and words. `/tomas snare` keeps the entries with both, and still follows the end |
+| Story | What's told: a storyline whose title matches stays whole, otherwise only the beats that match, under their headings |
+| Inspect | People, by name |
 
 ## Changing the town
 

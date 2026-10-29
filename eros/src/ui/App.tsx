@@ -61,6 +61,8 @@ export function App(props: AppProps) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [message, setMessage] = useState<{ text: string; color?: string } | null>({ text: `Welcome to Eros. ${sb.model.name} is loaded: space plays it, ? explains everything.`, color: 'cyan' });
   const [helpOffset, setHelpOffset] = useState(0);
+  // a screen taking typed text (a filter) has every key until it's done
+  const [typing, setTyping] = useState(false);
   const [size, setSize] = useState(() => props.size ?? { columns: stdout?.columns || 120, rows: stdout?.rows || 36 });
   const bump = useCallback(() => setVersion((v) => v + 1), []);
   const say = useCallback((text: string, color?: string) => setMessage({ text, color }), []);
@@ -149,7 +151,7 @@ export function App(props: AppProps) {
       if (key.pageUp) setHelpOffset((o) => Math.max(0, o - bodyH + 4));
       return;
     }
-    if (modal) return;
+    if (modal || typing) return;
     if (/^[1-5]$/.test(input)) { setScreen(Number(input) - 1); return; }
     if (key.tab) { setScreen((s) => (s + (key.shift ? SCREENS.length - 1 : 1)) % SCREENS.length); return; }
     if (input === ' ') { sb.playing = !sb.playing; bump(); say(sb.playing ? `Playing at ${speedName(sb.speed)}.` : `Paused at ${when(sb.now)}.`); return; }
@@ -176,7 +178,7 @@ export function App(props: AppProps) {
     if (input === 'q') { exit(); }
   });
 
-  const ctx: Ctx = { sb, cat, examples, Tyrell, width, height: bodyH, active: !modal, visible: true, version, bump, say, edit, confirm, scope };
+  const ctx: Ctx = { sb, cat, examples, Tyrell, width, height: bodyH, active: !modal, visible: true, version, bump, say, edit, confirm, scope, typing: setTyping };
   const full = modal?.kind === 'editor' || modal?.kind === 'form' || modal?.kind === 'help';
   const on = (i: number): Ctx => ({ ...ctx, active: !modal && screen === i, visible: !modal && screen === i });
 

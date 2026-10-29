@@ -555,11 +555,11 @@
   });
 
   // ---- Irulan: the town's own words for its story (actions, feelings and kinds have their `tell`; a list is variants) ----
-  const facts = {
-    raining: ['rain set in', 'the rain stopped'],
-    'closed:bar': ['the lights went out at the Belt', 'the power came back on at the Belt'],
-  };
-  w.irulan.words('fact', (e) => (facts[e.d.key] ? facts[e.d.key][e.d.value ? 0 : 1] : undefined));
+  // (the words inside the function, so it stands alone: Eros and other tools can copy it out)
+  w.irulan.words('fact', (e) => {
+    const facts = { raining: ['rain set in', 'the rain stopped'], 'closed:bar': ['the lights went out at the Belt', 'the power came back on at the Belt'] };
+    return facts[e.d.key] ? facts[e.d.key][e.d.value ? 0 : 1] : undefined;
+  });
 
   return w;
 });

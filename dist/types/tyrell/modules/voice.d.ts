@@ -10,6 +10,8 @@ export interface ApproachDef {
     lands?: LandRules;
     /** Added to every landing. Default 0. */
     base?: number;
+    /** How much the listener's familiarity with the speaker counts for this approach (times config.familiarLand). Default 1; 0 for none. */
+    familiar?: number;
 }
 /** Something that can be said back at a beat. */
 export interface AnswerDef {
@@ -20,7 +22,9 @@ export interface AnswerDef {
     approach?: Id;
     /** Offered only when these hold (ctx: the listener as person, the speaker as target). */
     if?: Cond[];
-    /** Offered but not yet choosable when `if` or `warmth` fails ("not yet"), instead of hidden. */
+    /** Something learned about them that it recalls: offered only once the speaker has learned it, and it lands better (config.recallLand). */
+    recalls?: string;
+    /** Offered but not yet choosable when `if`, `recalls` or `warmth` fails ("not yet"), instead of hidden. */
     soft?: boolean;
     /** Needs at least this much warmth in the talk. */
     warmth?: number;
@@ -67,6 +71,8 @@ export interface ThreadDef {
     theirs?: boolean;
     /** A key it's for learning: it's more wanted until the speaker has learned it. */
     reveals?: string;
+    /** Something learned about them that it recalls: it comes up only once the speaker has learned it, and its opener lands better (config.recallLand). */
+    recalls?: string;
     /** What the speaker says to open it: words or a line topic, or by approach. Default: the label. */
     open?: string | Record<Id, string>;
     /** The approach the opening takes. */
@@ -130,6 +136,16 @@ export interface VoiceConfig {
     /** familiarity(): this much for each talk, and for each thing learned about them. Defaults 0.5 and 1. */
     familiarTalk: number;
     familiarLearned: number;
+    /**
+     * Familiarity as trust: every approach lands this much better for each
+     * point of the listener's familiarity with the speaker (times the
+     * approach's own `familiar`), up to familiarLandMax. Defaults 0 (it
+     * doesn't count) and 1.
+     */
+    familiarLand: number;
+    familiarLandMax: number;
+    /** An answer or a subject that recalls something learned about them lands this much better. Default 1. */
+    recallLand: number;
     /** Minutes a subject takes to come round fresh again, for a thread with no `cooldown`. Default 3 days. */
     cooldown: number;
     /** Days a subject stays sore after `sore` with no number. Default 2. */
@@ -167,6 +183,19 @@ export interface TalkOption {
     label?: string;
     say?: string;
     approach?: Id;
+    /** What learned about them it recalls, if anything. */
+    recalls?: string;
+}
+/** Someone the speaker has talked with, as acquaintances() lists them. */
+export interface Acquaintance {
+    who: Id;
+    /** Talks they've had (counted at the end of each). */
+    talks: number;
+    /** When the last talk ended (null: the first is still going). */
+    last: number | null;
+    familiarity: number;
+    /** What the speaker has learned about them (a copy). */
+    learned: Record<string, Value>;
 }
 /** A talk as the game shows it. */
 export interface TalkView {
@@ -214,6 +243,13 @@ export declare class Voice implements Module {
     warmth: (ctx: Ctx) => number;
     /** How many beats they'll talk for (a definition), before `chatter`. Default config.patience. */
     patience: (ctx: Ctx) => number;
+    /**
+     * How something learned about them is put in words, where a line or an
+     * answer says {learned.<key>} or {learned.<key>:<form>} (a definition: set
+     * it on every start). ctx: the one talked to, the speaker as target.
+     * Default: a word or a number as it is, anything else nothing.
+     */
+    remembered: (ctx: Ctx, key: string, value: Value, form: string | null) => string;
     private w;
     /** The talk being worked on inside an input (effects add their notes to it). */
     private live;
@@ -249,6 +285,12 @@ export declare class Voice implements Module {
         lastThread: Id | null;
         seen: Record<Id, number>;
     };
+    /**
+     * Everyone the speaker has talked with: talks, when the last ended,
+     * familiarity and what's been learned, the latest first (one still talking
+     * for the first time first of all), then by id. A look: it changes nothing.
+     */
+    acquaintances(by?: Id): Acquaintance[];
     /** Promises made to someone (or everyone), newest last. */
     promises(who?: Id): Promised[];
     private ctx;
@@ -263,8 +305,17 @@ export declare class Voice implements Module {
     private runBeat;
     /** A subject is done: talked through (its effects run) or let lie. */
     private finishThread;
-    /** How an approach lands: added to the warmth, and remembered for the lines and answers that follow. */
+    /**
+     * How an approach lands (and something recalled, with or without one):
+     * added to the warmth, and remembered for the lines and answers that
+     * follow. Someone who knows the speaker takes it better (familiarLand),
+     * and something they've told you, remembered, better still (recallLand).
+     */
     private land;
+    /** Has the speaker learned this about them? */
+    private knows;
+    /** Words with what's been learned filled in: {learned.<key>} and {learned.<key>:<form>}, by `remembered` (an unlearned key is left as it is). */
+    private fill;
     /** Now and then they raise something of their own. Returns whether they did. */
     private theirTurn;
     private weightOf;

@@ -74,6 +74,14 @@ export interface WormtongueConfig {
     fearWeight: number;
     /** How much liking the actor keeps a witness quiet. Default 0.8. */
     loyalty: number;
+    /**
+     * How much knowing the actor keeps a witness quiet: the chance they report
+     * is cut by this much for each point of their familiarity with the actor
+     * (Voice's: talks had, things learned), up to familiarReportMax. Defaults
+     * 0 (it doesn't count) and 1.
+     */
+    familiarReport: number;
+    familiarReportMax: number;
     /** How clearly bystanders see a crime someone commits (a crime action's sighting strength). Default 0.8. */
     crimeSeen: number;
     /** Infamy a report adds, per point of severity, with the group it went to and with the witness's groups. Defaults 0.2 and 0.1. */

@@ -11,6 +11,7 @@ Beside [Cityspeak](cityspeak.md)'s single lines and barks, Voice is for talks th
 - [What comes up](#what-comes-up)
 - [The words](#the-words)
 - [What a talk leaves](#what-a-talk-leaves)
+- [Knowing someone](#knowing-someone)
 - [Promises](#promises)
 - [Driving it from the game](#driving-it-from-the-game)
 - [State](#state)
@@ -73,7 +74,7 @@ world.voice.approach({ id: 'advise', lands: [{ if: ['temper=proud'], by: -2 }, {
 world.voice.approach({ id: 'comfort', lands: (ctx) => (ctx.world.lang.value('mood', ctx) < 0.3 ? 2 : 0) });
 ```
 
-An approach **lands** with a number: its `base`, plus every `lands` rule whose conditions hold (or a function's answer), with the listener as the person and the speaker as the target. Above 0 it lands `'well'`, below `'badly'`, at 0 `'even'`: the talk keeps it (`landed`, for the answer's `to` and for lines' conditions) and adds the number to the talk's warmth. A landing of `config.strong` (2) or more either way runs `config.onWell` or `config.onBadly` (say, `regard+=0.015` and `regard-=0.02`), and they react, if they have a line for it: topic `react.<approach>.well`, else `react.well` (and `badly`). A thread's `approach` lands as it's opened.
+An approach **lands** with a number: its `base`, plus every `lands` rule whose conditions hold (or a function's answer), with the listener as the person and the speaker as the target (and, when the game turns it on, what they know of each other: [Knowing someone](#knowing-someone)). Above 0 it lands `'well'`, below `'badly'`, at 0 `'even'`: the talk keeps it (`landed`, for the answer's `to` and for lines' conditions) and adds the number to the talk's warmth. A landing of `config.strong` (2) or more either way runs `config.onWell` or `config.onBadly` (say, `regard+=0.015` and `regard-=0.02`), and they react, if they have a line for it: topic `react.<approach>.well`, else `react.well` (and `badly`). A thread's `approach` lands as it's opened.
 
 ## Warmth and patience
 
@@ -104,7 +105,7 @@ A subject under 0.05 (`salientFloor`) before the variety isn't offered. The vari
 
 A beat's `line`, the greeting (`config.greet`), their goodbye (`bye`), their closing (`close`) and reactions are line topics. With Cityspeak on and the speaker a person, the words are Cityspeak's most specific line on that topic (lines without the topic don't count), passing over lines said in this talk or said to this listener within `config.fresh` (seven days), unless there's nothing else. The view's line carries the line's `key` and `text`. With no line for a topic, the line carries only the `key` (the topic), for a game that looks its words up itself; a beat's `text` stands in when there's no line. Lines' conditions can read the talk: `warmth`, `landed`, `learned:<key>`, `talks`, `promise:<id>`...
 
-The speaker's words (answers, openers) are returned as they're written; when the speaker is a person with lines on a topic of that name, their line is chosen instead.
+The speaker's words (answers, openers) are returned as they're written; when the speaker is a person with lines on a topic of that name, their line is chosen instead. Any of the words can say what's been learned about them, `{learned.<key>}`, filled in as they're said ([Knowing someone](#knowing-someone)).
 
 Voice keeps its own record of the lines said in talks (for freshness); Cityspeak's `once` and `cooldown` still count only lines said with `cityspeak.say`, and they still rule lines out in talks.
 
@@ -118,6 +119,31 @@ Effects in beats, answers and threads run with the person talked to as the perso
 - `warmth+=n`: the talk warms (or cools).
 
 Each pair keeps a bond: how many talks (counted as each ends), when the last ended, when each subject was last talked of, sore subjects, what's been learned, lines said lately. `familiarity` is half a point a talk plus a point for each thing learned (`familiarTalk`, `familiarLearned`). With `config.deed` set (say, `'talked'`), the end of a talk is a deed the speaker did for them (a [deed](../integration.md#sensing-and-deeds): feelings, regard, a note in their file).
+
+## Knowing someone
+
+What the speaker learns and how familiar the two of them are can matter in a talk, as far as the game wants it to.
+
+**Familiarity as trust.** With `familiarLand` set, every approach lands better with someone who knows the speaker: `familiarity × familiarLand`, up to `familiarLandMax` (1), added to the landing. So warm words, a joke, a lie or a bribe go down better with someone who's talked with you and told you things. An approach's own `familiar` scales its share (1 by default; 0 for one that knowing you doesn't help, like a haggle with a hard bargainer). `familiarLand` is 0 by default: it changes nothing until a game sets it. [Wormtongue](wormtongue.md#witnessing) has its own: a witness who knows you is slower to report you (`familiarReport`).
+
+**Recalling what you've learned.** An answer, or a subject, can carry `recalls: '<key>'`: it's only offered once the speaker has learned that key about them (with `soft`, shown but not yet choosable), and it lands `recallLand` (1) better, on top of its approach, or on its own if it has none. The view's option carries `recalls` too, for a game that shows it. A subject's opener lands with it; their reaction to a strong one is `react.<approach>.well`, or `react.recall.well` with no approach.
+
+```js
+v.thread({ id: 'radio.again', label: 'How\'s the radio?', recalls: 'radio', approach: 'warm',
+  beats: { start: { text: 'Still {learned.radio}. Thanks for asking, though.', end: true } } });
+v.thread({ id: 'family', label: 'How are the kids?', recalls: 'home', beats: { start: { line: 'family.start', answers: [
+  { say: 'Say hello to {learned.home:kids} for me.', recalls: 'home', approach: 'warm' },
+  { say: 'Sounds loud.', approach: 'jest' },
+] } } });
+```
+
+**The words.** Anything Voice says or offers (answers' words and labels, subjects' labels and openers, beats' `text`, Cityspeak's lines in a talk) can say what's been learned: `{learned.<key>}`, or `{learned.<key>:<form>}` for a form the sentence asks for. They're filled by the definition `voice.remembered(ctx, key, value, form)` (the person talked to, the speaker as target), which by default gives a word or a number as it is and nothing for anything else; a key not learned is left as it is, for the game to see. Set it on every start, like `warmth`:
+
+```js
+v.remembered = (ctx, key, value, form) => (key === 'home' && form === 'kids' ? kidsOf(value).join(' and ') : String(value));
+```
+
+**Everyone you know.** `voice.acquaintances(by)` lists everyone the speaker has talked with, `{ who, talks, last, familiarity, learned }` each, the latest first (someone in a first talk still going first of all, with `last: null`), then by id: a notebook of people, a map's names on doors. It changes nothing.
 
 ## Promises
 
@@ -166,13 +192,15 @@ In `world.s.mod.voice`, made with the first talk:
 | `current(by = 'player')` | TalkView or null | The talk in progress |
 | `familiarity(who, by = 'player')` | number | Half a point a talk, a point for each thing learned |
 | `learned(who, by = 'player')` | object | What the speaker has learned about them |
+| `acquaintances(by = 'player')` | Acquaintance[] | Everyone the speaker has talked with: `{ who, talks, last, familiarity, learned }`, the latest first; a look |
 | `history(who, by = 'player')` | object | `{ talks, last, lastThread, seen }` |
 | `promises(who?)` | array | Promises (copies) |
 | `warmth`, `patience` | functions | `(ctx) => number`: a talk's starting warmth and patience (definitions) |
+| `remembered` | function | `(ctx, key, value, form) => string`: what's been learned in words, for `{learned.<key>:<form>}` (a definition) |
 | `applyStart`, `applyAnswer`, `applyEnd`, `applyLearn`, `applyPromise` | | **Engine** versions |
 | `approaches`, `threads`, `promiseDefs`, `config` | | Declarations and config |
 
-**TalkView**: `{ who, by, thread: { id, label, beat, theirs } | null, lines: TalkLine[], answers: Array<{ i, kind, id, ok, label?, say?, approach? }>, warmth, patience, landed, over, ended }`. `kind` is `'thread'`, `'answer'`, `'drop'` or `'bye'`. **TalkLine**: `{ who: 'them' | 'you' | 'aside' | 'note', key?, text?, learned?, value? }`.
+**TalkView**: `{ who, by, thread: { id, label, beat, theirs } | null, lines: TalkLine[], answers: Array<{ i, kind, id, ok, label?, say?, approach?, recalls? }>, warmth, patience, landed, over, ended }`. `kind` is `'thread'`, `'answer'`, `'drop'` or `'bye'`. **TalkLine**: `{ who: 'them' | 'you' | 'aside' | 'note', key?, text?, learned?, value? }`.
 
 ### ThreadDef
 
@@ -185,6 +213,7 @@ In `world.s.mod.voice`, made with the first talk:
 | `cooldown` | `config.cooldown` (3 days) | Minutes for it to come round fresh again |
 | `theirs` | false | They raise it themselves |
 | `reveals` | none | A key it's for learning: wanted more until learned |
+| `recalls` | none | A key it recalls: it comes up only once that's learned, and its opener lands `recallLand` better |
 | `open` | the label | The speaker's opener: words or a topic, or `{ approach: words }` |
 | `approach` | none | The opener's approach (it lands as the thread opens) |
 | `start` | `'start'` | The first beat |
@@ -210,7 +239,8 @@ In `world.s.mod.voice`, made with the first talk:
 | `label` | none | The choice's label, if not the words |
 | `approach` | none | How it comes at them |
 | `if` | none | Offered only when these hold |
-| `soft` | false | Shown but not choosable when `if` or `warmth` fails |
+| `recalls` | none | A key it recalls: offered only once that's learned, and it lands `recallLand` better |
+| `soft` | false | Shown but not choosable when `if`, `recalls` or `warmth` fails |
 | `warmth` | none | Needs at least this much warmth |
 | `then` | none | Effects when chosen |
 | `to` | `'end'` | A beat, `'end'`, `'thread:<id>'`, `'bye'`, or `[{ if?, landed?, warmth?, to }]` (the first that fits) |
@@ -223,6 +253,7 @@ In `world.s.mod.voice`, made with the first talk:
 | `label` | none | |
 | `lands` | none | `[{ if?, by }]` added up when their conditions hold, or `(ctx) => number` |
 | `base` | 0 | Added to every landing |
+| `familiar` | 1 | How much the listener's familiarity counts for it (times `familiarLand`); 0 for none |
 
 ### PromiseDef
 
@@ -237,7 +268,7 @@ In `world.s.mod.voice`, made with the first talk:
 
 ## Terms, effects, events and log
 
-Terms (the person, with the speaker as target): `talks` (talks they've had), `familiar`, `talking` / `talking:<by>`, `warmth`, `patience`, `landed`, `learned:<key>`, `sore:<thread>`, `talked:<thread>` (ever talked of), `talked` (minutes since their last talk ended, or `null`), `promise:<id>`. Effects: `learn:<key>=v`, `promise:<id>=days`, `sore:<thread>=days`, `warmth+=n`.
+Terms (the person, with the speaker as target): `talks` (talks they've had), `familiar` (their familiarity with the speaker), `talking` / `talking:<by>`, `warmth`, `patience`, `landed`, `learned:<key>`, `sore:<thread>`, `talked:<thread>` (ever talked of), `talked` (minutes since their last talk ended, or `null`), `promise:<id>`. Effects: `learn:<key>=v`, `promise:<id>=days`, `sore:<thread>=days`, `warmth+=n`.
 
 | Event | Payload |
 |---|---|
@@ -265,6 +296,8 @@ Log entries: `talk`, `talked`, `learned`, `promised`, `promise`.
 | `chatter` | 1 | Headline knob: how chatty they are (patience and `theirs`, times it). A person's own (`tune: { voice: { chatter } }`) multiplies it |
 | `warmthRegard`, `warmthMin`, `warmthMax` | 3, -1, 3 | The default warmth: regard times this, rounded, between these |
 | `familiarTalk`, `familiarLearned` | 0.5, 1 | `familiarity`: for each talk, for each thing learned |
+| `familiarLand`, `familiarLandMax` | 0, 1 | Familiarity as trust: every approach lands this much better a point of familiarity, up to the most (0: it doesn't count) |
+| `recallLand` | 1 | An answer or subject that `recalls` something learned lands this much better |
 | `cooldown` | 4320 (3 days) | A thread's `cooldown` when it gives none |
 | `soreDays`, `soreWeight` | 2, 0.1 | How long `sore` lasts with no number, and what a sore subject is worth |
 | `revealPull` | 1.5 | A subject for learning something not yet learned is worth this much more |
@@ -277,6 +310,7 @@ See [Tuning](../tuning.md#voice); during play, `world.tune('voice', { ... })`.
 
 - **Cityspeak** chooses the words (Voice works without it, with beats' own `text`, or keys the game looks up).
 - **Fellowship**: the default warmth reads regard; `regard` effects change it.
+- **Wormtongue** reads familiarity: with its `familiarReport` set, a witness who knows the speaker is slower to report them.
 - **Reverie**: `feel:` effects, `believe:` for something told; the `deed` notes a talk in their file on the speaker.
 - **Bicameral**'s wishes: a promise can be kept by `granted:<wish>`, an answer can `wish:` or `grant:`.
 - **Athelas**: lines and threads can read `under:cold`; an answer can `cure:`.

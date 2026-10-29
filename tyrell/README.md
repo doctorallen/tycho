@@ -44,7 +44,7 @@ world.tick(1 / 60);                        // every frame
 | **Joi** | Blade Runner 2049's companion | An optional language-model voice that never changes the world |
 | **Athelas** | The kingsfoil of the Houses of Healing | Conditions that run a course: phases that change needs and choices, contagion, immunity |
 | **Delos** | Westworld's Delos, which kept a copy of everyone | Genomes: genes with dominance, blended traits, talents and instincts, mutations, inherited through Cradle |
-| **Voice** | The Voice of Dune | Branching conversations: threads of beats, answers whose approaches land by the listener's nature, things learned, promises kept or broken |
+| **Voice** | The Voice of Dune | Branching conversations: threads of beats, answers whose approaches land by the listener's nature, things learned (and recalled, and familiarity as trust), promises kept or broken |
 | **Bree** | The village of the Prancing Pony | Interactions between people: chats, jokes, flirts, apologies, arguments and fights that come out by degrees, conversations over turns on topics in each one's manner, escalation, grudges, feuds, avoidance and making up |
 | **Morgul** | The Morgul-blade, whose wound won't heal | Harm between people: wounds that heal or fester, hurt, down and (only if the game says) dead, pain, fear, grudges and revenge, witnesses and crimes, traps, poison that works unnoticed, suspicion that can be wrong, fights by numbers |
 | **Palantír** (tool) | The seeing-stones | The inspector: every choice with its scores, "why not that?", a readable account |

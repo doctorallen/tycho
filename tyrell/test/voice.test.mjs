@@ -282,3 +282,143 @@ test('Rocinante: Ruth\'s radio comes up, a promise is made, and kept when the ra
   assert.equal(w.voice.promises('ruth')[0].state, 'kept');
   assert.ok(w.fellowship.regard('ruth', 'player') > before + 0.09);
 });
+
+// ---------------------------------------------------------------------------
+// Knowing someone: familiarity as trust, answers that recall what's been
+// learned, the words for it, and everyone the speaker knows
+// ---------------------------------------------------------------------------
+
+/** A talk with Ana that teaches the speaker her trouble, then ends: a talk had and a thing learned (familiarity 1.5). */
+function acquainted(opts = {}) {
+  const w = talky({ voice: { theirs: 0, ...(opts.voice || {}) }, ...opts });
+  w.person('ana', { home: 'home_a', traits: { temper: 0.9 } });
+  w.voice.start('ana');
+  choose(w, (a) => a.id === 'how');
+  choose(w, (a) => a.say === 'Why\'s that, then?');
+  w.voice.end();
+  w.advance(4 * DAY);
+  return w;
+}
+
+test('familiarity is trust: with familiarLand, what\'s said lands better with someone who knows you, up to a cap, by the approach', () => {
+  const landing = (voice) => {
+    const w = acquainted({ voice });
+    w.voice.approach({ id: 'flat' });
+    w.voice.approach({ id: 'cold', familiar: 0 });
+    w.voice.thread({ id: 'flat', label: 'Flat', approach: 'flat', weight: 9, beats: { start: { text: 'Mm.', end: true } } });
+    w.voice.thread({ id: 'cold', label: 'Cold', approach: 'cold', weight: 9, beats: { start: { text: 'Mm.', end: true } } });
+    w.voice.start('ana');
+    const before = w.voice.current().warmth;
+    const flat = choose(w, (a) => a.id === 'flat');
+    const mid = flat.warmth;
+    const cold = choose(w, (a) => a.id === 'cold');
+    return { familiar: w.voice.familiarity('ana'), flat: round4(mid - before), landed: flat.landed, cold: round4(cold.warmth - mid), coldLanded: cold.landed };
+  };
+  const off = landing({});
+  assert.equal(off.familiar, 1.5);
+  assert.deepEqual([off.flat, off.landed], [0, 'even'], 'by default familiarity changes nothing');
+  const on = landing({ familiarLand: 0.4 });
+  assert.deepEqual([on.flat, on.landed], [0.6, 'well'], 'a point and a half at 0.4 a point');
+  assert.deepEqual([on.cold, on.coldLanded], [0, 'even'], 'an approach with familiar: 0 takes none of it');
+  const capped = landing({ familiarLand: 2, familiarLandMax: 1 });
+  assert.equal(capped.flat, 1, 'no more than the cap');
+});
+const round4 = (x) => Math.round(x * 1e4) / 1e4;
+
+test('an answer that recalls something learned: offered only once it\'s known, landing better, its words filled in', () => {
+  const build = (learnFirst) => {
+    const w = talky({ voice: { theirs: 0 } });
+    w.voice.remembered = (ctx, key, value, form) => (form === 'loud' ? String(value).toUpperCase() : String(value));
+    w.voice.thread({ id: 'catch', label: 'Catch up', weight: 9, beats: { start: { text: 'So.', answers: [
+      { say: 'Still {learned.trouble}?', recalls: 'trouble', to: 'end' },
+      { say: 'Still {learned.trouble:loud}, then?', label: 'About {learned.trouble}', recalls: 'trouble', approach: 'ask', to: 'end' },
+      { say: 'Not yet.', recalls: 'trouble', soft: true, to: 'end' },
+      { say: 'Lovely day.', to: 'end' },
+    ] } } });
+    w.person('ana', { home: 'home_a', traits: { temper: 0.9 } });
+    if (learnFirst) {
+      w.voice.start('ana');
+      choose(w, (a) => a.id === 'how');
+      choose(w, (a) => a.say === 'Why\'s that, then?');
+      w.voice.end();
+    }
+    w.voice.start('ana');
+    return { w, v: choose(w, (a) => a.id === 'catch') };
+  };
+  const stranger = build(false);
+  assert.deepEqual(stranger.v.answers.filter((a) => a.kind === 'answer').map((a) => [a.say, a.ok]), [['Not yet.', false], ['Lovely day.', true]], 'nothing to recall yet: hidden, or not yet choosable when soft');
+  const { w, v } = build(true);
+  const recalls = v.answers.filter((a) => a.recalls === 'trouble');
+  assert.deepEqual(recalls.map((a) => a.say), ['Still this and that?', 'Still THIS AND THAT, then?', 'Not yet.']);
+  assert.equal(recalls[1].label, 'About this and that');
+  assert.ok(recalls.every((a) => a.ok));
+  const before = v.warmth;
+  const said = w.voice.answer(recalls[0].i);
+  assert.equal(said.lines[0].text, 'Still this and that?', 'the words as said');
+  assert.equal(said.landed, 'well', 'with no approach, the recall lands on its own');
+  assert.equal(said.warmth, before + 1, 'recallLand, 1 by default');
+  // with an approach, the recall is added to it
+  const w2 = build(true).w;
+  const v2 = w2.voice.current();
+  const asked = w2.voice.answer(v2.answers.find((a) => a.approach === 'ask').i);
+  assert.equal(asked.warmth, v2.warmth + 2, 'ask (base 1) and the recall');
+  assert.equal(asked.lines[0].text, 'Still THIS AND THAT, then?');
+});
+
+test('a subject that recalls something comes up only once it\'s learned, and its opener lands better; unlearned fills are left as they are', () => {
+  const w = talky({ voice: { theirs: 0 } });
+  w.voice.thread({ id: 'again', label: 'Is it still {learned.trouble}?', recalls: 'trouble', weight: 9, beats: { start: { text: 'It is, {learned.trouble}. And {learned.nothing}.', end: true } } });
+  w.person('ana', { home: 'home_a', traits: { temper: 0.9 } });
+  assert.ok(!w.voice.start('ana').answers.some((a) => a.id === 'again'));
+  choose(w, (a) => a.id === 'how');
+  choose(w, (a) => a.say === 'Why\'s that, then?');
+  w.voice.end();
+  const hub = w.voice.start('ana');
+  const again = hub.answers.find((a) => a.id === 'again');
+  assert.deepEqual([again.label, again.recalls], ['Is it still this and that?', 'trouble']);
+  const v = w.voice.answer(again.i);
+  assert.deepEqual(v.lines.map((l) => l.text), ['Is it still this and that?', 'It is, this and that. And {learned.nothing}.']);
+  assert.equal(v.warmth, hub.warmth + 1);
+});
+
+test('acquaintances: everyone the speaker has talked with, latest first, changing nothing', () => {
+  const w = talky({ voice: { theirs: 0 } });
+  w.person('ana', { home: 'home_a' });
+  w.person('bo', { home: 'home_b' });
+  w.person('cy', { home: 'home_b' });
+  assert.deepEqual(w.voice.acquaintances(), []);
+  w.voice.start('bo'); w.voice.end();
+  w.advance(HOUR);
+  w.voice.start('ana');
+  choose(w, (a) => a.id === 'how');
+  choose(w, (a) => a.say === 'Why\'s that, then?');
+  w.voice.end();
+  w.advance(HOUR);
+  w.voice.start('cy');
+  const h = w.hash();
+  const all = w.voice.acquaintances();
+  assert.equal(w.hash(), h, 'a look');
+  assert.deepEqual(all.map((a) => a.who), ['cy', 'ana', 'bo'], 'a first talk still going first, then the latest');
+  assert.deepEqual(all[0], { who: 'cy', talks: 0, last: null, familiarity: 0, learned: {} });
+  assert.deepEqual(all[1], { who: 'ana', talks: 1, last: w.now - HOUR, familiarity: 1.5, learned: { trouble: 'this and that' } });
+  assert.deepEqual(all[2], { who: 'bo', talks: 1, last: w.now - 2 * HOUR, familiarity: 0.5, learned: {} });
+  assert.deepEqual(w.voice.acquaintances('bo'), [], 'by speaker');
+  all[0].learned.trouble = 'changed';
+  assert.equal(w.voice.learned('ana').trouble, 'this and that', 'copies');
+});
+
+test('Rocinante: once you know about Ruth\'s radio, you can ask after it, and it lands better', () => {
+  const w = rocinante({ start: 9 * HOUR });
+  assert.ok(!w.voice.start('ruth').answers.some((a) => a.id === 'radio.again'), 'nothing to ask after yet');
+  const radio = w.voice.answer(w.voice.current().answers.find((a) => a.id === 'radio').i);
+  w.voice.answer(radio.answers.find((a) => a.say === 'Tomas fixes radios.').i);
+  w.voice.end();
+  w.advance(HOUR);
+  const hub = w.voice.start('ruth');
+  const again = hub.answers.find((a) => a.id === 'radio.again');
+  assert.equal(again.recalls, 'radio');
+  const v = w.voice.answer(again.i);
+  assert.equal(v.lines.find((l) => l.who === 'them').text, 'Still broken. Thanks for asking, though.');
+  assert.equal(v.landed, 'well');
+  assert.equal(w.voice.acquaintances()[0].who, 'ruth');
+});

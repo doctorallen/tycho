@@ -178,7 +178,7 @@ console.log(world.describe('mo'));
 
 **Bree's definitions**: kinds', topics' and manners' functions (`weight`, `turns`, `lands`, `knack`, `fits`, `fit`), `bree.witnesses(exchange, world) => ids` (who sees one go wrong) and `bree.together(exchange, world) => id | null` (who has left it): deterministic, from the world's state, set on every start. Exchanges need the two together, doing something at the same place: Bree never moves anyone. A game that works out who's near whom itself (its people each at a place of their own) gives `bree.together`, and strikes exchanges up with `bree.strike(a, b)` as it walks one up to another.
 
-**Voice's definitions** `voice.warmth(ctx)` and `voice.patience(ctx)`: deterministic numbers (a talk's starting warmth and its beats), set on every start like Cradle's `namer`. Approaches' `lands`, threads' `weight` and `label`, wishes' `about` and `progress` functions: deterministic, from `ctx`.
+**Voice's definitions** `voice.warmth(ctx)` and `voice.patience(ctx)`: deterministic numbers (a talk's starting warmth and its beats), and `voice.remembered(ctx, key, value, form)`, the words for what's been learned (`{learned.<key>:<form>}`), set on every start like Cradle's `namer`. What the speaker has learned and how familiar they are can count: `familiarLand` (trust in a talk), answers and threads that `recalls` a learned key, Wormtongue's `familiarReport`; `voice.acquaintances()` lists everyone the speaker knows. Approaches' `lands`, threads' `weight` and `label`, wishes' `about` and `progress` functions: deterministic, from `ctx`.
 
 ## Pitfalls
 

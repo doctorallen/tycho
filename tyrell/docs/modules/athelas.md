@@ -143,6 +143,7 @@ Phase changes are queue items addressed to the module, so they save and rewind.
 |---|---|---|
 | `id` | required | |
 | `label` | the id | A readable name |
+| `tell` | none | Its words in a story ([Irulan](../tools.md#irulan)), as they'd follow the person's name: when it comes on and when it's over, `{ on: 'caught a cold', over: 'shook off the cold' }`. Without them, `'came down with <label>'` and `'got over <label>'` |
 | `tags` | none | Free labels: `under:tag:<tag>` |
 | `phases` | required | The phases, in order |
 | `contagion` | none | `{ chance, resist? }`: the chance per hour together, and considerations on the catcher |

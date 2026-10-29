@@ -112,6 +112,17 @@ export type PlaceSpec = Id | `tag:${string}` | 'home' | 'work' | 'here' | `perso
 export interface ActionDef {
     id: Id;
     label?: string;
+    /**
+     * Its words in a story (Irulan), as they'd follow the person's name: what
+     * they did ('read', 'took a walk in {place}', 'chatted with {target}') and
+     * what they were doing when the story ends ('was reading'). {place} and
+     * {target} are named; without {place}, where comes after ('at home').
+     * Without it, the label is used.
+     */
+    tell?: {
+        did?: string;
+        doing?: string;
+    };
     /** How much each need drops when the action is done: a number or [min, max]. */
     relieves?: Record<Id, number | [number, number]>;
     /** A flat appeal added to the relief, for actions people do for their own sake. */
@@ -264,6 +275,8 @@ export interface PastimeDef {
 export interface WishDef {
     id: Id;
     label?: string;
+    /** Its words in a story (Irulan) when it's wished, as they'd follow the person's name: 'dreamed of becoming an expert baker'. Without it, 'wished for <label>'. */
+    tell?: string;
     /** Who may wish it, and when: conditions on the person. */
     if?: Cond[];
     /** How likely it is to be wished, against the others that fit: a number, considerations multiplied, or a function. Default 1. */

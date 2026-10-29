@@ -16,6 +16,7 @@ import { Entmoot } from './entmoot';
 import { Esper } from './esper';
 import { Westmarch } from './westmarch';
 import { Palantir } from '../tools/palantir';
+import { Irulan } from '../tools/irulan';
 import { Strangers } from './strangers';
 import { Skills } from './skills';
 import type { Reverie } from '../modules/reverie';
@@ -142,6 +143,7 @@ export class World {
   readonly esper: Esper;
   readonly westmarch: Westmarch;
   readonly palantir: Palantir;
+  readonly irulan: Irulan;
   readonly strangers: Strangers;
   /** Skills: levels that grow with practice. */
   readonly skills: Skills;
@@ -183,6 +185,7 @@ export class World {
     this.clock = new Entmoot(this);
     this.esper = new Esper(this, opts.esper);
     this.palantir = new Palantir(this);
+    this.irulan = new Irulan(this);
     this.strangers = new Strangers(this);
     this.skills = new Skills(this);
     this.registerCore();

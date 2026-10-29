@@ -67,6 +67,15 @@ export interface CourseSeverity {
 export interface CourseDef {
     id: Id;
     label?: string;
+    /**
+     * Its words in a story (Irulan), as they'd follow the person's name: when
+     * it comes on ('caught a cold') and when it's over ('shook off the cold').
+     * Without them, 'came down with <label>' and 'got over <label>'.
+     */
+    tell?: {
+        on?: string;
+        over?: string;
+    };
     /** Free labels ('illness'): `under:tag:<tag>` asks whether any course with the tag is running. */
     tags?: string[];
     /** The phases, in order. */

@@ -17,6 +17,7 @@ import { Voice } from './modules/voice';
 import { Bree, OUTCOMES, breeStarter } from './modules/bree';
 import { Morgul } from './modules/morgul';
 import { run, compare } from './tools/voightkampff';
+import { IRULAN_WEIGHTS } from './tools/irulan';
 import { curveAt } from './core/bicameral';
 import { DAY, HOUR, Stream, clamp, hash, hash01, hourOf, dayOf, inHours } from './core/util';
 /** The engine's version. */
@@ -39,7 +40,7 @@ export declare const VoightKampff: {
 };
 /** Every module's default settings, by name (what moduleConfig is merged over): see docs/tuning.md. */
 export declare const MODULE_DEFAULTS: Readonly<Record<ModuleName, Readonly<Record<string, unknown>>>>;
-export { World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA, Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, Morgul, OUTCOMES, breeStarter, curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR, };
+export { World, DEFAULT_CONFIG, CORE_KNOBS, MIGRATIONS, SCHEMA, Reverie, Fellowship, Wormtongue, Cityspeak, Mentat, Gaff, Ceres, Cradle, Joi, Athelas, Delos, Voice, Bree, Morgul, OUTCOMES, breeStarter, IRULAN_WEIGHTS, curveAt, Stream, clamp, hash, hash01, hourOf, dayOf, inHours, DAY, HOUR, };
 export type { SaveData, Module };
 export type * from './core/types';
 export type { FeelingDef, BreakDef, MemoryKindDef, Belief, Memory, PersonFile, Shift, ReverieConfig } from './modules/reverie';
@@ -61,3 +62,4 @@ export type { StrangerDef, StrangerErrand } from './core/strangers';
 export type { VKOptions, VKReport, VKStats, VKCheck, VKInteractions, VKHarm } from './tools/voightkampff';
 export type { Requirement } from './core/bicameral';
 export type { LogFilter } from './core/westmarch';
+export type { Beat, Part, Thread, TellOptions, WordsFn, WordsContext } from './tools/irulan';

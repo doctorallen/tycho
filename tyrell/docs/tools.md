@@ -1,9 +1,10 @@
 # Tools
 
-Palantír (the inspector), Westmarch (the log), Voight-Kampff (behavior tests) and Rocinante (the sample town).
+Palantír (the inspector), Westmarch (the log), Irulan (the narrator), Voight-Kampff (behavior tests) and Rocinante (the sample town).
 
 - [Palantír](#palantír)
 - [Westmarch](#westmarch)
+- [Irulan](#irulan)
 - [Voight-Kampff](#voight-kampff)
 - [Rocinante](#rocinante)
 
@@ -95,6 +96,81 @@ A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 The `log:<kind>` effect writes your own entries from inside the simulation. `world.log(kind, who, data)` writes one from the game: it's an input, so the entry is recorded and comes back after a rewind (inside the simulation it writes at once).
 
 The log is in every snapshot and every save, so its size is the biggest lever on Esper's memory (see [Time](time.md#esperconfig-and-memory)).
+
+## Irulan
+
+The narrator, named for the Princess Irulan of Dune, who wrote the histories of Muad'Dib. Westmarch keeps the log a line at a time; Irulan tells it as a story: for an inspector's "their day so far", a town journal, a recap after time away, the storylines running through the town, or reading a Voight-Kampff run.
+
+```js
+const kept = [];
+world.on('log', (e) => kept.push(e));   // (or tell from the log itself: a time instead of a list)
+world.advance(2 * 1440);
+
+world.irulan.beats(kept, { min: 0.3 });
+// [{ t: 548, who: ['sam'], with: ['dev'], place: 'market', score: 0.97, kinds: [...], entries: [...],
+//    text: "Sam went to The Market and pocketed some food, with Dev there.",
+//    parts: [{ text: 'Sam', person: 'sam' }, { text: ' went to ' }, { text: 'The Market', place: 'market' }, ...] }, ...]
+world.irulan.tell(kept, { min: 0.3 });     // ['Day 0, morning. Sam went to The Market and ...', ...]
+world.irulan.day('ruth', kept);            // 'Ruth went to Tomas\'s Workshop and had the radio fixed, with Tomas there. ...'
+world.irulan.recap(kept, { limit: 3 });    // the three beats that matter most, in order
+world.irulan.threads(kept);
+// { threads: [{ title: "Sam's nightshade", people: ['tomas', 'sam', ...], keys: ['harm:5', 'taint:x4'], beats: [
+//     "Sam slipped nightshade into the stew at Mara's Cafe.", "Tomas was poisoned and was hurt by what Sam put in the food.",
+//     "Tomas ... blamed Mara, who served it, ...", "Mara suspected Sam, who was about, ..."] }, ...],
+//   rest: [...the beats in no storyline] }
+```
+
+### Beats
+
+It folds the entries into beats:
+
+- **An action from start to finish**, with the walk there, the company kept, how a social act went and a feeling it brought: "Lena showered at home for half an hour, with Kofi there, and felt fresh." The same action taken up again straight after is more of it, so a shift worked an hour at a time is one beat ("Mara went to Mara's Cafe and baked bread for eight hours"). One still going when the entries end is told as it was ("was reading").
+- **A talk** (Bree) from its first word to its last, through what it turned into: "Dev argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row."
+- **Whatever happened to someone in the same minute**, as one sentence: what happened, then how they felt, then what they did. "Kofi gave up on dinner at home (no way to get food) and was frustrated."
+- **The same beat for several people at once**, told once: "Mara, Ruth and Kofi wished for some fresh air."
+
+A deed told by the action it came of isn't told again, nor a chat both sides started, nor a suspicion of the person someone blamed. Places are named as the person would say them: `home` for their own, "Mara's place" for someone else's home with no `name`.
+
+Every beat is scored for how much it matters, 0 to 1: the weight of its kinds (`IRULAN_WEIGHTS`: routine low, the day's turns in the middle, what a story is made of high; a feeling by how strongly it moves the mood; a job's work lower still, a crime done, a hostile talk or one that went badly higher), up to twice that for what's rare among the entries told, and `focus` for the people who matter more to the game. `min` leaves out what scores under it, a clause at a time, so what matters isn't told with the routine around it.
+
+### Parts
+
+Every beat's sentence also comes in `parts`: its words, and each person and place in them tagged with its id (`{ text: 'Sam', person: 'sam' }`, `{ text: 'home', place: 'apt_5' }`), so a game can make names links, color places or put a portrait by a name without searching the text. Joined, the parts' text is the sentence. A thread's title comes in parts too. The names `words` gets from its context (`name`, `place`) carry their tags into its words: put them in as they are. Words left to Westmarch's `describe` come untagged.
+
+### Threads
+
+`threads` finds the storylines running through the entries:
+
+- **A matter**: a crime (what was done, who saw it, who was told and who reported it), a trap (set, sprung, disarmed, warned of, gossiped about), a taint and whom it poisoned, a harm (and whom it was blamed on and who was suspected). A crime seen or told of without knowing who did it belongs to the latest crime of its kind before it.
+- **What passed between two people**, for what's about no matter: their talks, grudges, feuds, making up, deeds for each other, harm. A pair becomes a storyline only when something with consequences passed between them (not a chat that went fine, nor a kind word alone).
+
+Matters are one story only when a single log entry links them (a quarrel that came to blows, a trap and the cut it gave), never for happening in the same minute: someone telling gossip as they start a chat doesn't tie the chat to the gossip. A beat about two stories is in both. What a thread's people felt in its course (after something in it that mattered, that they were in) comes with it: the thief's guilty conscience, the victim's breakdown. Everything about a thread's matters is in it whatever it scores; a thread needs two beats and one scoring `min` (default 0.4). They come the one that matters most first, each `{ keys, title, parts, people, beats, t, end, score }` (`people` the most involved first), with `rest`, the beats in no thread scoring `min`.
+
+| Call | Returns |
+|---|---|
+| `beats(entries, opts?)` | The entries told as beats, oldest first: `{ t, end?, who, with, place?, kinds, score, text, parts, entries }`. `who` is the subject (several when told as one, none for what happened to nobody in particular); `with` the others in it. `entries` is a list (the game's own, kept from the `log` events, to reach back further than the log keeps) or a time to tell the log from |
+| `tell(entries, opts?)` | The beats as paragraphs, one for each part of each day, each starting with when: `'Day 0, morning. ...'` |
+| `day(id, since, opts?)` | Someone's day as one paragraph: the beats about them, `min` 0.3 unless given. `since` is a time or a list of entries |
+| `recap(entries, opts?)` | The headlines: the `limit` beats that matter most (default 5), in the order they happened |
+| `threads(entries, opts?)` | `{ threads, rest }`: the storylines, the one that matters most first, and the beats in none |
+| `when(t, opts?)` | A time as the paragraphs say it: `'Day 0, early morning'` |
+| `words(kind, fn)` | Gives a kind of entry the game's own words: `fn(entry, { name, place, world })` returns what follows the person's name (or the whole sentence, for an entry with no person), `null` to leave the entry out, or `undefined` for Irulan's own. A definition: declare it again on every start |
+
+| Option | Default | Meaning |
+|---|---|---|
+| `who` | everyone | Only what's about this person: beats that are theirs, have them in it, or name them; threads they're in |
+| `min` | 0 (`day`: 0.3, `threads`: 0.4) | Leave out what scores under this |
+| `weights` | `IRULAN_WEIGHTS` | Weights by kind of entry, over Irulan's own; 0 leaves a kind out (`{ told: 0 }`) |
+| `focus` | none | People who matter more to the game (the player, their friends): `{ ruth: 2 }` scores a beat with Ruth in it twice as high, up to 1 |
+| `limit` | 5 | `recap`: how many |
+| `periods` | night, early morning (5), morning (8), afternoon (12), evening (17), night (21) | The parts of the day `tell` and `when` go by: `[hour it starts, name]`, earliest first |
+| `day` | `'Day n'` | A day's name, for `tell` and `when` |
+
+### Words
+
+The words are the game's: an action's `tell` (`{ did: 'took a walk in {place}', doing: 'was walking in {place}' }`: see [actions](deciding.md#actions)), a feeling's (`'enjoyed a good meal'`: see [Reverie](modules/reverie.md)), a breakdown's (`'broke down and went on a bender'`), a wish's (`'dreamed of becoming an expert baker'`), an illness's (`{ on: 'caught a cold', over: 'shook off the cold' }`: see [Athelas](modules/athelas.md)), a kind of interaction's (`'argued with {with}'`: see [Bree](modules/bree.md)), and `words` for any kind of entry (Rocinante's rain: `'rain set in'`). The built-in feelings, Bree's starter kinds and Morgul's feelings have theirs. Without them, an action is told by its label (`'spent an hour juggling'`, `'had a kip'`), a feeling as `'felt <label>'`, an illness as `'came down with <label>'`, and the rest in Irulan's own words: gossip by what it's about ("told Ines about Sam's theft"), grudges by how deep they run and what they're over ("bore Dev a deep grudge over a fight"), harm by how it came ("was hurt in Pip's trap"), blame by why ("blamed Mara, who served it"); or, for what Irulan has no words of its own for, Westmarch's (`describe`). A person is told by their name; where Irulan's own words need a pronoun for them, they say "they" ("as they'd wished"). Like Palantír it's a look: it reads the state and changes nothing.
+
+Telling a rewound world: if the game keeps entries from the `log` events and the player goes back in time (Esper), entries past the point it went back to no longer happened. Drop those on the `seek` event, or tell from the log itself (`tell(since)`), which rewinds with the world.
 
 ## Voight-Kampff
 
@@ -188,6 +264,11 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `--log kind,kind` | Only those kinds of entry, or events by those names (`--log started,arrived`, `--log bree:turn`) |
 | `--who id` | With `--log`, only what's about one person: entries by them or naming them as `target`, `for` or `to`, and events with a field that names them |
 | `--chronicle id` | Print that person's chronicle at the end, a day at a time, from every entry written in the run (not only what the log still holds) |
+| `--story [min]` | Tell the run as a story at the end ([Irulan](#irulan)), from every entry written in the run, leaving out what scores under `min` (default 0.3; `--story 0` tells everything); with `--who`, only what's about them. A line for each beat with its time, `!` or `!!` by how much it matters, under a heading for each part of each day |
+| `--story-by how` | `time` (the default: the timeline), `person` (each person's own beats under their name), `thread` (the storylines, the one that matters most first, then the rest of the town as a timeline), or `day` (paragraphs) |
+| `--recap [n]` | Print the `n` headlines (default 5): the beats that matter most, in order |
+| `--focus id` | Count what's about this person twice over (`focus`); as many as you like |
+| `--no-color` | On a terminal, names are bold and places colored; this (or `NO_COLOR`) prints them plain |
 
 ```
 day 0 09:44  Ruth           got to The Market
@@ -197,9 +278,25 @@ day 0 09:50  Dev            saw theft by Sam · at The Market
 day 0 10:44  Dev            told Kofi about did:sam:theft · at The Market
 ```
 
-Only the run's own world is watched: the `deterministic` and `save-load` checks build more worlds with the same seed, and those would tell it all again. Nothing is printed past the run's last minute (the checks run the world on a little after it), and listening changes nothing in the world: the report and its hash are the same with or without `--log`.
+```
+$ node bin/voight-kampff.mjs examples/rocinante.js --days 2 --seed voight-kampff --with harm --story 0.5 --story-by thread
 
-It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted or harmed each other, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check, `npm run vk:harm` a week of it with harm (Morgul) and the `harm` check, and `npm run vk:log` one day of it printed in full (`--log all`).
+── Pip's snare ─────────────────────────────────────────────────────────  Pip, Mara, Tomas, Officer Vance and others
+day 0 12:20 !! Pip set a snare at The Old Barn, then went home and read for an hour.
+day 1 07:37 !! Tomas was caught in a snare at The Old Barn, was cut, was hurt in Pip's trap, was in
+               pain, was shaken and was furious.
+day 1 08:00    Pip told Tomas about a trap, then sulked at home for two hours, with Tomas there.
+...
+── Sam's nightshade ────────────────────────────────────────────────────  Sam, Tomas, Mara, Pip
+day 1 16:53 !! Sam slipped nightshade into the stew at Mara's Cafe, then went home and showered, and
+               felt fresh.
+day 1 20:56 !! Tomas was poisoned and was hurt by what Sam put in the food.
+...
+```
+
+Only the run's own world is watched: the `deterministic` and `save-load` checks build more worlds with the same seed, and those would tell it all again. The `esper` check goes back six hours and runs forward again; what that tells a second time is left out. Nothing is printed past the run's last minute (the checks run the world on a little after it), and listening changes nothing in the world: the report and its hash are the same with or without `--log`.
+
+It prints the decisions and time taken, whether it passed (and the failures), the ten most chosen actions, the mean mood by day, and, when people interacted or harmed each other, what passed between them. It exits with 0 when everything passes (and matches the baseline), 1 when something fails or differs, and 2 when no setup file is given. In Tyrell's own repository, `npm run vk` runs a week of Rocinante, `npm run vk:bree` a week of it with Bree's interactions and the `interactions` check, `npm run vk:harm` a week of it with harm (Morgul) and the `harm` check, `npm run vk:log` one day of it printed in full (`--log all`), and `npm run vk:story` one day of it, with Bree's interactions, told as a story (`--story`).
 
 ## Rocinante
 
@@ -213,7 +310,7 @@ The sample town that ships with Tyrell, named for the ship in The Expanse: `exam
 | **Actions** | Sleeping (slowing other needs), naps, showers, reading (it trains lore, and palls), eating out (bread from the cafe's stock) and in, shopping, stealing, drinking (it palls, and goes to their heads), walks and sitting in the park (they pall together), chatting (a social act), helping out (a deed), work for each job (baking makes the cafe's bread from its flour, more of it the better Mara bakes; baking and fixing train their skills), a breakdown's sulk and bender, and the radio repair |
 | **Tasks** | Dinner at home (from the cupboard, or shop first with `get:food`); fixing the radio (take it in if they think the workshop's open, buy another, or do without) |
 | **Growth** | Skills for baking, repair and lore, with Mara's and Tomas's starting levels and talents; Kofi's instincts (he'd rather be outdoors, or reading); wishes for a night at the Belt, some fresh air and a talk with a friend, and dreams of mastering a trade |
-| **Modules** | Feelings, breaks and memory kinds; deeds; a household, the Watch and the regulars; theft and stripping as crimes; goods, a pension, a grant and rent, and the cafe's bread chain (flour to bread); lines, two practices and a social act; storylets for rain and a blackout; strangers passing through the main street; genomes for everyone (eyes, hair, traits, talents, instincts); a few drinks that wear off into a sore head, and a cold Kofi brings home that goes round; the player's talks (how someone is, Ruth's radio and a promise to fix it); with `bree`, Bree's starter set of interactions, a natter that interacts, a fight the Watch hears of, a few lines for their words, the natures they read, and a grudge Sam bears Dev; with `harm` (and Bree), Morgul: a brawl at the Belt Gaff paces, a snare Pip sets in the barn, nightshade in the cafe's stew, wounds that heal or fester, first aid, flight and revenge |
+| **Modules** | Feelings, breaks and memory kinds; deeds; a household, the Watch and the regulars; theft and stripping as crimes; goods, a pension, a grant and rent, and the cafe's bread chain (flour to bread); its words for a story (every action, feeling, breakdown, dream and illness has its `tell`, and the rain and the blackout have words); lines, two practices and a social act; storylets for rain and a blackout; strangers passing through the main street; genomes for everyone (eyes, hair, traits, talents, instincts); a few drinks that wear off into a sore head, and a cold Kofi brings home that goes round; the player's talks (how someone is, Ruth's radio and a promise to fix it); with `bree`, Bree's starter set of interactions, a natter that interacts, a fight the Watch hears of, a few lines for their words, the natures they read, and a grudge Sam bears Dev; with `harm` (and Bree), Morgul: a brawl at the Belt Gaff paces, a snare Pip sets in the barn, nightshade in the cafe's stew, wounds that heal or fester, first aid, flight and revenge |
 
 Run it:
 

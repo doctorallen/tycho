@@ -470,7 +470,7 @@ export class Ceres implements Module {
         w.log('rent', id, { missed: r.amount });
         w.emit('rent-missed', { id, amount: r.amount });
         if (w.reverie) {
-          if (!w.reverie.feelingDefs.has('behind_on_rent')) w.reverie.feeling({ id: 'behind_on_rent', label: 'Behind on the rent', weight: -0.15, minutes: 7 * DAY, emotion: 'tense' });
+          if (!w.reverie.feelingDefs.has('behind_on_rent')) w.reverie.feeling({ id: 'behind_on_rent', label: 'Behind on the rent', tell: 'worried about the rent', weight: -0.15, minutes: 7 * DAY, emotion: 'tense' });
           w.reverie.applyFeel(id, 'behind_on_rent');
           if (r.to && w.s.people[r.to]) w.reverie.applyBelieve(r.to, `behind:${id}`, true, 'saw');
         }

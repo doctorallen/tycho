@@ -1,6 +1,6 @@
 # API reference
 
-The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api), [Bree](modules/bree.md#api), [Morgul](modules/morgul.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír and Westmarch](tools.md).
+The complete reference: what `Tyrell` exports, every option, every `World` property and method, every event, the main types, and how to write your own module. Module APIs are on their own pages: [Reverie](modules/reverie.md#api), [Fellowship](modules/fellowship.md#api), [Wormtongue](modules/wormtongue.md#api), [Cityspeak](modules/cityspeak.md#api), [Mentat](modules/mentat.md#api), [Gaff](modules/gaff.md#api), [Ceres](modules/ceres.md#api), [Cradle](modules/cradle.md#api), [Joi](modules/joi.md#api), [Athelas](modules/athelas.md#api), [Delos](modules/delos.md#api), [Voice](modules/voice.md#api), [Bree](modules/bree.md#api), [Morgul](modules/morgul.md#api). The core's parts: [Ring](places.md#the-ring-api), [Strangers](places.md#strangers), [Esper](time.md), [Palantír, Westmarch and Irulan](tools.md).
 
 Throughout, **input** marks a method that changes the world through `world.input`: it's recorded for time walk and safe to call from the game. **Engine** marks a method that changes state directly: call it only from inside the simulation (effects, storylets, module hooks, custom input handlers).
 
@@ -32,6 +32,7 @@ Throughout, **input** marks a method that changes the world through `world.input
 | `Reverie`, `Fellowship`, `Wormtongue`, `Cityspeak`, `Mentat`, `Gaff`, `Ceres`, `Cradle`, `Joi`, `Athelas`, `Delos`, `Voice`, `Bree`, `Morgul` | The module classes. `create` makes them; you only need these for types or to build a world by hand |
 | `OUTCOMES` | Bree's outcomes, best first: `['warm', 'good', 'fine', 'awkward', 'sour', 'row']` |
 | `breeStarter(opts?)` | Bree's starter set as plain definitions: `{ kinds, topics, manners }` (see [Bree](modules/bree.md#the-starter-set)) |
+| `IRULAN_WEIGHTS` | How much each kind of log entry matters to the narrator, 0..1 (see [Irulan](tools.md#irulan)) |
 | `curveAt(curve, x)` | Evaluates a response curve at `x` in 0..1 |
 | `Stream` | A seeded random stream: `new Stream(...parts)`; `next()`, `range(lo, hi)`, `int(n)`, `chance(p)`, `pick(items)`, `weighted(items, weightFn)`, `shuffle(items)` |
 | `clamp(x, lo = 0, hi = 1)` | Clamps a number |
@@ -130,6 +131,7 @@ The decision settings, habits, pastimes and wishes:
 | `esper` | Esper | Time walk: `on`, `config`, `earliest()`, `latest()`, `span()`, `size()`, `mark(name)`, `seekMark(name)`, `export()`, `import(h)` |
 | `westmarch` | Westmarch | The log: `find(filter)`, `since(t, k?)`, `chronicle(id, since)` |
 | `palantir` | Palantir | The inspector: `why`, `whyNot`, `describe`, `history(id)`, `inspect(id)`, `parts(c)`, `enabled` |
+| `irulan` | Irulan | The narrator: `beats(entries, opts?)`, `tell(entries, opts?)`, `day(id, since, opts?)`, `recap(entries, opts?)`, `threads(entries, opts?)`, `when(t)`, `words(kind, fn)` |
 | `strangers` | Strangers | `define`, `at`, `find`, `promote` (input), `promoted` |
 | `skills` | Skills | Skills: `defs`, `def(id)`, `level(p, skill, t?)`, `talent(p, skill)`, `of(p)` (every skill and its level), `named(p, skill)` (the named level reached); engine: `applyTrain(p, skill, hours, mul?)`, `applySet(p, skill, level)` |
 | `modules` | Map | Modules by name |

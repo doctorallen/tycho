@@ -11,7 +11,7 @@ import { callName, type Call } from '../recorder';
 import { LAYOUTS, when, type Line, type Sandbox, type StorySettings } from '../sandbox';
 import type { TyrellLib } from '../tyrell';
 import { apiRows, erosPage, kindPage, modulePage, settingRows, signature } from './pages';
-import { codeRows, partsSegs, wrap, wrapText, type Row } from './text';
+import { codeRows, dedent, partsSegs, wrap, wrapText, type Row } from './text';
 import { Hints, List, Panel, Rows, scrollNote } from './widgets';
 
 /** What every screen gets. */
@@ -153,7 +153,8 @@ export function StoryScreen({ ctx, settings, setSettings }: { ctx: Ctx; settings
 // Components
 // ---------------------------------------------------------------------------
 
-const plural = (s: string) => (s === 'Person' ? 'People' : /(s|sh|ch|x|z)$/.test(s) ? s + 'es' : /[^aeiou]y$/.test(s) ? s.slice(0, -1) + 'ies' : s + 's');
+// (a name already plural, like Cityspeak's Lines, stays as it is)
+const plural = (s: string) => (s === 'Person' ? 'People' : /(ss|sh|ch|x|z)$/.test(s) ? s + 'es' : /s$/.test(s) ? s : /[^aeiou]y$/.test(s) ? s.slice(0, -1) + 'ies' : s + 's');
 
 /** A call, briefly: its id or key and label, read from its code. */
 function summary(call: Call, scope: Scope, cache: Map<string, string>): string {
@@ -207,7 +208,7 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
     const k = group.kind;
     const rows: Row[] = [[{ text: k.name, bold: true, color: 'cyan' }, { text: `  ${k.module}${k.input ? ' · setup input' : ''}`, dim: true }], [{ text: signature(k), color: 'yellow' }]];
     if (k.doc) rows.push(...wrapText(k.doc.replace(/`/g, ''), dw - 4, 0, { dim: true }));
-    if (call) rows.push([], [{ text: `${callName(call)} #${call.id}`, bold: true }], ...codeRows(`${callName(call)}(${call.code});`, dw - 4));
+    if (call) rows.push([], [{ text: `${callName(call)} #${call.id}`, bold: true }], ...codeRows(`${callName(call)}(${dedent(call.code)});`, dw - 4));
     const errs = sb.errors.filter((x) => x.id === call?.id);
     for (const er of errs) rows.push([], [{ text: '! ' + er.message, color: 'red' }]);
     return rows;
@@ -248,7 +249,7 @@ export function ComponentsScreen({ ctx }: { ctx: Ctx }) {
           <Rows rows={detailRows} height={bodyH - 3} offset={detail} width={dw - 4} />
         </Panel>
       </Box>
-      <Hints width={width} hints={[['←→', 'kinds / things'], ['↑↓', 'pick'], ['enter', 'edit'], ['x', 'as code'], ['a', 'add'], ['D', 'duplicate'], ['d', 'remove'], ['PgUp/Dn', 'scroll code'], ['3', 'catalog: add a new kind']]} />
+      <Hints width={width} hints={[['←→', 'kinds / things'], ['↑↓', 'pick'], ['enter', 'edit'], ['x', 'as code'], ['a', 'add'], ['D', 'duplicate'], ['d', 'remove'], ['PgUp/Dn', 'scroll code'], ['3', 'new kinds']]} />
     </Box>
   );
 }

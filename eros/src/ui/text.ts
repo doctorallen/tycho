@@ -75,15 +75,24 @@ export function codeSegs(line: string): Seg[] {
   return out;
 }
 
+/** A call's code without the indent it's kept with for an exported file (its lines after the first). */
+export function dedent(code: string): string {
+  const lines = code.split('\n');
+  const rest = lines.slice(1).filter((l) => l.trim());
+  const n = rest.length ? Math.min(...rest.map((l) => /^ */.exec(l)![0].length)) : 0;
+  return [lines[0], ...lines.slice(1).map((l) => l.slice(Math.min(n, /^ */.exec(l)![0].length)))].join('\n');
+}
+
 /** Code wrapped and colored, a row per line (long lines wrap under themselves). */
 export function codeRows(code: string, width: number): Row[] {
   // (wrapped as plain text first, so a break never falls inside a token, then colored a row at a time)
+  // (a line's own indent is kept, and what wraps goes two further in)
   return code.split('\n').flatMap((l) => {
-    const lead = Math.min((/^\s*/.exec(l)?.[0].length ?? 0) + 2, Math.floor(width / 2));
-    return wrap([{ text: l }], width, lead).map((r) => {
+    const indent = (/^\s*/.exec(l)?.[0] ?? '').slice(0, Math.floor(width / 2));
+    return wrap([{ text: l.trimStart() }], width - indent.length, 2).map((r) => {
       const text = r.map((x) => x.text).join('');
-      const pad = /^\s*/.exec(text)?.[0] ?? '';
-      return [{ text: pad }, ...codeSegs(text.slice(pad.length))];
+      const lead = /^\s*/.exec(text)?.[0] ?? '';
+      return [{ text: indent + lead }, ...codeSegs(text.slice(lead.length))];
     });
   });
 }

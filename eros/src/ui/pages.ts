@@ -4,7 +4,7 @@
 // settings with their defaults, a part's API, and Eros itself.
 import type { Api, Catalog, Kind, Module } from '../catalog';
 import { toCode } from '../code';
-import { codeRows, wrap, wrapText, type Row, type Seg } from './text';
+import { codeRows, dedent, wrap, wrapText, type Row, type Seg } from './text';
 
 const plain = (s: string) => s.replace(/`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
 const title = (text: string, sub = ''): Row[] => [[{ text, bold: true, color: 'cyan' }, ...(sub ? [{ text: '  ' + sub, dim: true }] : [])], []];
@@ -34,7 +34,7 @@ export function kindPage(k: Kind, width: number, example?: { code: string; from:
   }
   if (example) {
     rows.push(...head('Example'), [{ text: example.from, dim: true }]);
-    rows.push(...codeRows(`${k.target === 'world' ? 'w' : `w.${k.target}`}.${k.method}(${example.code});`, width));
+    rows.push(...codeRows(`${k.target === 'world' ? 'w' : `w.${k.target}`}.${k.method}(${dedent(example.code)});`, width));
   }
   return rows;
 }

@@ -379,6 +379,8 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `revealPull` | 1.5 | A subject for learning something not yet learned is worth this much more |
 | `salientFloor` | 0.05 | Subjects worth less than this aren't offered |
 | `variety` | 0.2 | Up to this much is added to each subject's worth, the same for a pair all day |
+| `reshuffle` | false | The variety is drawn afresh each time the subjects are offered, not once a day |
+| `followPull` | 1 | A subject sharing a topic (`about`) with the one just talked of is worth this much more. 1: it doesn't count |
 | `promiseDays` | 3 | Days before a promise comes due, for one with no `days` |
 | `promiseKeep` | 30 | Days a settled promise is remembered (the `promise:` term reads it) |
 

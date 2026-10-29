@@ -1,6 +1,6 @@
 # Harm
 
-**Partly built.** The design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. The moment of a hit is built ([`Tycho.harm`](#tycho-the-moment), with Lodestar's fighting on it), and so is what follows ([Morgul](../tyrell/docs/modules/morgul.md) and the [larger Athelas](#athelas-grown)), and the bridge between them ([on screen and off](#on-screen-and-off)); Merryfolk's harm comes next ([the order](#the-order-to-build-it)). Its questions are settled ([what's decided](#whats-decided)).
+**Built, with Merryfolk's under way.** The design for people and creatures hurting each other in games on Tycho: fights, weapons, spells, traps, poison, falls, fire, and accidents nobody meant. The moment of a hit is built ([`Tycho.harm`](#tycho-the-moment), with Lodestar's fighting on it), and so is what follows ([Morgul](../tyrell/docs/modules/morgul.md) and the [larger Athelas](#athelas-grown)), the bridge between them ([on screen and off](#on-screen-and-off)), and Merryfolk's harm is being built on all of it ([each game](#each-game)). Its questions are settled ([what's decided](#whats-decided)).
 
 The ideas come from Lodestar's own fighting (a hit that passes through resistances, armor, wards and statuses that react together, and hazards shown before they bite), RimWorld (wounds that need tending, infections, social fights that turn into brawls), Dwarf Fortress (grudges and vengeance that outlive the fight), Thief and Dishonored (traps and poison as the patient way to hurt someone, and accidents arranged to look like nothing), and Crusader Kings (murder by scheme, suspicion that falls on whoever had reason).
 
@@ -384,10 +384,10 @@ Lodestar's creatures stay frame brains in the game, not Tyrell minds; only peopl
 ## Each game
 
 - **Lodestar**: `Tycho.harm` only. Its fighting moves in as it is: natures, armor, wards, affixes, statuses and reactions, the foes' moves, its spells as means cast from the rig, its hazards as triggers, the freeze and the knockback. The Kindler's light stays its own pool and health, and its creatures die as they do now. Nothing changes in play.
-- **Merryfolk**: three things, and nobody dies of any of them.
-  - **Scuffles**: a quarrel that turns physical (Bree's argument escalating to a fight) leaves a bruise or a bloody nose, settled by numbers and shown as a tussle.
-  - **Mischief and pranks**: a tripwire across a path, a snare by the hedge, a bad mushroom slipped into a stew: traps and taints that sting, embarrass and start grudges, set by folk with a grudge or a wicked streak.
-  - **Its body on Athelas**: its ale, germs and toxins, now its own body chemistry, move onto Athelas courses, held to its season's numbers before and after (`test/season.js`), as the minds' move was.
+- **Merryfolk**: three things, and nobody dies of any of them. All three are on its `harm` branch, not yet finished or merged (its `test/HANDOFF-harm.md` has where they stand and the numbers so far).
+  - **Its body on Athelas**: its ale, colds, the flu, toadstools and sprains are Athelas courses, each phase a band its old chemistry went through (the ale's and a toadstool's by a phase's `if`, starting at the band the level says), and the game reads the old levels as views of where each course has got to; held to its season's and year's numbers (`test/season.js`).
+  - **Scuffles**: a squabble that lands sour enough may turn physical (Bree's kind `escalation`), a fight by numbers with `lethality` 0 that leaves a bruise or a bloody nose for a day or two; shown as a tussle in step with its turns (`Tycho.minds.scuffles`), seen and gossiped, sometimes stepped in on, and the hurt tended by someone who likes them. A squabble almost always stays words (about one in nine comes to blows).
+  - **Mischief and pranks**: someone with a grudge or a wicked streak sets a tripwire or a snare where the one they mean it for walks, or slips a bad mushroom into a pot (Morgul's traps and taints): a stumble and a sore ankle for a few hours, or a queasy afternoon. The trap is the game's trigger while it's near the player (`Tycho.minds.traps`); whoever finds themselves tripped suspects someone, from who was about when it was set (a trap's `about`), rightly about half the time.
 - **The White Dragon**: nothing for now. Its design keeps no fighting and no health.
 
 ## What's decided
@@ -409,4 +409,4 @@ Settled on 2026-10-28:
 3. **Built: Morgul**: harm, wounds, down and dead, the victim, the onlookers and the law, traps, poison, suspicion, fights by numbers, the knobs; in Rocinante a brawl at the bar, a snare in the barn and a poisoned stew, and a Voight-Kampff check that nobody dies with `lethality` 0, grudges follow harm, and the poisoner is suspected some of the time and not always.
 4. **Built: the bridge**: `Tycho.minds.means` and `harm`, the scuffle shown in step with its turns (`scuffles`), fights with the player played in frames (`fighters`), and traps handed between near and far (`traps`), held by `test/minds-harm.test.mjs` against Tyrell and Tycho.harm together.
 5. **Built: Lodestar** onto `Tycho.harm` (in step 1, as its proof), held to a test of 32 fights recorded before the move, frame for frame.
-6. **Then Merryfolk**: its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks.
+6. **Under way: Merryfolk** (its `harm` branch): its ale, germs and toxins onto Athelas first, held to its season's numbers; then scuffles from its quarrels; then mischief and pranks. What it needed of the engine is built (here, on `mf-harm`): a phase's `if`, a Bree kind's `escalation`, and a trap's `about`.

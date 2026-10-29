@@ -75,7 +75,7 @@ A `LogEntry` is `{ t, k, who?, d? }`. Kinds written by the engine and modules:
 | `directed`, `released` | `{ do, label? }` | A directive is given or cleared |
 | `set-out` | `{ to, for }` | Someone sets out |
 | `arrived` | `{ place }` | Someone arrives |
-| `started` | `{ action, place, layer, target? }` | An action starts |
+| `started` | `{ action, place, layer, target?, with? }` | An action starts; for someone joining an action done `together`, layer `'together'` and `with` naming who they joined |
 | `finished`, `stopped` | `{ action, place, frac }` | An action ends, or is cut short |
 | `interrupted` | `{ action, why }` | Something is interrupted |
 | `failed` | `{ why }` | Something fails |

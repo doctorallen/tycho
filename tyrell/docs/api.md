@@ -397,7 +397,7 @@ interface Doing {
   start: number; end: number;
   from?: string | null; to?: string | null;   // travel only
   rank: number;
-  layer: string;              // 'story', 'job', 'routine', 'need', 'plan', 'break', 'follow', 'idle'
+  layer: string;              // 'story', 'job', 'routine', 'need', 'plan', 'break', 'follow', 'together', 'idle'
   task?: string;              // the plan's task
   seq: number;                // the event that ends it
   until?: number;             // when the routine entry, shift or directive that chose it ends

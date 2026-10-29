@@ -47,12 +47,13 @@ Public input methods (safe from game code): `world.person`, `fact(key, value)`, 
 10. **Wire bodies**: `world.focus([level])` on start and on every level change (or `shell.near`); listeners for `embody`, `step`, `disembody`; position walkers from `travel.start`/`travel.end` and `world.now`; refresh a body from `world.body(id)` when `world.now >= body.end`.
 11. **Wire reports from the game**: `world.sense({ kind, actor: 'player', what, place, seenBy })` with `seenBy` from the game's geometry; `world.did('player', verb, { for: id, what })`; `world.report(id, 'failed', why)` when a body truly can't proceed (the action is then ruled out at that place for `config.backoff` minutes; if the obstacle lasts, change something, such as a `closed:<id>` fact, so it isn't tried again later).
 12. **Wire talk**: `world.cityspeak.choose` / `say`, the `bark` event; for the player's conversations, `world.voice.start(id)`, then show `view.lines` and `view.answers` and call `voice.answer(i)` with the choice (each returns the next view); for what passes between people (Bree), show each `bree:turn` as it comes (`turn.text`, or the game's words for `turn.line`); Joi only if asked for.
-13. **Save** with `world.save()` inside the game's save; restore with `world.load`. Keep game state that must rewind with `world.keep`.
-14. **Test**: run `Tyrell.VoightKampff.run({ build: (seed) => buildWorld(seed), days: 7 })` and require `passed` (in CI too).
+13. **Optionally, tell what happened** with Irulan ([tools.md](tools.md#irulan)): `world.irulan.day`, `threads`, `recap`, `feed`, `recount`. Give actions, feelings and wishes a `tell`, show beats from their `parts`, and keep entries from the `log` events (or set `config.storySize`).
+14. **Save** with `world.save()` inside the game's save; restore with `world.load`. Keep game state that must rewind with `world.keep`.
+15. **Test**: run `Tyrell.VoightKampff.run({ build: (seed) => buildWorld(seed), days: 7 })` and require `passed` (in CI too).
 
 ## Skeleton
 
-A complete, runnable sketch of steps 1 to 13, with stand-ins for the game's side. It runs as is in Node.
+A complete, runnable sketch of steps 1 to 12 and 14, with stand-ins for the game's side. It runs as is in Node.
 
 ```js
 const Tyrell = require('./vendor/tycho/dist/tyrell.cjs');   // the browser: the global Tyrell
@@ -214,6 +215,8 @@ console.log(world.describe('mo'));
 | Bree on, kinds declared, a conversation kind (with `topics`) that ends at once | No topic fits it: it takes its leave | Declare topics it fits (or the starter set's), or kinds without `topics` |
 | Expecting exchanges between people walking past each other | Exchanges are struck up only at meetings (both doing something at a place), and end when one walks on | Start a one-turn kind with `bree.start` as they pass (the game vouches for its first turn), or keep greetings as barks |
 | Expecting `voice.answer(i)` to work after the talk changed | The answers are those of the beat on show | Read `voice.current()` (or the view the last call returned) for the indices |
+| The game keeps log entries for Irulan and the player rewinds | The journal tells what no longer happened | On the `seek` event, drop entries past `to`; or tell from `config.storySize`'s story, which rewinds with the world |
+| Showing a beat's `text` and finding names in it | Names in place names (Mara's Cafe) get linked; renamed people break it | Show its `parts`: people and places come tagged with their ids |
 
 ## Verify
 

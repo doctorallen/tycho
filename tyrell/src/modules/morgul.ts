@@ -398,7 +398,11 @@ interface HarmRec {
 interface WoundRec { w: Id; by: Id[]; h: number }
 
 /** A trap set at a place. */
-interface TrapRec { id: string; kind: Id; place: Id; by: Id | null; t: number; uses: number; for?: Id; known: Id[] }
+interface TrapRec {
+  id: string; kind: Id; place: Id; by: Id | null; t: number; uses: number; for?: Id; known: Id[];
+  /** Who was about when it was set (whoever set it too), when the game says: for suspicion once it springs. */
+  about?: Id[];
+}
 
 /** Tainted servings: in a place's stock (or its pot, with no item), or in someone's goods (a person's, or a household's pantry). */
 interface TaintRec {
@@ -497,9 +501,9 @@ export class Morgul implements Module {
     // tending: Athelas's mark, and someone down helped up (over Athelas's own effect)
     L.effect('tend', (c, a) => { if (c.person) this.applyTend(c.target ?? c.person.id, c.person.id, a || undefined); });
     w.defineInput('morgul.harm', (h: Harm) => this.applyHarm(h));
-    w.defineInput('morgul.spring', (trap: string, id: Id, seenBy: Id[] | null) => this.applySpring(trap, id, seenBy ?? undefined));
+    w.defineInput('morgul.spring', (trap: string, id: Id, seenBy: Id[] | null, about?: Id[] | null) => this.applySpring(trap, id, seenBy ?? undefined, about ?? undefined));
     w.defineInput('morgul.disarm', (trap: string, by: Id | null) => this.applyDisarm(trap, by ?? undefined));
-    w.defineInput('morgul.set', (kind: Id, o: { by?: Id | null; place: Id; for?: Id | null; seenBy?: Id[] | null }) => this.applySet(kind, { by: o.by ?? null, place: o.place, for: o.for ?? undefined, seenBy: o.seenBy ?? undefined }));
+    w.defineInput('morgul.set', (kind: Id, o: { by?: Id | null; place: Id; for?: Id | null; seenBy?: Id[] | null; about?: Id[] | null }) => this.applySet(kind, { by: o.by ?? null, place: o.place, for: o.for ?? undefined, seenBy: o.seenBy ?? undefined, about: o.about ?? undefined }));
     w.defineInput('morgul.taint', (def: TaintDef) => this.applyTaint(def));
     w.defineInput('morgul.tend', (id: Id, by: Id | null) => this.applyTend(id, by ?? undefined));
     w.defineInput('morgul.near', (regions: string[]) => this.applyNear(regions));
@@ -1056,13 +1060,20 @@ export class Morgul implements Module {
     return { id: kind, ...(t || {}), kind: t?.kind ?? m?.kinds?.[0] ?? 'trap', severity: t?.severity ?? m?.severity ?? 0.2 };
   }
 
-  /** Sets a trap (from the game: recorded): a kind, at a place, by someone (or nobody), for someone, seen by whoever (default everyone there). Returns its id. */
-  set(kind: Id, o: { by?: Id | null; place: Id; for?: Id; seenBy?: Id[] }): string | null {
-    return (this.w.input('morgul.set', [kind, { by: o.by ?? null, place: o.place, for: o.for ?? null, seenBy: o.seenBy ?? null }]) as string | null | undefined) ?? null;
+  /**
+   * Sets a trap (from the game: recorded): a kind, at a place, by someone (or
+   * nobody), for someone, seen by whoever (default everyone there), and, if
+   * the game says, who was about (by its sight: evidence once it springs).
+   * Returns its id.
+   */
+  set(kind: Id, o: { by?: Id | null; place: Id; for?: Id; seenBy?: Id[]; about?: Id[] }): string | null {
+    const s: Record<string, unknown> = { by: o.by ?? null, place: o.place, for: o.for ?? null, seenBy: o.seenBy ?? null };
+    if (o.about) s.about = o.about;
+    return (this.w.input('morgul.set', [kind, s]) as string | null | undefined) ?? null;
   }
 
   /** Sets a trap inside the simulation. */
-  applySet(kind: Id, o: { by: Id | null; place: Id | null; for?: Id; seenBy?: Id[] }): string | null {
+  applySet(kind: Id, o: { by: Id | null; place: Id | null; for?: Id; seenBy?: Id[]; about?: Id[] }): string | null {
     const w = this.w;
     const def = this.trapDef(kind);
     if (!def || !o.place || !w.ring.get(o.place)) return null;
@@ -1072,6 +1083,8 @@ export class Morgul implements Module {
     const rec: TrapRec = { id, kind, place: o.place, by: o.by, t: w.s.now, uses: Math.max(1, Math.round(def.uses ?? 1)), known: [] };
     if (o.for && o.for !== o.by) rec.for = o.for;
     if (o.by && w.s.people[o.by]) rec.known.push(o.by);
+    // who was about, as the game saw it (whoever set it among them), as a taint keeps it
+    if (o.about) { const about = o.about.filter((x) => w.s.people[x]); if (o.by && w.s.people[o.by] && !about.includes(o.by)) about.push(o.by); if (about.length) rec.about = [...new Set(about)].sort(); }
     st.traps[id] = rec;
     // whoever saw it set knows it's there, and who set it
     for (const x of seen) this.learnTrap(x, rec, 'saw', 1);
@@ -1104,11 +1117,16 @@ export class Morgul implements Module {
       .map((t) => ({ id: t.id, kind: t.kind, place: t.place, by: t.by, ...(t.for ? { for: t.for } : {}), uses: t.uses, t: t.t, known: t.known.slice() }));
   }
 
-  /** A trap caught someone on screen, or the player (from the game: recorded). */
-  spring(trap: string, id: Id, seenBy?: Id[]): void { this.w.input('morgul.spring', [trap, id, seenBy ?? null]); }
+  /**
+   * A trap caught someone on screen, or the player (from the game: recorded),
+   * seen by whoever (default everyone there), with whoever else was about if
+   * the game says (its sight: evidence for suspicion, with whoever was about
+   * when it was set).
+   */
+  spring(trap: string, id: Id, seenBy?: Id[], about?: Id[]): void { this.w.input('morgul.spring', about ? [trap, id, seenBy ?? null, about] : [trap, id, seenBy ?? null]); }
 
   /** A trap catches someone (or the player), inside the simulation: the harm, and it's spent a use. */
-  applySpring(trap: string, id: Id, seenBy?: Id[]): HarmView | null {
+  applySpring(trap: string, id: Id, seenBy?: Id[], about?: Id[]): HarmView | null {
     const w = this.w, st = this.st;
     const rec = st?.traps[trap];
     const p = w.s.people[id];
@@ -1121,7 +1139,9 @@ export class Morgul implements Module {
     if (rec.uses > 0) for (const x of seen) this.learnTrap(x, rec, 'saw', 1);
     else if (w.reverie) for (const x of [...rec.known, ...seen]) w.reverie.applyBelieve(x, `trap:${rec.id}`, false, 'saw');
     w.log('sprung', id, { trap, kind: rec.kind, place: rec.place });
-    const view = this.applyHarm({ to: id, by: rec.by, kind: def?.kind ?? 'trap', severity: def?.severity ?? 0.2, via: 'trap', intent: rec.by ? 'meant' : 'accident', cause: trap, what: rec.kind, place: rec.place, seenBy: seen });
+    // who was about, when the game says: when it was set, and now (else, as for any harm, whoever's at the place)
+    const near = rec.about || about ? [...new Set([...(rec.about || []), ...(about ?? this.present(rec.place, [id]))])].filter((x) => x !== id).sort() : undefined;
+    const view = this.applyHarm({ to: id, by: rec.by, kind: def?.kind ?? 'trap', severity: def?.severity ?? 0.2, via: 'trap', intent: rec.by ? 'meant' : 'accident', cause: trap, what: rec.kind, place: rec.place, seenBy: seen, ...(near ? { about: near } : {}) });
     w.emit('morgul:sprung', { trap, kind: rec.kind, place: rec.place, id, by: rec.by, harm: view?.id ?? null });
     return view;
   }

@@ -10064,9 +10064,9 @@ var Morgul = class {
       if (c.person) this.applyTend(c.target ?? c.person.id, c.person.id, a || void 0);
     });
     w.defineInput("morgul.harm", (h) => this.applyHarm(h));
-    w.defineInput("morgul.spring", (trap, id, seenBy) => this.applySpring(trap, id, seenBy ?? void 0));
+    w.defineInput("morgul.spring", (trap, id, seenBy, about2) => this.applySpring(trap, id, seenBy ?? void 0, about2 ?? void 0));
     w.defineInput("morgul.disarm", (trap, by) => this.applyDisarm(trap, by ?? void 0));
-    w.defineInput("morgul.set", (kind, o) => this.applySet(kind, { by: o.by ?? null, place: o.place, for: o.for ?? void 0, seenBy: o.seenBy ?? void 0 }));
+    w.defineInput("morgul.set", (kind, o) => this.applySet(kind, { by: o.by ?? null, place: o.place, for: o.for ?? void 0, seenBy: o.seenBy ?? void 0, about: o.about ?? void 0 }));
     w.defineInput("morgul.taint", (def) => this.applyTaint(def));
     w.defineInput("morgul.tend", (id, by) => this.applyTend(id, by ?? void 0));
     w.defineInput("morgul.near", (regions) => this.applyNear(regions));
@@ -10635,9 +10635,16 @@ var Morgul = class {
     if (!t && m?.use !== "set") return void 0;
     return { id: kind, ...t || {}, kind: t?.kind ?? m?.kinds?.[0] ?? "trap", severity: t?.severity ?? m?.severity ?? 0.2 };
   }
-  /** Sets a trap (from the game: recorded): a kind, at a place, by someone (or nobody), for someone, seen by whoever (default everyone there). Returns its id. */
+  /**
+   * Sets a trap (from the game: recorded): a kind, at a place, by someone (or
+   * nobody), for someone, seen by whoever (default everyone there), and, if
+   * the game says, who was about (by its sight: evidence once it springs).
+   * Returns its id.
+   */
   set(kind, o) {
-    return this.w.input("morgul.set", [kind, { by: o.by ?? null, place: o.place, for: o.for ?? null, seenBy: o.seenBy ?? null }]) ?? null;
+    const s = { by: o.by ?? null, place: o.place, for: o.for ?? null, seenBy: o.seenBy ?? null };
+    if (o.about) s.about = o.about;
+    return this.w.input("morgul.set", [kind, s]) ?? null;
   }
   /** Sets a trap inside the simulation. */
   applySet(kind, o) {
@@ -10650,6 +10657,11 @@ var Morgul = class {
     const rec = { id, kind, place: o.place, by: o.by, t: w.s.now, uses: Math.max(1, Math.round(def.uses ?? 1)), known: [] };
     if (o.for && o.for !== o.by) rec.for = o.for;
     if (o.by && w.s.people[o.by]) rec.known.push(o.by);
+    if (o.about) {
+      const about2 = o.about.filter((x) => w.s.people[x]);
+      if (o.by && w.s.people[o.by] && !about2.includes(o.by)) about2.push(o.by);
+      if (about2.length) rec.about = [...new Set(about2)].sort();
+    }
     st.traps[id] = rec;
     for (const x of seen) this.learnTrap(x, rec, "saw", 1);
     w.log("set", o.by ?? void 0, { trap: id, kind, place: o.place, ...rec.for ? { for: rec.for } : {} });
@@ -10676,12 +10688,17 @@ var Morgul = class {
     const root = place ? this.w.ring.root(place) : null;
     return Object.keys(traps).sort().map((k) => traps[k]).filter((t) => !root || this.w.ring.root(t.place) === root).map((t) => ({ id: t.id, kind: t.kind, place: t.place, by: t.by, ...t.for ? { for: t.for } : {}, uses: t.uses, t: t.t, known: t.known.slice() }));
   }
-  /** A trap caught someone on screen, or the player (from the game: recorded). */
-  spring(trap, id, seenBy) {
-    this.w.input("morgul.spring", [trap, id, seenBy ?? null]);
+  /**
+   * A trap caught someone on screen, or the player (from the game: recorded),
+   * seen by whoever (default everyone there), with whoever else was about if
+   * the game says (its sight: evidence for suspicion, with whoever was about
+   * when it was set).
+   */
+  spring(trap, id, seenBy, about2) {
+    this.w.input("morgul.spring", about2 ? [trap, id, seenBy ?? null, about2] : [trap, id, seenBy ?? null]);
   }
   /** A trap catches someone (or the player), inside the simulation: the harm, and it's spent a use. */
-  applySpring(trap, id, seenBy) {
+  applySpring(trap, id, seenBy, about2) {
     const w = this.w, st = this.st;
     const rec = st?.traps[trap];
     const p = w.s.people[id];
@@ -10693,7 +10710,8 @@ var Morgul = class {
     if (rec.uses > 0) for (const x of seen) this.learnTrap(x, rec, "saw", 1);
     else if (w.reverie) for (const x of [...rec.known, ...seen]) w.reverie.applyBelieve(x, `trap:${rec.id}`, false, "saw");
     w.log("sprung", id, { trap, kind: rec.kind, place: rec.place });
-    const view = this.applyHarm({ to: id, by: rec.by, kind: def?.kind ?? "trap", severity: def?.severity ?? 0.2, via: "trap", intent: rec.by ? "meant" : "accident", cause: trap, what: rec.kind, place: rec.place, seenBy: seen });
+    const near = rec.about || about2 ? [.../* @__PURE__ */ new Set([...rec.about || [], ...about2 ?? this.present(rec.place, [id])])].filter((x) => x !== id).sort() : void 0;
+    const view = this.applyHarm({ to: id, by: rec.by, kind: def?.kind ?? "trap", severity: def?.severity ?? 0.2, via: "trap", intent: rec.by ? "meant" : "accident", cause: trap, what: rec.kind, place: rec.place, seenBy: seen, ...near ? { about: near } : {} });
     w.emit("morgul:sprung", { trap, kind: rec.kind, place: rec.place, id, by: rec.by, harm: view?.id ?? null });
     return view;
   }

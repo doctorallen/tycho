@@ -345,8 +345,8 @@ Every finer number is a setting too ([Tuning](../tyrell/docs/tuning.md#morgul)).
 | `wound(def)` | definition | A harm's kind, severity band, what and how, and the course it leaves |
 | `trap(def)` | definition | A kind of trap: its harm, `hidden`, `uses`, `catch` |
 | `harm(h)` | **input** | A harm, from the game (on screen); returns it |
-| `set(kind, { by, place, for, seenBy })` | **input** | A trap set, from the game |
-| `spring(trap, id)` | **input** | A trap caught someone on screen, or the player |
+| `set(kind, { by, place, for, seenBy, about })` | **input** | A trap set, from the game (`about`: who else was about, by its sight) |
+| `spring(trap, id, seenBy, about)` | **input** | A trap caught someone on screen, or the player |
 | `disarm(trap, by)` | **input** | |
 | `taint(def)` | **input** | Poison into stock, a pot, or someone's goods |
 | `tend(id, by)` | **input** | Someone tends someone: their wounds, and up if down |

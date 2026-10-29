@@ -436,12 +436,18 @@ export declare class Morgul implements Module {
     applyTend(id: Id, by?: Id, course?: Id): void;
     /** A trap's kind: its own definition, or a means that's set. */
     private trapDef;
-    /** Sets a trap (from the game: recorded): a kind, at a place, by someone (or nobody), for someone, seen by whoever (default everyone there). Returns its id. */
+    /**
+     * Sets a trap (from the game: recorded): a kind, at a place, by someone (or
+     * nobody), for someone, seen by whoever (default everyone there), and, if
+     * the game says, who was about (by its sight: evidence once it springs).
+     * Returns its id.
+     */
     set(kind: Id, o: {
         by?: Id | null;
         place: Id;
         for?: Id;
         seenBy?: Id[];
+        about?: Id[];
     }): string | null;
     /** Sets a trap inside the simulation. */
     applySet(kind: Id, o: {
@@ -449,6 +455,7 @@ export declare class Morgul implements Module {
         place: Id | null;
         for?: Id;
         seenBy?: Id[];
+        about?: Id[];
     }): string | null;
     /** Someone learns a trap is there (and who set it, if they saw it set). */
     private learnTrap;
@@ -465,10 +472,15 @@ export declare class Morgul implements Module {
         t: number;
         known: Id[];
     }>;
-    /** A trap caught someone on screen, or the player (from the game: recorded). */
-    spring(trap: string, id: Id, seenBy?: Id[]): void;
+    /**
+     * A trap caught someone on screen, or the player (from the game: recorded),
+     * seen by whoever (default everyone there), with whoever else was about if
+     * the game says (its sight: evidence for suspicion, with whoever was about
+     * when it was set).
+     */
+    spring(trap: string, id: Id, seenBy?: Id[], about?: Id[]): void;
     /** A trap catches someone (or the player), inside the simulation: the harm, and it's spent a use. */
-    applySpring(trap: string, id: Id, seenBy?: Id[]): HarmView | null;
+    applySpring(trap: string, id: Id, seenBy?: Id[], about?: Id[]): HarmView | null;
     /** A trap is disarmed (from the game: recorded), by someone if given. */
     disarm(trap: string, by?: Id): void;
     /** Disarms a trap inside the simulation. */

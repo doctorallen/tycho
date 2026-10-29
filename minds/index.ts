@@ -315,8 +315,8 @@ export interface MorgulLike {
   trap(def: { id: string; [k: string]: unknown }): unknown;
   harm(h: HarmLike): HarmViewLike | null;
   hurt(id: string): number;
-  set(kind: string, o: { by?: string | null; place: string; for?: string; seenBy?: string[] }): string | null;
-  spring(trap: string, id: string, seenBy?: string[]): void;
+  set(kind: string, o: { by?: string | null; place: string; for?: string; seenBy?: string[]; about?: string[] }): string | null;
+  spring(trap: string, id: string, seenBy?: string[], about?: string[]): void;
   disarm(trap: string, by?: string): void;
   near(regions?: string[]): void;
   nearPlace(place: string): boolean;
@@ -706,12 +706,12 @@ export function traps<T = unknown>(world: WorldLike, o: TrapOptions<T>) {
     /** The traps that are the game's now. */
     list(): NearTrap<T>[] { return [...kept.values()]; },
     get(id: string): NearTrap<T> | null { return kept.get(id) ?? null; },
-    /** A trigger sprang on someone (a character, or the player), seen by whoever (default everyone there): Morgul's harm follows. */
-    spring(id: string, who: string, seenBy?: string[]): void { if (world.morgul) world.morgul.spring(id, who, seenBy); },
+    /** A trigger sprang on someone (a character, or the player), seen by whoever (default everyone there), with whoever else was about by the game's sight (evidence, for suspicion): Morgul's harm follows. */
+    spring(id: string, who: string, seenBy?: string[], about?: string[]): void { if (world.morgul) { if (about) world.morgul.spring(id, who, seenBy, about); else world.morgul.spring(id, who, seenBy); } },
     /** Someone (the player, a character) disarmed one on screen. */
     disarm(id: string, by?: string): void { if (world.morgul) world.morgul.disarm(id, by); },
-    /** A trap set on screen (by the player, say), at a place, for someone, seen by whoever: its id. */
-    set(kind: string, s: { by?: string | null; place: string; for?: string; seenBy?: string[] }): string | null { return world.morgul ? world.morgul.set(kind, s) : null; },
+    /** A trap set on screen (by the player, a character the game walks there), at a place, for someone, seen by whoever, with whoever else was about: its id. */
+    set(kind: string, s: { by?: string | null; place: string; for?: string; seenBy?: string[]; about?: string[] }): string | null { return world.morgul ? world.morgul.set(kind, s) : null; },
     /** Lets every trap go (a new world): the game's drop told of each. */
     clear(): void { for (const t of kept.values()) if (o.drop) o.drop(t); kept.clear(); },
   };

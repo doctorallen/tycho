@@ -307,6 +307,16 @@ test('traps: the regions the game has loaded are near; their traps are the game\
   assert.equal(T.list().length, 0);
 });
 
+test('traps: the game says who was about when one was set and when it sprang, and Morgul has them as evidence', () => {
+  const { w } = yard({ where: [[0, 'barn', 'potter']] });
+  const T = M.traps(w, { regions: () => ['farm'] });
+  const id = T.set('snare', { by: 'cy', place: 'barn', for: 'bo', seenBy: [], about: ['ana'] });
+  T.sync();
+  T.spring(id, 'bo', [], ['ana']);
+  const h = w.s.mod.morgul.harms.find((x) => x.cause === id);
+  assert.deepEqual(h.about, ['ana', 'cy'], 'whoever was about, the one who set it among them');
+});
+
 test('traps: the player springs one too; and a trap no longer near is Morgul\'s again, off screen', () => {
   const { w } = yard({ where: [[0, 'barn', 'potter']] });
   let regions = ['farm'];

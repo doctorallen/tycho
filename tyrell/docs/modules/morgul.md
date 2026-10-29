@@ -115,7 +115,7 @@ The effect `set:<trap>` sets one where the person is, with them as its setter an
 
 **Off screen**, whenever someone starts something at a trap's place (its outermost), it may catch them: with its `catch`, less for the careful (`careful`), less again if it isn't hidden (`seenCatch`; whoever it doesn't catch then sees it). Never someone who knows it's there, or its setter; a trap set for someone catches only them. It's a harm (`via: 'trap'`, its `cause` the trap's id, by its setter), and uses one of its `uses`. Events `morgul:set`, `morgul:sprung`, `morgul:disarmed`.
 
-**On screen**, the game draws it as a trigger and says when it springs (`morgul.spring(trap, id)`, a character or `'player'`: the harm to the player, and the trap spent); traps in the regions the game has said are near (`morgul.near(regions)`, by default the regions in focus) aren't sprung off screen, so nobody is caught twice. The effect `disarm` (or `disarm:<kind>`) disarms the traps someone knows of where they are; `morgul.disarm(trap, by)` does it from the game.
+**On screen**, the game draws it as a trigger and says when it springs (`morgul.spring(trap, id, seenBy?, about?)`, a character or `'player'`: the harm to the player, and the trap spent); traps in the regions the game has said are near (`morgul.near(regions)`, by default the regions in focus) aren't sprung off screen, so nobody is caught twice. The effect `disarm` (or `disarm:<kind>`) disarms the traps someone knows of where they are; `morgul.disarm(trap, by)` does it from the game. A game that owns space can say who was about, by its own sight, when a trap was set (`set`'s `about`; whoever set it is among them, as with a taint) and when it sprang (`spring`'s `about`; otherwise whoever's at the place): the evidence of [suspicion](#suspicion) that being about is.
 
 ## Poison
 
@@ -198,8 +198,8 @@ Lying down, getting up, stopping to fight and dying are module timers in the wor
 |---|---|---|
 | `means(def)`, `wound(def)`, `trap(def)` | this | Declarations |
 | `harm(h)` | HarmView or null | **Input** (applies at once). A harm |
-| `set(kind, { by?, place, for?, seenBy? })` | trap id or null | **Input.** Sets a trap |
-| `spring(trap, id, seenBy?)` | void | **Input.** A trap caught someone on screen, or the player |
+| `set(kind, { by?, place, for?, seenBy?, about? })` | trap id or null | **Input.** Sets a trap (`about`: who else was about, by the game's sight) |
+| `spring(trap, id, seenBy?, about?)` | void | **Input.** A trap caught someone on screen, or the player (`about`: who else was about) |
 | `disarm(trap, by?)` | void | **Input.** A trap is disarmed |
 | `taint(def)` | taint id or null | **Input.** `{ course, place? or person? or owner?, item?, n?, by?, for?, severity?, what?, seenBy? }` |
 | `tend(id, by?)` | void | **Input.** Someone tends someone: their wounds, and up if down |

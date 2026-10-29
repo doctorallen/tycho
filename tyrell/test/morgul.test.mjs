@@ -399,6 +399,31 @@ test('the poisoner is suspected some of the time, and not always', () => {
   assert.ok(wrong > 0, `wrong ${wrong}`);
 });
 
+test('a trap the game says was set and sprung with others about: they\'re the evidence, the one who set it among them', () => {
+  // everyone at a place of their own (as in a game that owns space): nobody is ever about but by the game's say
+  const run = (seed, about) => {
+    const w = yard({ seed, moduleConfig: { morgul: { suspect: 1 } } });
+    w.morgul.near(['farm', 'town']);
+    const got = events(w, 'morgul:suspect');
+    const t = w.morgul.set('snare', { by: 'bo', place: 'barn', seenBy: [], ...(about ? { about: ['cook'] } : {}) });
+    assert.deepEqual(w.s.mod.morgul.traps[t].about, about ? ['bo', 'cook'] : undefined, 'kept only when the game says');
+    w.morgul.spring(t, 'ana', [], about ? ['cy'] : undefined);
+    const h = w.s.mod.morgul.harms.find((x) => x.cause === t);
+    return { w, got, about: h.about };
+  };
+  const said = run('t1', true);
+  assert.deepEqual(said.about, ['bo', 'cook', 'cy'], 'about when it was set, and when it sprang');
+  // unsaid: as before, whoever's at the place
+  assert.deepEqual(run('t1', false).about, []);
+  // over a few seeds, Ana suspects one of them: Bo some of the time, and not always
+  const blamed = new Set();
+  for (const seed of ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8']) {
+    const { got } = run(seed, true);
+    for (const e of got.filter((x) => x.id === 'ana')) { assert.equal(e.why, 'was about'); blamed.add(e.suspect); }
+  }
+  assert.ok(blamed.has('bo') && blamed.size > 1, [...blamed].join(', '));
+});
+
 test('suspicion spreads as gossip, the wrong name as readily as the right', () => {
   const w = yard({ moduleConfig: { morgul: { suspect: 1 }, wormtongue: { gossipChance: 1 } } });
   w.morgul.harm({ to: 'ana', by: 'bo', kind: 'cut', severity: 0.2, via: 'trap', seenBy: [] });

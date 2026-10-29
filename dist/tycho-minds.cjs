@@ -460,15 +460,18 @@ function traps(world, o) {
     get(id) {
       return kept.get(id) ?? null;
     },
-    /** A trigger sprang on someone (a character, or the player), seen by whoever (default everyone there): Morgul's harm follows. */
-    spring(id, who, seenBy) {
-      if (world.morgul) world.morgul.spring(id, who, seenBy);
+    /** A trigger sprang on someone (a character, or the player), seen by whoever (default everyone there), with whoever else was about by the game's sight (evidence, for suspicion): Morgul's harm follows. */
+    spring(id, who, seenBy, about) {
+      if (world.morgul) {
+        if (about) world.morgul.spring(id, who, seenBy, about);
+        else world.morgul.spring(id, who, seenBy);
+      }
     },
     /** Someone (the player, a character) disarmed one on screen. */
     disarm(id, by) {
       if (world.morgul) world.morgul.disarm(id, by);
     },
-    /** A trap set on screen (by the player, say), at a place, for someone, seen by whoever: its id. */
+    /** A trap set on screen (by the player, a character the game walks there), at a place, for someone, seen by whoever, with whoever else was about: its id. */
     set(kind, s) {
       return world.morgul ? world.morgul.set(kind, s) : null;
     },

@@ -144,7 +144,7 @@ Morgul springs traps off screen by chance, except at places near the player, whi
 
 - `sync()`: tells Morgul which regions are near (`regions()`, the game's loaded ones; Morgul's `near`, an input only when they change) and keeps the traps at near places as the game's: those that came near are made (`make(trap)`, the game's own trigger, from the trap's means, at its place's spot) and those gone off, disarmed or no longer near are let go (`drop(trap)`). It returns both, `{ add, drop }`.
 - `list()`, `get(id)`: the game's traps now, each Morgul's (its kind, place, who set it and for whom, uses left, who knows of it) with its `means` and the game's own object (`obj`).
-- `spring(id, who, seenBy?)`: a trigger sprang on a character or the player; Morgul's harm follows (by whoever set it, through the trap), and the next sync lets it go once it's spent. `disarm(id, by?)` and `set(kind, { by, place, for, seenBy })` do the same for a trap disarmed or set on screen (the player's own snare).
+- `spring(id, who, seenBy?, about?)`: a trigger sprang on a character or the player; Morgul's harm follows (by whoever set it, through the trap), and the next sync lets it go once it's spent. `disarm(id, by?)` and `set(kind, { by, place, for, seenBy, about })` do the same for a trap disarmed or set on screen (the player's own snare, or one a character the game walked there set). `about` is who else was about, by the game's sight, when it was set and when it sprang: the evidence Morgul's suspicion weighs for a game whose people aren't at shared places (Merryfolk's).
 
 ```js
 const snares = Tycho.minds.traps(City.w, {

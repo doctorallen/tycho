@@ -41,11 +41,16 @@ export interface MindsWorld {
   get(id: string): MindsPerson | undefined;
   needOf(id: string, need: string): number;
   why(id: string): MindsDecision | null;
-  mind: { routineAt(p: MindsPerson, t?: number): { entry: MindsEntry; until: number } | null; routineFor(p: MindsPerson, t?: number): MindsEntry[] | null };
+  mind: { routineAt(p: MindsPerson, t?: number): { entry: MindsEntry; until: number } | null; routineFor(p: MindsPerson, t?: number): MindsEntry[] | null; options?(p: MindsPerson): MindsCandidate[] };
   westmarch: { chronicle(who: string, since: number): string[] };
   readonly fellowship?: { relations(id: string): { id: string; regard: number }[] } | null;
   readonly reverie?: { mood(id: string): number } | null;
   readonly esper?: { earliest(): number } | null;
+  /** The pick's settings (its cut, how many it draws from, and the power of
+   * the weights), for the chances. */
+  readonly cfg?: { cut: number; top: number; power: number };
+  /** Runs fn changing nothing (for the options weighed now). */
+  peek?<T>(fn: () => T): T;
 }
 
 /** HH:MM of a time in minutes (the time of day). */
@@ -77,6 +82,50 @@ export interface MindOptions {
   /** Options of the last decision shown (9), the chronicle's span in minutes
    * (12 hours) and lines (10), and people they know (4). */
   options?: number; lately?: number; lines?: number; known?: number;
+  /** Dense, for a dev drawer: each need's value beside its bar (numbers),
+   * the chance each option had of being drawn (chances, from the world's
+   * cfg), the options as a table (table), and what they'd choose if they
+   * chose now, every option weighed again without changing anything, with
+   * what's ruled out by reason (now: the world's peek and mind.options). */
+  numbers?: boolean; chances?: boolean; table?: boolean; now?: boolean;
+}
+
+/** The chance each option had of being picked: Tyrell's pick, worked out
+ * (the top rank only, the weak cut, a draw from the best few by weight to
+ * the power). Those it couldn't draw aren't in the map. */
+export function chances(cands: MindsCandidate[], cfg?: { cut: number; top: number; power: number }): Map<MindsCandidate, number> {
+  const out = new Map<MindsCandidate, number>();
+  const valid = cands.filter((c) => !c.blocked && c.weight > 0);
+  if (!cfg || !valid.length) return out;
+  let top = -Infinity;
+  for (const c of valid) top = Math.max(top, c.rank);
+  let pool = valid.filter((c) => c.rank === top);
+  const best = Math.max(...pool.map((c) => c.weight));
+  pool = pool.filter((c) => c.weight >= best * cfg.cut).sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1)).slice(0, cfg.top);
+  const tot = pool.reduce((s, c) => s + Math.pow(c.weight, cfg.power), 0) || 1;
+  for (const c of pool) out.set(c, Math.pow(c.weight, cfg.power) / tot);
+  return out;
+}
+
+/** Options weighed: a table (option and where, rank, weight, chance, what
+ * the weight was made of or what ruled it out), or the inspector's plain
+ * list's lines (inside its .why box, which the caller opens). */
+function weighed(P: string, cands: MindsCandidate[], isPick: (c: MindsCandidate) => boolean, at: (pid: unknown) => string, o: MindOptions, odds: Map<MindsCandidate, number>): string {
+  const why = (c: MindsCandidate) => esc(c.blocked || (c.parts || []).map(([n, v]) => n + ' ' + (+v).toFixed(2)).join(' × '));
+  const pct = (c: MindsCandidate) => (odds.has(c) ? Math.round((odds.get(c) as number) * 100) + '%' : '');
+  const cls = (c: MindsCandidate) => (isPick(c) ? 'pick' : c.blocked ? 'no' : '');
+  if (o.table) {
+    // (the same option at places of the same name, weighed the same, is one row: ×n)
+    const rows = new Map<string, { c: MindsCandidate; n: number; odds: number }>();
+    for (const c of cands) {
+      const k = [isPick(c), c.id, at(c.place), c.rank, c.blocked || c.weight.toFixed(3), why(c)].join('|'), r = rows.get(k);
+      if (r) { r.n++; r.odds += odds.get(c) || 0; } else rows.set(k, { c, n: 1, odds: odds.get(c) || 0 });
+    }
+    let h = `<table class="${P}why"><tr><th>option</th><th>rank</th><th>weight</th>${o.chances ? '<th>chance</th>' : ''}<th>why</th></tr>`;
+    for (const { c, n, odds: p } of rows.values()) h += `<tr class="${cls(c)}"><td><b>${c.id}</b><br><small>${esc(at(c.place))}${n > 1 ? ' ×' + n : ''}</small></td><td class="num">${c.rank}</td><td class="num">${c.blocked ? '' : c.weight.toFixed(3)}</td>${o.chances ? `<td class="num">${p ? Math.round(p * 100) + '%' : ''}</td>` : ''}<td><small>${why(c)}</small></td></tr>`;
+    return h + '</table>';
+  }
+  return cands.map((c) => `<div class="${cls(c)}"><b>${c.id}</b> <small>${esc(at(c.place))} · rank ${c.rank}${c.blocked ? '' : ' · ' + c.weight.toFixed(3)}${o.chances && odds.has(c) ? ' · ' + pct(c) : ''}</small><br><small>${why(c)}</small></div>`).join('');
 }
 
 const NEED_COLORS: [string, string, string] = ['#3af0e0', '#ffb040', '#ff4a5a'];
@@ -98,18 +147,30 @@ export function mind(w: MindsWorld, id: string, o: MindOptions = {}): string {
   if (p.directive && !p.directive.done) h += `<p class="dim">Told to: ${p.directive.do}${p.directive.label ? ' · ' + esc(p.directive.label) : ''}</p>`;
   // needs, as bars
   const NC = o.needColors || NEED_COLORS;
-  h += `<div class="${P}needs">` + Object.keys(p.needs).map((k) => { const v = w.needOf(id, k), c = v < 0 ? 0 : v > 1 ? 1 : v; return `<div><span>${k}</span><i><b style="width:${Math.round(c * 100)}%;background:${v > 0.85 ? NC[2] : v > 0.6 ? NC[1] : NC[0]}"></b></i></div>`; }).join('') + '</div>';
+  h += `<div class="${P}needs">` + Object.keys(p.needs).map((k) => { const v = w.needOf(id, k), c = v < 0 ? 0 : v > 1 ? 1 : v; return `<div><span>${k}</span><i><b style="width:${Math.round(c * 100)}%;background:${v > 0.85 ? NC[2] : v > 0.6 ? NC[1] : NC[0]}"></b></i>${o.numbers ? `<em>${v.toFixed(2)}</em>` : ''}</div>`; }).join('') + '</div>';
   const rv = w.reverie; if (rv) h += `<p class="dim">Mood ${(rv.mood(id) || 0).toFixed(2)}${o.about ? o.about(id, p) : ''}</p>`;
   // why: the last decision, every option weighed
   const dec = w.why(id);
   if (!dec) h += '<h3>Why</h3><p class="dim">No choice made since the last time walk: play the clock on a little.</p>';
   if (dec) {
-    h += `<h3>Why · ${hhmm(dec.t)}</h3><p class="dim">${esc(dec.reason || '')}</p><div class="${P}why">`;
     const pk = dec.picked, isPick = (c: MindsCandidate) => !!pk && c.id === pk.id && c.place === pk.place && c.target === pk.target;
     const cands = dec.candidates.slice().sort((a, b) => +isPick(b) - +isPick(a) || b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
-    if (pk) h += `<p>Chose <b>${pk.id}</b> at ${esc(at(pk.place))}${pk.layer ? ` <small class="dim">(${pk.layer})</small>` : ''}. It's drawn from the best few, by weight squared, so the top one doesn't always win.</p>`;
-    for (const c of cands) h += `<div class="${isPick(c) ? 'pick' : c.blocked ? 'no' : ''}"><b>${c.id}</b> <small>${esc(at(c.place))} · rank ${c.rank}${c.blocked ? '' : ' · ' + c.weight.toFixed(3)}</small><br><small>${esc(c.blocked || (c.parts || []).map(([n, v]) => n + ' ' + (+v).toFixed(2)).join(' × '))}</small></div>`;
-    h += '</div>';
+    const odds = o.chances ? chances(dec.candidates, w.cfg) : new Map<MindsCandidate, number>();
+    const chose = pk ? `<p>Chose <b>${pk.id}</b> at ${esc(at(pk.place))}${pk.layer ? ` <small class="dim">(${pk.layer})</small>` : ''}. It's drawn from the best few, by weight squared, so the top one doesn't always win.</p>` : '';
+    h += `<h3>Why · ${hhmm(dec.t)}</h3><p class="dim">${esc(dec.reason || '')}</p>`;
+    h += o.table ? chose + weighed(P, cands, isPick, at, o, odds) : `<div class="${P}why">${chose}${weighed(P, cands, isPick, at, o, odds)}</div>`;
+  }
+  // if they chose now: every option weighed again, changing nothing
+  if (o.now && w.peek && w.mind.options) {
+    const opts = w.peek(() => (w.mind.options as (p: MindsPerson) => MindsCandidate[])(p)), odds = chances(opts, w.cfg);
+    const doing = (c: MindsCandidate) => !!d && c.id === d.action && c.place === (d.kind === 'travel' ? d.to : d.place || p.place); // (what they're doing now, marked)
+    const ok = opts.filter((c) => !c.blocked && c.weight > 0).sort((a, b) => b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
+    const rows = weighed(P, ok, doing, at, o, odds);
+    h += `<h3>If they chose now</h3>` + (!ok.length ? '<p class="dim">Nothing they could do.</p>' : o.table ? rows : `<div class="${P}why">${rows}</div>`);
+    const out: Record<string, string[]> = {};
+    for (const c of opts) if (c.blocked) (out[c.blocked] = out[c.blocked] || []).push(c.id);
+    const n = opts.filter((c) => c.blocked).length;
+    if (n) h += `<details class="${P}out"><summary>Ruled out (${n})</summary>` + Object.keys(out).map((r) => `<div><b>${esc(r)}</b>: ${[...new Set(out[r])].join(', ')}</div>`).join('') + '</details>';
   }
   // today's routine, the hour they're in marked
   const ra = w.mind.routineAt(p), plan = (w.mind.routineFor(p, w.now) || []).slice().sort((a, b) => a[0] - b[0]), cur = ra && ra.entry;

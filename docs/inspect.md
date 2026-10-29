@@ -18,6 +18,8 @@ const html = Tycho.inspect.mind(world, 'ruth', {
 
 Every option is optional; without them a mind reads from the world alone (names from the world, places by id). `walking(id)` adds a note after "Walking" (the White Dragon's " (off screen)"); `selectable(id)` says whether someone they know can be picked (else they're only named); `needColors`, `options` (9), `lately` (12 hours), `lines` (10) and `known` (4) set the rest. `hhmm(minutes)` and `esc(text)` are there too.
 
+For a dev drawer ([dev.md](dev.md)) it can be dense: `numbers` puts each need's value beside its bar; `chances` the chance each option had of being drawn (Tyrell's pick worked out from the world's `cfg`: the top rank, the weak cut, a draw from the best few by weight to the power; `chances(candidates, cfg)` gives them alone); `table` lays the options out as a table (option and where, rank, weight, chance, why), the same option at places of the same name, weighed the same, one row; and `now` adds what they'd choose if they chose now, every option weighed again inside the world's `peek` (so nothing changes: not the state, not the streams), with what's ruled out grouped by why. Without these the mind is as it was, character for character.
+
 The world is read through the shape Tyrell's `World` has (`now`, `get`, `needOf`, `why`, `mind.routineAt`/`routineFor`, `westmarch.chronicle`, and `fellowship`, `reverie` and `esper` when they're there), so the engine never takes Tyrell itself: a game passes its world in.
 
 ## The panel

@@ -5305,9 +5305,376 @@ function start(o) {
 // src/shell/dev.ts
 var dev_exports = {};
 __export(dev_exports, {
+  Bits: () => Bits,
+  Drawer: () => Drawer,
   Flags: () => Flags,
+  Notes: () => Notes,
+  drawerCss: () => drawerCss,
   query: () => query
 });
+
+// src/shell/inspect.ts
+var inspect_exports = {};
+__export(inspect_exports, {
+  Inspector: () => Inspector,
+  chances: () => chances,
+  esc: () => esc,
+  hhmm: () => hhmm,
+  mind: () => mind
+});
+function hhmm(m) {
+  const h = (m / 60 % 24 + 24) % 24;
+  return String(Math.floor(h)).padStart(2, "0") + ":" + String(Math.floor(h % 1 * 60)).padStart(2, "0");
+}
+function esc(t) {
+  return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+}
+function chances(cands, cfg) {
+  const out = /* @__PURE__ */ new Map();
+  const valid = cands.filter((c) => !c.blocked && c.weight > 0);
+  if (!cfg || !valid.length) return out;
+  let top = -Infinity;
+  for (const c of valid) top = Math.max(top, c.rank);
+  let pool = valid.filter((c) => c.rank === top);
+  const best = Math.max(...pool.map((c) => c.weight));
+  pool = pool.filter((c) => c.weight >= best * cfg.cut).sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1)).slice(0, cfg.top);
+  const tot = pool.reduce((s, c) => s + Math.pow(c.weight, cfg.power), 0) || 1;
+  for (const c of pool) out.set(c, Math.pow(c.weight, cfg.power) / tot);
+  return out;
+}
+function weighed(P, cands, isPick, at, o, odds) {
+  const why = (c) => esc(c.blocked || (c.parts || []).map(([n, v]) => n + " " + (+v).toFixed(2)).join(" × "));
+  const pct = (c) => odds.has(c) ? Math.round(odds.get(c) * 100) + "%" : "";
+  const cls = (c) => isPick(c) ? "pick" : c.blocked ? "no" : "";
+  if (o.table) {
+    const rows = /* @__PURE__ */ new Map();
+    for (const c of cands) {
+      const k = [isPick(c), c.id, at(c.place), c.rank, c.blocked || c.weight.toFixed(3), why(c)].join("|"), r = rows.get(k);
+      if (r) {
+        r.n++;
+        r.odds += odds.get(c) || 0;
+      } else rows.set(k, { c, n: 1, odds: odds.get(c) || 0 });
+    }
+    let h = `<table class="${P}why"><tr><th>option</th><th>rank</th><th>weight</th>${o.chances ? "<th>chance</th>" : ""}<th>why</th></tr>`;
+    for (const { c, n, odds: p } of rows.values()) h += `<tr class="${cls(c)}"><td><b>${c.id}</b><br><small>${esc(at(c.place))}${n > 1 ? " ×" + n : ""}</small></td><td class="num">${c.rank}</td><td class="num">${c.blocked ? "" : c.weight.toFixed(3)}</td>${o.chances ? `<td class="num">${p ? Math.round(p * 100) + "%" : ""}</td>` : ""}<td><small>${why(c)}</small></td></tr>`;
+    return h + "</table>";
+  }
+  return cands.map((c) => `<div class="${cls(c)}"><b>${c.id}</b> <small>${esc(at(c.place))} · rank ${c.rank}${c.blocked ? "" : " · " + c.weight.toFixed(3)}${o.chances && odds.has(c) ? " · " + pct(c) : ""}</small><br><small>${why(c)}</small></div>`).join("");
+}
+var NEED_COLORS = ["#3af0e0", "#ffb040", "#ff4a5a"];
+function mind(w, id, o = {}) {
+  const P = o.prefix ?? "insp", p = w.get(id);
+  const name = (x) => o.name ? o.name(x) : w.get(x) && w.get(x).name || x;
+  if (!p) return `<h3>${esc(name(id))}</h3><p class="dim">Not in the world.</p><div class="buttons"><button data-${P}do="close">Close</button></div>`;
+  const walk = o.walking ? o.walking(id) : "";
+  const d = p.doing, at = (pid) => o.place ? o.place(pid, id) : !pid ? "anywhere" : String(pid);
+  let h = `<h3>${esc(name(id))}</h3>${o.who ? `<p class="sub">${esc(o.who(id))}</p>` : ""}`;
+  const now = !d ? "Nothing, waiting to choose." : d.kind === "travel" ? `Walking${walk} from ${esc(at(d.from))} to ${esc(at(d.to))}, to ${d.action}, till ${hhmm(d.end)}.` : d.kind === "wait" ? `Waiting at ${esc(at(p.place))} till ${hhmm(d.end)}.` : `${d.action} at ${esc(at(d.place || p.place))}, till ${hhmm(d.end)}.`;
+  h += `<p><b>Now</b> ${now}${d && d.rank !== void 0 ? ` <small class="dim">(${d.layer || "free"}, rank ${d.rank})</small>` : ""}</p>`;
+  if (p.directive && !p.directive.done) h += `<p class="dim">Told to: ${p.directive.do}${p.directive.label ? " · " + esc(p.directive.label) : ""}</p>`;
+  const NC = o.needColors || NEED_COLORS;
+  h += `<div class="${P}needs">` + Object.keys(p.needs).map((k) => {
+    const v = w.needOf(id, k), c = v < 0 ? 0 : v > 1 ? 1 : v;
+    return `<div><span>${k}</span><i><b style="width:${Math.round(c * 100)}%;background:${v > 0.85 ? NC[2] : v > 0.6 ? NC[1] : NC[0]}"></b></i>${o.numbers ? `<em>${v.toFixed(2)}</em>` : ""}</div>`;
+  }).join("") + "</div>";
+  const rv = w.reverie;
+  if (rv) h += `<p class="dim">Mood ${(rv.mood(id) || 0).toFixed(2)}${o.about ? o.about(id, p) : ""}</p>`;
+  const dec = w.why(id);
+  if (!dec) h += '<h3>Why</h3><p class="dim">No choice made since the last time walk: play the clock on a little.</p>';
+  if (dec) {
+    const pk = dec.picked, isPick = (c) => !!pk && c.id === pk.id && c.place === pk.place && c.target === pk.target;
+    const cands = dec.candidates.slice().sort((a, b) => +isPick(b) - +isPick(a) || b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
+    const odds = o.chances ? chances(dec.candidates, w.cfg) : /* @__PURE__ */ new Map();
+    const chose = pk ? `<p>Chose <b>${pk.id}</b> at ${esc(at(pk.place))}${pk.layer ? ` <small class="dim">(${pk.layer})</small>` : ""}. It's drawn from the best few, by weight squared, so the top one doesn't always win.</p>` : "";
+    h += `<h3>Why · ${hhmm(dec.t)}</h3><p class="dim">${esc(dec.reason || "")}</p>`;
+    h += o.table ? chose + weighed(P, cands, isPick, at, o, odds) : `<div class="${P}why">${chose}${weighed(P, cands, isPick, at, o, odds)}</div>`;
+  }
+  if (o.now && w.peek && w.mind.options) {
+    const opts = w.peek(() => w.mind.options(p)), odds = chances(opts, w.cfg);
+    const doing = (c) => !!d && c.id === d.action && c.place === (d.kind === "travel" ? d.to : d.place || p.place);
+    const ok = opts.filter((c) => !c.blocked && c.weight > 0).sort((a, b) => b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
+    const rows = weighed(P, ok, doing, at, o, odds);
+    h += `<h3>If they chose now</h3>` + (!ok.length ? '<p class="dim">Nothing they could do.</p>' : o.table ? rows : `<div class="${P}why">${rows}</div>`);
+    const out = {};
+    for (const c of opts) if (c.blocked) (out[c.blocked] = out[c.blocked] || []).push(c.id);
+    const n = opts.filter((c) => c.blocked).length;
+    if (n) h += `<details class="${P}out"><summary>Ruled out (${n})</summary>` + Object.keys(out).map((r) => `<div><b>${esc(r)}</b>: ${[...new Set(out[r])].join(", ")}</div>`).join("") + "</details>";
+  }
+  const ra = w.mind.routineAt(p), plan = (w.mind.routineFor(p, w.now) || []).slice().sort((a, b) => a[0] - b[0]), cur = ra && ra.entry;
+  if (plan.length) h += `<h3>Today</h3><div class="${P}day">` + plan.map((e) => `<div class="${e === cur ? "cur" : ""}"><span>${String(Math.floor(e[0])).padStart(2, "0")}:${String(Math.round(e[0] % 1 * 60)).padStart(2, "0")}</span> ${e[2] === "*" ? "free" : e[2]} <small>${e[1] === null ? "" : esc(e[1] === "home" ? "home" : at(e[1]))}${e[3] && e[3].rank ? " · holds" : ""}</small></div>`).join("") + "</div>";
+  const lines = w.westmarch.chronicle(id, w.now - (o.lately ?? 12 * 60)).slice(-(o.lines ?? 10));
+  if (lines.length) h += `<h3>Lately</h3><div class="${P}log">` + lines.map((l) => `<div>${esc(l)}</div>`).join("") + "</div>";
+  const fs = w.fellowship ? w.fellowship.relations(id).slice(0, o.known ?? 4) : [];
+  const can = (x) => o.selectable ? o.selectable(x) : !!w.get(x);
+  if (fs.length) h += `<h3>People</h3><div class="${P}list">` + fs.map((f) => can(f.id) ? `<button data-${P}sel="${f.id}">${esc(name(f.id))} <small>regard ${f.regard.toFixed(2)}</small></button>` : `<span class="dim">${esc(f.id)} · ${f.regard.toFixed(2)}</span>`).join("") + "</div>";
+  h += `<div class="buttons">${o.buttons ? o.buttons(id) : ""}<button data-${P}do="close">Close</button></div>`;
+  return h;
+}
+var STEP_LABEL = (m) => (m < 0 ? "−" : "+") + (Math.abs(m) % 60 ? Math.abs(m) + "m" : Math.abs(m) / 60 + "h");
+var Inspector = class {
+  constructor(o) {
+    /** Whoever's picked. */
+    this.sel = null;
+    /** Who's somewhere, listed in the side: a title and their ids. */
+    this.list = null;
+    this.playing = false;
+    this.dots = [];
+    this.badges = [];
+    /** The canvas's size in CSS px, and the device pixels to one. */
+    this.w = 0;
+    this.h = 0;
+    this.dpr = 1;
+    this.root = null;
+    this.raf = 0;
+    this.last = 0;
+    this.sideT = 0;
+    this.o = o;
+    this.P = o.prefix ?? "insp";
+    this.speed = o.speed ?? 60;
+  }
+  /** An element of the panel, by its name (its id is the prefix and it). */
+  el(name) {
+    const r = this.root, id = this.P + name;
+    if (r && r.querySelector) return r.querySelector("#" + id);
+    return typeof document !== "undefined" ? document.getElementById(id) : null;
+  }
+  html() {
+    const P = this.P, speeds = this.o.speeds || [1, 10, 60, 240], steps = this.o.steps || [-60, -15, 15, 60];
+    const sp = speeds.map((v) => `<option value="${v}"${v === this.speed ? " selected" : ""}>×${v === 1 ? "1 (game)" : v}</option>`).join("");
+    const btn = (m) => `<button data-${P}="${m}"${m === -60 ? ' title="Back an hour"' : ""}>${STEP_LABEL(m)}</button>`;
+    const back = steps.filter((m) => m < 0).map(btn).join(""), on = steps.filter((m) => m > 0).map(btn).join("");
+    return `<div class="${P}"><div class="${P}bar">
+      <span class="${P}clock" id="${P}clock"></span>
+      ${back}<button data-${P}="play" class="go" id="${P}play">Play</button>${on}
+      <select id="${P}speed" aria-label="Speed">${sp}</select>
+      ${this.o.bar ? this.o.bar() : ""}
+    </div><div class="${P}body"><div class="${P}view" id="${P}view"><canvas id="${P}cv"></canvas></div><div class="${P}side" id="${P}side"></div></div></div>`;
+  }
+  /** Wires the panel in root (where html() went) and runs it. */
+  attach(root) {
+    this.root = root;
+    const P = this.P, cv = this.el("cv");
+    if (!cv) return;
+    root.querySelectorAll(`button[data-${P}]`).forEach((b) => b.onclick = () => {
+      const k = b.dataset[P];
+      if (k === "play") {
+        this.playing = !this.playing;
+        this.last = performance.now();
+      } else if (/^-?\d+(\.\d+)?$/.test(k)) this.step(+k);
+      else if (this.o.act && this.o.act(k, null, this) === false) return;
+      this.draw();
+      this.side(true);
+    });
+    const sp = this.el("speed");
+    if (sp) sp.onchange = (e) => {
+      this.speed = +e.target.value;
+    };
+    let down = null;
+    const V = this.o.view;
+    cv.onpointerdown = (e) => {
+      down = { x: e.clientX, y: e.clientY, at: V && V.grab ? V.grab(this) : null, moved: 0 };
+      cv.setPointerCapture(e.pointerId);
+    };
+    cv.onpointermove = (e) => {
+      if (!down) return;
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      down.moved = Math.max(down.moved, Math.abs(dx) + Math.abs(dy));
+      if (V && V.drag) V.drag(dx, dy, down.at, this);
+    };
+    cv.onpointerup = (e) => {
+      const d = down;
+      down = null;
+      if (d && d.moved < 6) {
+        const r = cv.getBoundingClientRect();
+        this.tap(e.clientX - r.left, e.clientY - r.top);
+      }
+    };
+    cv.onwheel = (e) => {
+      if (!V || !V.wheel) return;
+      const r = cv.getBoundingClientRect();
+      V.wheel(e, e.clientX - r.left, e.clientY - r.top, this);
+    };
+    this.size();
+    this.draw();
+    this.side(true);
+    cancelAnimationFrame(this.raf);
+    this.last = performance.now();
+    const tick2 = (t) => {
+      const c = this.el("cv");
+      if (this.o.open && !this.o.open() || !c || !c.isConnected) {
+        this.playing = false;
+        return;
+      }
+      const dt = Math.min(0.1, (t - this.last) / 1e3);
+      this.last = t;
+      if (this.playing) {
+        this.step(this.speed * dt, true);
+        this.draw();
+      }
+      if (t - this.sideT > 250) {
+        this.sideT = t;
+        this.side();
+        this.clock();
+      }
+      this.raf = requestAnimationFrame(tick2);
+    };
+    this.raf = requestAnimationFrame(tick2);
+  }
+  /** The canvas, sized to its box (or taller, as the view asks: the box scrolls). */
+  size() {
+    const cv = this.el("cv"), box = this.el("view");
+    if (!cv || !box) return;
+    const dpr = typeof window !== "undefined" && window.devicePixelRatio || 1, V = this.o.view;
+    const w = box.clientWidth, h = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    this.w = w;
+    this.h = h;
+    this.dpr = dpr;
+  }
+  /** Draws the view afresh (sized again if its box or its height changed). */
+  draw() {
+    const cv = this.el("cv"), box = this.el("view");
+    if (!cv || !box) return;
+    const V = this.o.view, want = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
+    if (want !== this.h || cv.width !== Math.round(box.clientWidth * this.dpr)) this.size();
+    const g = cv.getContext("2d");
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.fillStyle = this.o.bg || "#0a0812";
+    g.fillRect(0, 0, this.w, this.h);
+    this.dots = [];
+    this.badges = [];
+    if (V) V.draw(g, this);
+  }
+  /** Someone on the view, at x, y (CSS px), in their color: a ring if
+   * they're picked, another if they're on the move. */
+  dot(g, x, y, col, id, moving, r = 2.2) {
+    const sel = id === this.sel;
+    if (sel) {
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(x, y, r + 3, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.fillStyle = col;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    if (moving) {
+      g.strokeStyle = "rgba(255,255,255,0.7)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.arc(x, y, r + 1.2, 0, Math.PI * 2);
+      g.stroke();
+    }
+    this.dots.push({ x, y, id });
+  }
+  /** A box on the view to tap. */
+  badge(b) {
+    this.badges.push(b);
+  }
+  /** A person's color now. */
+  color(id) {
+    const K = this.o.kinds || {}, k = this.o.kind ? this.o.kind(id) : "";
+    return (K[k] || K.other || { color: "#c8c0d8" }).color;
+  }
+  /** A tap at x, y (CSS px on the view): the nearest person within 9 px is
+   * picked; else the view hears of it, with the box under it. */
+  tap(x, y) {
+    let best = null, bd = 9;
+    for (const d of this.dots) {
+      const dd = Math.hypot(d.x - x, d.y - y);
+      if (dd < bd) {
+        bd = dd;
+        best = d;
+      }
+    }
+    if (best) {
+      this.sel = best.id;
+      this.list = null;
+      this.draw();
+      this.side(true);
+      return;
+    }
+    const b = this.badges.find((q) => x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) || null;
+    if (this.o.view && this.o.view.tap) this.o.view.tap(b, x, y, this);
+  }
+  /** The clock on (or back) by `min` game minutes; back no further than
+   * Esper remembers (the nearest quarter hour after, said unless quiet). */
+  step(min, quiet2) {
+    const w = this.o.world();
+    let t = this.o.clock.now() + min;
+    if (min < 0 && w && w.esper) {
+      const e = w.esper.earliest();
+      if (t < e) {
+        t = Math.ceil(e / 15) * 15;
+        if (!quiet2 && this.o.say) this.o.say("Esper only remembers back to " + hhmm(e) + ".");
+      }
+    }
+    this.o.clock.set(t);
+    this.clock();
+  }
+  /** The bar: the clock's text, Play or Pause, and the game's own. */
+  clock() {
+    const c = this.el("clock");
+    if (c) c.textContent = this.o.clock.text();
+    const p = this.el("play");
+    if (p) p.textContent = this.playing ? "Pause" : "Play";
+    if (this.o.status) this.o.status(this);
+  }
+  /** Picks someone (or nobody). */
+  select(id) {
+    this.sel = id;
+    this.list = null;
+    if (id && this.o.onSelect) this.o.onSelect(id, this);
+    this.draw();
+    this.side(true);
+  }
+  /** The side: someone's mind, a list, or the summary; not redrawn under
+   * the pointer while it's being read, unless forced. */
+  side(force) {
+    const el = this.el("side");
+    if (!el) return;
+    if (!force && el.matches(":hover")) return;
+    const w = this.o.world();
+    el.innerHTML = this.sel && w ? mind(w, this.sel, Object.assign({}, this.o, { prefix: this.P })) : this.list ? this.listHtml(this.list) : this.summary();
+    const P = this.P;
+    el.querySelectorAll(`[data-${P}sel]`).forEach((b) => b.onclick = () => this.select(b.dataset[P + "sel"]));
+    el.querySelectorAll(`[data-${P}do]`).forEach((b) => b.onclick = () => {
+      const k = b.dataset[P + "do"];
+      if (k === "close") {
+        this.sel = null;
+        this.list = null;
+      } else if (this.o.act && this.o.act(k, this.sel, this) === false) return;
+      this.draw();
+      this.side(true);
+    });
+  }
+  /** Counts of everyone by kind, with their colors and words. */
+  legend(n) {
+    const K = this.o.kinds || {};
+    return `<div class="${this.P}legend">` + Object.keys(K).filter((k) => n[k]).map((k) => `<span><i style="background:${K[k].color}"></i>${K[k].word} <b>${n[k]}</b></span>`).join("") + "</div>";
+  }
+  summary() {
+    if (this.o.summary) return this.o.summary(this);
+    const n = {}, ids = this.o.people();
+    for (const id of ids) {
+      const k = this.o.kind ? this.o.kind(id) : "other";
+      n[k] = (n[k] || 0) + 1;
+    }
+    return `<h3>${ids.length} people</h3><p class="dim">Tap someone to see their mind.</p>` + this.legend(n);
+  }
+  /** Who's somewhere: a button each, in their color, with what they're doing. */
+  listHtml(L) {
+    const P = this.P, name = (id) => this.o.name ? this.o.name(id) : id;
+    return `<h3>${L.title}</h3><div class="${P}list">` + L.ids.map((id) => `<button data-${P}sel="${id}"><i style="background:${this.color(id)}"></i>${name(id)} <small>${this.o.note ? this.o.note(id) : ""}</small></button>`).join("") + `</div><div class="buttons"><button data-${P}do="close">Back</button></div>`;
+  }
+};
+
+// src/shell/dev.ts
 function query(name, search = typeof location !== "undefined" ? location.search : "") {
   return new RegExp("[?&]" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(search);
 }
@@ -5331,6 +5698,855 @@ var Flags = class {
     return query("dev") || !!this.s.shown;
   }
 };
+var Notes = class {
+  constructor(o = {}) {
+    this.list = [];
+    this.paused = false;
+    this.count = 0;
+    this.o = o;
+  }
+  note(kind, text, more) {
+    if (this.paused) return null;
+    const t = this.o.clock ? this.o.clock() : (typeof performance !== "undefined" ? performance.now() : 0) / 1e3;
+    const e = Object.assign({ t, kind, text }, more);
+    this.list.unshift(e);
+    this.count++;
+    const most = this.o.most ?? 600;
+    if (this.list.length > most) this.list.length = most;
+    return e;
+  }
+  clear() {
+    this.list = [];
+    this.count++;
+  }
+  /** Drops what's later than t (the clock went back). */
+  rewind(t) {
+    const n = this.list.length;
+    this.list = this.list.filter((e) => e.t <= t);
+    if (this.list.length !== n) this.count++;
+  }
+};
+function attr(t) {
+  return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+function camel(name) {
+  return name.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+var Bits = class {
+  constructor(prefix = "dev") {
+    /** Each setting's default where one's known (steppers, toggles and
+     * choices off theirs are marked): the drawer fills it from its `play`. */
+    this.defaults = {};
+    this.P = prefix;
+  }
+  esc(t) {
+    return esc(t);
+  }
+  attr(t) {
+    return attr(t);
+  }
+  /** A number to d places, or – if it isn't one. */
+  num(v, d = 2) {
+    return typeof v === "number" && Number.isFinite(v) ? v.toFixed(d) : "–";
+  }
+  /** Is v off its default (def, or the known one)? */
+  off(key, v, def) {
+    const d = def !== void 0 ? def : this.defaults[key];
+    if (d === void 0) return false;
+    return JSON.stringify(v === void 0 ? d : v) !== JSON.stringify(d);
+  }
+  /** A bar 0..max (1): warm over 0.4 and hot over 0.7 if `hot`, or a color. */
+  bar(v, o = {}) {
+    const f = Math.max(0, Math.min(1, (v || 0) / (o.max || 1)));
+    const cls = o.hot && f > 0.7 ? "hot" : o.hot && f > 0.4 ? "warm" : "";
+    return `<span class="${this.P}-bar"><i style="width:${Math.round(f * 100)}%${o.color ? ";background:" + o.color : ""}"${cls ? ` class="${cls}"` : ""}></i></span>`;
+  }
+  /** A grid of bars: each row its label, its bar and its number (or text). */
+  bars(rows) {
+    return `<div class="${this.P}-bars">` + rows.map(([k, v, o = {}]) => `<span>${esc(k)}</span>${this.bar(v, o)}<span class="${this.P}-num">${o.text !== void 0 ? o.text : this.num(v)}</span>`).join("") + "</div>";
+  }
+  section(title, small) {
+    return `<h5>${title}${small ? ` <small>${small}</small>` : ""}</h5>`;
+  }
+  kv(html) {
+    return `<div class="${this.P}-kv">${html}</div>`;
+  }
+  hint(html) {
+    return `<p class="${this.P}-hint">${html}</p>`;
+  }
+  chips(html) {
+    return `<div class="${this.P}-chips">${html}</div>`;
+  }
+  /** A table: its heads, and rows of cells (HTML), each row with a class if
+   * it's given as { cells, cls }; the columns in `nums` are numbers. */
+  table(heads, rows, o = {}) {
+    const nums = new Set(o.nums || []), td = (c, i) => `<td${nums.has(i) ? ' class="num"' : ""}>${c}</td>`;
+    return `<table class="${this.P}-table">` + (heads.length ? "<tr>" + heads.map((h, i) => `<th${nums.has(i) ? ' class="num"' : ""}>${h}</th>`).join("") + "</tr>" : "") + rows.map((r) => {
+      const cells = Array.isArray(r) ? r : r.cells, cls = Array.isArray(r) ? "" : r.cls || "";
+      return `<tr${cls ? ` class="${cls}"` : ""}>` + cells.map(td).join("") + "</tr>";
+    }).join("") + "</table>";
+  }
+  /** A button that runs one of the drawer's acts, with its argument. */
+  button(act, label, o = {}) {
+    const P = this.P;
+    return `<button data-${P}act="${attr(act)}"${o.arg !== void 0 ? ` data-${P}arg="${attr(o.arg)}"` : ""}${o.title ? ` title="${attr(o.title)}"` : ""}${o.disabled ? " disabled" : ""} class="${[o.on ? "on" : "", o.cls || ""].join(" ").trim()}">${label}</button>`;
+  }
+  /** Someone's name, a link that picks them. */
+  who(id, label) {
+    return `<a data-${this.P}sel="${attr(id)}">${esc(label)}</a>`;
+  }
+  setter(key, to, label, cls = "", more = "") {
+    const P = this.P;
+    return `<button data-${P}set="${attr(key)}" data-${P}to="${attr(JSON.stringify(to))}"${cls ? ` class="${cls}"` : ""}${more}>${label}</button>`;
+  }
+  /** A stepper: − value + (or several steps a side), and ↺ back to its
+   * default when it's off it. */
+  stepper(o) {
+    const P = this.P, v = o.value, fmt = o.fmt || ((x) => String(x));
+    const def = o.def !== void 0 ? o.def : this.defaults[o.key], off = this.off(o.key, v, def);
+    let down = "", up = "";
+    if (o.values) {
+      const V = o.values, i = V.findIndex((x) => x === v);
+      const prev = i >= 0 ? V[i - 1] : V.filter((x) => +x < +v).pop(), next = i >= 0 ? V[i + 1] : V.find((x) => +x > +v);
+      down = prev === void 0 ? `<button disabled>−</button>` : this.setter(o.key, prev, "−");
+      up = next === void 0 ? `<button disabled>+</button>` : this.setter(o.key, next, "+");
+    } else {
+      const steps = (Array.isArray(o.step) ? o.step : [o.step ?? 1]).slice().sort((a, b) => b - a), word = o.stepWord || ((s) => String(s));
+      const to = (d) => {
+        let x = +(+v + d).toFixed(6);
+        if (o.wrap && o.min !== void 0 && o.max !== void 0) {
+          const span = o.max - o.min;
+          x = +(((x - o.min) % span + span) % span + o.min).toFixed(6);
+          return x;
+        }
+        if (o.min !== void 0 && x < o.min) return +v > o.min ? o.min : void 0;
+        if (o.max !== void 0 && x > o.max) return +v < o.max ? o.max : void 0;
+        return x;
+      };
+      const one = steps.length === 1;
+      down = steps.map((s) => {
+        const x = to(-s);
+        return x === void 0 ? `<button disabled>−${one ? "" : word(s)}</button>` : this.setter(o.key, x, "−" + (one ? "" : word(s)));
+      }).join("");
+      up = steps.slice().reverse().map((s) => {
+        const x = to(s);
+        return x === void 0 ? `<button disabled>+${one ? "" : word(s)}</button>` : this.setter(o.key, x, "+" + (one ? "" : word(s)));
+      }).join("");
+    }
+    const back = off ? this.setter(o.key, def, "↺", `${P}-reset`, ` title="Back to ${attr(fmt(def))}"`) : "";
+    return `<span class="${P}-step${off ? " " + P + "-off" : ""}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.label ? `<span class="${P}-lab">${o.label}</span>` : ""}${down}<b>${esc(fmt(v))}</b>${up}${back}</span>`;
+  }
+  /** A switch: a button that turns a setting on or off. */
+  toggle(o) {
+    const P = this.P, off = this.off(o.key, o.on, o.def);
+    return this.setter(o.key, !o.on, esc(o.label), `${P}-tog${o.on ? " on" : ""}${off ? " " + P + "-off" : ""}`, `${o.title ? ` title="${attr(o.title)}"` : ""} aria-pressed="${o.on}"`);
+  }
+  /** One of a few values: a button each, the one in force marked. */
+  choice(o) {
+    const P = this.P, off = this.off(o.key, o.value, o.def);
+    const opts = o.options.map((x) => Array.isArray(x) ? x : [x, String(x)]);
+    return `<span class="${P}-choice${off ? " " + P + "-off" : ""}">${o.label ? `<span class="${P}-lab">${o.label}</span>` : ""}` + opts.map(([v, l]) => this.setter(o.key, v, esc(l), JSON.stringify(v) === JSON.stringify(o.value) ? "on" : "")).join("") + "</span>";
+  }
+};
+var isField = (t) => {
+  const el = t;
+  return !!el && !!el.tagName && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || !!el.isContentEditable);
+};
+var nowMs = () => typeof performance !== "undefined" ? performance.now() : 0;
+var Drawer = class extends Bits {
+  constructor(o) {
+    super(o.prefix ?? "dev");
+    /** Open now. */
+    this.on = false;
+    /** Whoever's picked (the game's id). */
+    this.sel = null;
+    /** Frames a second, smoothed; and the game's frame times (ms, smoothed). */
+    this.fps = 60;
+    this.times = {};
+    this.root = null;
+    this.body = null;
+    /** How much of the screen it covers now (CSS px), at each side. */
+    this.cover = { left: 0, right: 0, bottom: 0 };
+    this.started = false;
+    this.headT = 0;
+    this.bodyT = 0;
+    this.downs = /* @__PURE__ */ new Set();
+    this.scrolled = -1e9;
+    this.typed = /* @__PURE__ */ new Map();
+    this.opened = /* @__PURE__ */ new Map();
+    this.sig = "";
+    this.frozen = null;
+    this.clearedAt = -Infinity;
+    this.tagEl = null;
+    this.tagText = null;
+    this.btn = null;
+    this.cv = null;
+    this.cg = null;
+    this.layerOn = false;
+    this.ovs = /* @__PURE__ */ new Map();
+    this.o = o;
+    this.flags = o.flags;
+    this.tabs = o.tabs.slice();
+    this.notes = new Notes({ most: o.events && o.events.most, clock: o.events && o.events.clock });
+    for (const p of o.play || []) this.defaults[p.key] = p.def;
+    for (const ov of o.overlays || []) this.ovs.set(ov.id, ov);
+  }
+  // ---- its state, in the flags ----------------------------------------------
+  /** Its own state (kept in the flags): open, tab, overlays, filter, find. */
+  get st() {
+    const s = this.flags.s, k = this.o.keep ?? "drawer";
+    let v = s[k];
+    if (!v || typeof v !== "object") v = s[k] = { ov: {}, filter: "all", find: "", least: 0 };
+    if (!v.ov) v.ov = {};
+    for (const ov of this.o.overlays || []) if (!(ov.id in v.ov)) v.ov[ov.id] = ov.on !== void 0 ? ov.on : ov.options ? ov.options[0] : false;
+    if (v.filter === void 0) v.filter = "all";
+    if (v.find === void 0) v.find = "";
+    if (v.least === void 0) v.least = 0;
+    return v;
+  }
+  save() {
+    this.flags.save();
+  }
+  /** May it open (?dev, or once shown; or always)? */
+  get allowed() {
+    return !!this.o.always || this.flags.shown();
+  }
+  /** The tab showing. */
+  current() {
+    const id = this.st.tab;
+    return this.tabs.find((t) => t.id === id) || this.tabs[0];
+  }
+  /** A tab added (at index `at`, else at the end). */
+  addTab(t, at) {
+    this.tabs = this.tabs.filter((x) => x.id !== t.id);
+    this.tabs.splice(at ?? this.tabs.length, 0, t);
+    if (this.root) this.build(true);
+  }
+  // ---- the page ---------------------------------------------------------------
+  /** Wires the key, the button, the tag and picking, and opens it again if it was open. */
+  start() {
+    if (this.started || typeof document === "undefined") return this;
+    this.started = true;
+    const keys2 = this.o.keys === false ? [] : this.o.keys || ["`", "~"];
+    if (keys2.length) addEventListener("keydown", (e) => {
+      if (keys2.includes(e.key) && !isField(e.target) && this.allowed) {
+        e.preventDefault();
+        this.toggleOpen();
+      }
+    });
+    const b = this.o.button;
+    if (b) {
+      this.btn = b === true ? this.make("button", `${this.P}-btn`, "DEV") : typeof b === "function" ? b() : b;
+      if (this.btn) {
+        this.btn.hidden = !this.allowed;
+        this.btn.addEventListener("click", () => this.toggleOpen());
+      }
+    }
+    if (this.o.pick) addEventListener("pointerdown", (e) => {
+      if (!this.on || !this.o.pick || this.root && this.root.contains(e.target) || this.tagEl && this.tagEl.contains(e.target)) return;
+      const id = this.o.pick(e.clientX, e.clientY, e);
+      if (id === null || id === void 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this.select(id, this.o.selectTab);
+    }, true);
+    addEventListener("pointerup", (e) => this.downs.delete(e.pointerId), true);
+    addEventListener("pointercancel", (e) => this.downs.delete(e.pointerId), true);
+    addEventListener("resize", () => {
+      if (this.on) this.measure();
+    });
+    this.tag(true);
+    if (this.st.open && this.allowed) this.open();
+    return this;
+  }
+  make(tag, cls, text = "") {
+    const el = document.createElement(tag);
+    el.className = cls;
+    el.id = cls;
+    if (text) el.textContent = text;
+    (this.o.parent && this.o.parent() || document.body).appendChild(el);
+    return el;
+  }
+  /** Its elements, made once (and the tabs again, `again`). */
+  build(again = false) {
+    const P = this.P;
+    if (this.root && again) {
+      const nav = this.root.querySelector(`.${P}-tabs`);
+      if (nav) nav.innerHTML = this.tabsHtml();
+      return;
+    }
+    if (this.root) return;
+    if (this.o.style !== false && !document.getElementById(`${P}-style`)) {
+      const s = document.createElement("style");
+      s.id = `${P}-style`;
+      s.textContent = drawerCss(P);
+      document.head.insertBefore(s, document.head.firstChild);
+    }
+    const el = document.createElement("aside");
+    el.id = P;
+    el.className = `${P} ${P}-${this.o.side || "left"}`;
+    el.hidden = true;
+    el.setAttribute("aria-label", this.o.label || "Developer tools");
+    const ov = (this.o.overlays || []).map((o) => o.options ? `<label${o.title ? ` title="${attr(o.title)}"` : ""}>${esc(o.label || o.id)} <select data-${P}ov="${attr(o.id)}" id="${P}-ov-${attr(o.id)}">${o.options.map((x) => `<option>${esc(x)}</option>`).join("")}</select></label>` : `<label${o.title ? ` title="${attr(o.title)}"` : ""}><input type="checkbox" data-${P}ov="${attr(o.id)}" id="${P}-ov-${attr(o.id)}"> ${esc(o.label || o.id)}</label>`).join("");
+    el.innerHTML = `<div class="${P}-head"><b>${esc(this.o.title || "DEV")}</b><nav class="${P}-tabs">${this.tabsHtml()}</nav><button class="${P}-x" id="${P}-close" aria-label="Close">×</button></div><div class="${P}-overlays">${ov}<span class="${P}-fps" id="${P}-fps"></span></div><div class="${P}-body" id="${P}-body"></div>`;
+    (this.o.parent && this.o.parent() || document.body).appendChild(el);
+    this.root = el;
+    this.body = el.querySelector(`.${P}-body`);
+    el.addEventListener("click", (e) => this.click(e));
+    el.addEventListener("input", (e) => this.typing(e, "input"));
+    el.addEventListener("change", (e) => this.typing(e, "change"));
+    el.addEventListener("toggle", (e) => {
+      const d = e.target, k = this.keyOf(d);
+      if (k) this.opened.set(k, d.open);
+    }, true);
+    el.addEventListener("pointerdown", (e) => this.downs.add(e.pointerId));
+    for (const type of ["keydown", "keyup", "keypress"]) el.addEventListener(type, (e) => {
+      if (isField(e.target)) e.stopPropagation();
+    });
+    this.body.addEventListener("scroll", () => this.scrolled = nowMs(), { passive: true });
+    this.body.addEventListener("wheel", () => this.scrolled = nowMs(), { passive: true });
+  }
+  tabsHtml() {
+    return this.tabs.map((t) => `<button data-${this.P}tab="${attr(t.id)}">${esc(t.label || t.id[0].toUpperCase() + t.id.slice(1))}</button>`).join("");
+  }
+  // ---- open, close, the tab -------------------------------------------------------
+  open(tab) {
+    if (!this.allowed || typeof document === "undefined") return;
+    this.build();
+    const st = this.st;
+    if (tab && this.tabs.some((t) => t.id === tab)) st.tab = tab;
+    const was = this.on;
+    this.on = true;
+    st.open = true;
+    this.save();
+    this.root.hidden = false;
+    document.body.classList.add(this.o.bodyClass || `${this.P}-on`);
+    if (this.btn) this.btn.classList.add("active");
+    this.measure();
+    this.refresh(true, true);
+    if (!was && this.o.onOpen) this.o.onOpen(this);
+  }
+  close() {
+    if (!this.on) return;
+    this.on = false;
+    this.st.open = false;
+    this.save();
+    if (this.root) this.root.hidden = true;
+    if (typeof document !== "undefined") document.body.classList.remove(this.o.bodyClass || `${this.P}-on`);
+    if (this.btn) this.btn.classList.remove("active");
+    this.measure();
+    this.layer();
+    if (this.o.onClose) this.o.onClose(this);
+  }
+  toggleOpen(force) {
+    if (force ?? !this.on) this.open();
+    else this.close();
+  }
+  /** Shows a tab (from the top). */
+  show(id) {
+    const st = this.st;
+    st.tab = id;
+    this.save();
+    if (this.o.onTab) this.o.onTab(id, this);
+    this.refresh(true, true);
+  }
+  /** Where it sits, as CSS variables on the page (--<prefix>-left, -right,
+   * -bottom, px) for the game's own layout, and in `cover`. */
+  measure() {
+    const c = { left: 0, right: 0, bottom: 0 };
+    if (this.on && this.root && typeof innerWidth !== "undefined") {
+      const r = this.root.getBoundingClientRect();
+      if (r.width >= innerWidth - 2) c.bottom = Math.round(innerHeight - r.top);
+      else if (r.left < 2) c.left = Math.round(r.right);
+      else c.right = Math.round(innerWidth - r.left);
+    }
+    this.cover = c;
+    if (typeof document !== "undefined" && document.documentElement && document.documentElement.style) for (const k of ["left", "right", "bottom"]) document.documentElement.style.setProperty(`--${this.P}-${k}`, c[k] + "px");
+  }
+  /** How much of the screen it covers (CSS px) on each side: nothing while closed. */
+  covered() {
+    return this.cover;
+  }
+  // ---- every frame ------------------------------------------------------------------
+  /** Every frame, with the real seconds since the last: the frame rate, the
+   * tag, and while it's open the header and the tab when they're due. */
+  frame(dt) {
+    const k = this.o.smooth ?? 0.05;
+    if (dt > 0) this.fps = this.fps * (1 - k) + 1 / dt * k;
+    this.tag();
+    if (!this.on) return;
+    const every = this.o.every ?? 0.4;
+    this.headT -= dt;
+    this.bodyT -= dt;
+    if (this.bodyT <= 0) {
+      const t = this.current();
+      this.bodyT = t && !t.events && t.every !== void 0 ? t.every || every : every;
+      this.headT = every;
+      this.refresh(false);
+    } else if (this.headT <= 0) {
+      this.headT = every;
+      this.head();
+    }
+  }
+  /** A frame time the game measured (ms), smoothed (by k, 0.1). */
+  time(name, ms, k = 0.1) {
+    const v = this.times[name];
+    this.times[name] = v === void 0 ? ms : v + (ms - v) * k;
+  }
+  /** The default header line: the frame rate and the frame times. */
+  frameText() {
+    const names = Object.keys(this.times);
+    return `${Math.round(this.fps)} fps` + (names.length ? " · " + names.map((n) => `${n} ${this.times[n].toFixed(1)}`).join(" ") + " ms" : "");
+  }
+  // ---- drawing --------------------------------------------------------------------------
+  /** The header: which tab, the frame line, the overlays' switches. */
+  head() {
+    if (!this.root) return;
+    const P = this.P, st = this.st, cur = this.current();
+    this.root.querySelectorAll(`[data-${P}tab]`).forEach((b) => b.classList.toggle("active", !!cur && b.dataset[camel(P + "tab")] === cur.id));
+    const f = this.root.querySelector(`.${P}-fps`);
+    if (f) f.innerHTML = this.o.frame ? this.o.frame(this) : esc(this.frameText());
+    this.root.querySelectorAll(`[data-${P}ov]`).forEach((i) => {
+      const v = st.ov[i.dataset[camel(P + "ov")]];
+      if (i.type === "checkbox") i.checked = !!v;
+      else if (i.value !== v) i.value = String(v);
+    });
+  }
+  /** Draws the tab again: always if `full` (something was done), else only
+   * if it's due and nobody's in the middle of using it (a finger down, a
+   * scroll just now, a choice open); `reset` goes back to the top. */
+  refresh(full = false, reset = false) {
+    if (!this.on || !this.root) return;
+    this.head();
+    const t = this.current();
+    if (!t) return;
+    if (!full) {
+      if (this.holding()) return;
+      if (t.events) {
+        if (this.evSig() === this.sig) return;
+      } else if (t.every === 0) return;
+    }
+    this.draw(t, reset);
+  }
+  /** Is someone in the middle of using it? */
+  holding() {
+    if (this.downs.size || nowMs() - this.scrolled < 600) return true;
+    const a = typeof document !== "undefined" ? document.activeElement : null;
+    return !!a && a.tagName === "SELECT" && !!this.body && this.body.contains(a);
+  }
+  keyOf(el) {
+    if (!el || !el.getAttribute) return null;
+    const h = el, name = h.getAttribute("name");
+    return h.id ? "#" + h.id : name ? "n:" + name : h.dataset && h.dataset.keep ? "k:" + h.dataset.keep : null;
+  }
+  keyed(root) {
+    const m = /* @__PURE__ */ new Map();
+    root.querySelectorAll("input, select, textarea, details, [data-keep]").forEach((el) => {
+      const k = this.keyOf(el);
+      if (k && !m.has(k)) m.set(k, el);
+    });
+    return m;
+  }
+  draw(t, reset) {
+    const body = this.body;
+    const top = reset ? 0 : body.scrollTop, inner = [];
+    if (!reset) {
+      for (const [k, el] of this.keyed(body)) if (el.scrollTop) inner.push([k, el.scrollTop]);
+    }
+    const fa = typeof document !== "undefined" ? document.activeElement : null;
+    const fk = fa && body.contains(fa) ? this.keyOf(fa) : null;
+    let caret = null;
+    if (fk) try {
+      caret = [fa.selectionStart, fa.selectionEnd];
+    } catch (e) {
+      caret = null;
+    }
+    body.innerHTML = t.events ? this.eventsHtml() : t.html ? t.html(this) : "";
+    if (t.events) this.sig = this.evSig();
+    const els = this.keyed(body);
+    for (const [k, v] of this.typed) {
+      const el = els.get(k);
+      if (el && "value" in el && el.value !== v) el.value = v;
+    }
+    for (const [k, v] of this.opened) {
+      const el = els.get(k);
+      if (el && el.tagName === "DETAILS") el.open = v;
+    }
+    for (const [k, v] of inner) {
+      const el = els.get(k);
+      if (el) el.scrollTop = v;
+    }
+    body.scrollTop = top;
+    if (fk) {
+      const el = els.get(fk);
+      if (el && el.focus) {
+        el.focus({ preventScroll: true });
+        if (caret && caret[0] !== null) try {
+          el.setSelectionRange(caret[0], caret[1]);
+        } catch (e) {
+        }
+      }
+    }
+    if (t.bind) t.bind(body, this);
+  }
+  // ---- what's done in it -------------------------------------------------------------
+  data(el, k) {
+    return el.dataset[camel(this.P + k)];
+  }
+  near(t, sel) {
+    const el = t.closest ? t.closest(sel) : null;
+    return el && this.root && this.root.contains(el) ? el : null;
+  }
+  click(e) {
+    const t = e.target, P = this.P, st = this.st, o = this.o;
+    if (!t || !t.closest) return;
+    let el;
+    const done = (b) => {
+      if (b.tagName === "BUTTON" && b.blur) b.blur();
+    };
+    if (el = this.near(t, `[data-${P}tab]`)) {
+      this.show(this.data(el, "tab"));
+      done(el);
+      return;
+    }
+    if (el = this.near(t, `.${P}-x`)) {
+      this.close();
+      return;
+    }
+    if (el = this.near(t, `[data-${P}set]`)) {
+      if (el.disabled) return;
+      let v;
+      try {
+        v = JSON.parse(this.data(el, "to"));
+      } catch (err) {
+        v = this.data(el, "to");
+      }
+      this.set(this.data(el, "set"), v);
+      done(el);
+      return;
+    }
+    if (el = this.near(t, `[data-${P}act]`)) {
+      if (el.disabled) return;
+      const fn = o.acts && o.acts[this.data(el, "act")];
+      if (fn && fn(this.data(el, "arg"), el, this) !== false) this.refresh(true);
+      done(el);
+      return;
+    }
+    if (el = this.near(t, `[data-${P}sel]`)) {
+      this.select(this.data(el, "sel") || null, this.o.selectTab);
+      return;
+    }
+    if (el = this.near(t, `[data-${P}do]`)) {
+      const k = this.data(el, "do"), fn = o.acts && o.acts[k];
+      if (k === "close") this.select(null);
+      else if (fn && fn(this.sel, el, this) !== false) this.refresh(true);
+      done(el);
+      return;
+    }
+    if (el = this.near(t, `[data-${P}kind]`)) {
+      st.filter = this.data(el, "kind");
+      this.save();
+      this.refresh(true, true);
+      done(el);
+      return;
+    }
+    if (el = this.near(t, `[data-${P}ev]`)) {
+      const k = this.data(el, "ev");
+      if (k === "pause") {
+        this.notes.paused = !this.notes.paused;
+        this.frozen = null;
+        if (this.notes.paused) this.frozen = this.evAll();
+      }
+      if (k === "clear") {
+        this.notes.clear();
+        let newest = -Infinity;
+        for (const x of this.fromList()) if (x.t > newest) newest = x.t;
+        this.clearedAt = newest;
+        this.frozen = null;
+      }
+      this.refresh(true);
+      done(el);
+      return;
+    }
+    for (const k of Object.keys(o.click || {})) {
+      const c = this.near(t, `[data-${k}]`);
+      if (c) {
+        o.click[k](c.dataset[camel(k)], c, e, this);
+        return;
+      }
+    }
+  }
+  typing(e, type) {
+    const t = e.target, P = this.P, st = this.st;
+    if (!t || !t.dataset) return;
+    const k = this.keyOf(t);
+    if (k && "value" in t && t.type !== "checkbox") this.typed.set(k, t.value);
+    if (t.dataset[camel(P + "ov")] !== void 0) {
+      const id = t.dataset[camel(P + "ov")];
+      st.ov[id] = t.type === "checkbox" ? t.checked : t.value;
+      this.save();
+      return;
+    }
+    if (type === "input" && t.dataset[camel(P + "find")] !== void 0) {
+      st.find = t.value;
+      this.save();
+      this.refresh(true);
+      return;
+    }
+    const map = type === "input" ? this.o.input : this.o.change;
+    for (const key of Object.keys(map || {})) {
+      const c = this.near(t, `[data-${key}]`);
+      if (c) {
+        map[key](c.dataset[camel(key)], t, e, this);
+        return;
+      }
+    }
+  }
+  /** A setting changed: the game's `set`, or the flags; then the tab again. */
+  set(key, value) {
+    if (key === `${this.P}-least`) {
+      this.st.least = +value || 0;
+      this.save();
+      this.refresh(true);
+      return;
+    }
+    if (this.o.set) this.o.set(key, value, this);
+    else this.store(key, value);
+    this.tag(true);
+    this.refresh(true);
+  }
+  /** A setting written to the flags and kept. */
+  store(key, value) {
+    this.flags.s[key] = value;
+    this.flags.save();
+  }
+  /** Picks someone (or nobody): to `tab`, if one's given. */
+  select(id, tab) {
+    this.sel = id;
+    if (this.o.onSelect) this.o.onSelect(id, this);
+    if (id && tab && this.on && this.st.tab !== tab) {
+      this.show(tab);
+      return;
+    }
+    this.refresh(true);
+  }
+  // ---- the overlays ------------------------------------------------------------------------
+  /** An overlay's value while it shows (the drawer open, or keepOverlays):
+   * true, or a choice's value; false when it's off. */
+  overlay(id) {
+    if (!this.on && !(this.o.keepOverlays && this.allowed)) return false;
+    const v = this.st.ov[id], ov = this.ovs.get(id);
+    if (ov && ov.options) return v && v !== ov.options[0] ? v : false;
+    return !!v;
+  }
+  /** Is any overlay showing? */
+  overlays() {
+    for (const id of this.ovs.keys()) if (this.overlay(id)) return true;
+    return false;
+  }
+  /** The canvas over the game for this frame's overlays, cleared and scaled
+   * to CSS px, while any overlay shows; else null (and it's cleared away). */
+  layer() {
+    if (!this.o.layer || typeof document === "undefined") return null;
+    if (!this.overlays()) {
+      if (this.layerOn && this.cv && this.cg) {
+        this.cg.setTransform(1, 0, 0, 1, 0, 0);
+        this.cg.clearRect(0, 0, this.cv.width, this.cv.height);
+        this.cv.hidden = true;
+      }
+      this.layerOn = false;
+      return null;
+    }
+    if (!this.cv) {
+      this.cv = this.make("canvas", `${this.P}-layer`);
+      this.cg = this.cv.getContext("2d");
+    }
+    const cv = this.cv, g = this.cg, dpr = typeof devicePixelRatio !== "undefined" && devicePixelRatio || 1, w = innerWidth, h = innerHeight;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(h * dpr);
+    }
+    cv.hidden = false;
+    this.layerOn = true;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { g, w, h };
+  }
+  // ---- the tag ----------------------------------------------------------------------------------
+  /** The settings that change play and are off their defaults, in words. */
+  offPlay() {
+    const s = this.flags.s;
+    return (this.o.play || []).filter((p) => this.off(p.key, p.get ? p.get() : s[p.key], p.def)).map((p) => {
+      const v = p.get ? p.get() : s[p.key];
+      return p.word ? p.word(v) : `${p.key} ${v}`;
+    });
+  }
+  /** The tag: on screen while any setting that changes play is off its default. */
+  tag(force = false) {
+    if (!this.o.play || !this.started) return;
+    const text = this.offPlay().join(" · ");
+    if (text === this.tagText && !force) return;
+    this.tagText = text;
+    if (!this.tagEl) {
+      this.tagEl = this.make("div", `${this.P}-tag`);
+      this.tagEl.setAttribute("role", "status");
+      this.tagEl.addEventListener("click", () => this.open(this.o.tagTab));
+    }
+    this.tagEl.textContent = text;
+    this.tagEl.hidden = !text;
+    this.tagEl.title = text ? "Dev settings that change play: " + text : "";
+  }
+  // ---- the events --------------------------------------------------------------------------------
+  /** Something that happened, for the events. */
+  note(kind, text, more) {
+    return this.notes.note(kind, text, more);
+  }
+  fromList() {
+    const f = this.o.events && this.o.events.from;
+    return f ? f() || [] : [];
+  }
+  evSig() {
+    const f = this.fromList();
+    return `${this.notes.count}:${f.length}:${f.length ? f[f.length - 1].t + "/" + f[0].t : ""}:${this.notes.paused}`;
+  }
+  /** Every event, newest first: the notes and what `from` gives, merged by time. */
+  evAll() {
+    if (this.frozen) return this.frozen;
+    let f = this.fromList();
+    if (f.length && this.clearedAt > -Infinity) {
+      let newest = -Infinity;
+      for (const x of f) if (x.t > newest) newest = x.t;
+      if (newest < this.clearedAt) this.clearedAt = -Infinity;
+      else f = f.filter((x) => x.t > this.clearedAt);
+    }
+    if (f.length) {
+      let up = true;
+      for (let i2 = 1; i2 < f.length && up; i2++) if (f[i2].t < f[i2 - 1].t) up = false;
+      f = up ? f.slice().reverse() : f.slice().sort((a2, b) => b.t - a2.t);
+    }
+    const a = this.notes.list, out = [];
+    let i = 0, j = 0;
+    while (i < a.length || j < f.length) out.push(j >= f.length || i < a.length && a[i].t >= f[j].t ? a[i++] : f[j++]);
+    return out;
+  }
+  /** The events: a chip a kind (with its count), pause and clear, the find
+   * box, then the list, newest first. */
+  eventsHtml() {
+    const P = this.P, E = this.o.events || {}, st = this.st, all = this.evAll(), apart = new Set(E.apart || []);
+    const counts = {};
+    let n = 0;
+    for (const e of all) {
+      counts[e.kind] = (counts[e.kind] || 0) + 1;
+      if (!apart.has(e.kind)) n++;
+    }
+    const named = E.kinds || [], kinds = named.concat(Object.keys(counts).filter((k) => !named.includes(k)).sort());
+    const col = (k) => E.colors && E.colors[k] ? ` style="color:${attr(E.colors[k])}"` : "";
+    let h = `<div class="${P}-chips"><button data-${P}kind="all" class="${st.filter === "all" ? "on" : ""}">all ${n}</button>` + kinds.map((k) => `<button data-${P}kind="${attr(k)}" class="${[st.filter === k ? "on" : "", apart.has(k) ? P + "-apart" : ""].join(" ").trim()}"${st.filter === k ? "" : col(k)}>${esc(k)} ${counts[k] || 0}</button>`).join("") + "</div>";
+    const imp = all.some((e) => e.impact !== void 0);
+    h += `<div class="${P}-chips"><button data-${P}ev="pause">${this.notes.paused ? "resume log" : "pause log"}</button><button data-${P}ev="clear">clear</button>` + (E.find ? `<input type="search" id="${P}-find" data-${P}find placeholder="find" value="${attr(st.find)}" autocomplete="off" spellcheck="false">` : "") + (imp ? this.stepper({ key: `${P}-least`, value: st.least, label: "least impact", step: 0.1, min: 0, max: 1, fmt: (v) => (+v).toFixed(1) }) : "") + (E.hint ? E.hint(st.filter, this) : "") + "</div>";
+    const q = E.find && st.find ? st.find.toLowerCase() : "", most = E.shown ?? 250, list = [];
+    for (const e of all) {
+      if (list.length >= most) break;
+      if (st.filter === "all" ? apart.has(e.kind) : e.kind !== st.filter) continue;
+      if (q && !(e.text + " " + e.kind).toLowerCase().includes(q)) continue;
+      if (imp && e.impact !== void 0 && e.impact < st.least) continue;
+      list.push(e);
+    }
+    const when = E.when || ((t) => String(Math.round(t)));
+    h += list.map((e) => `<div class="${P}-ev k-${attr(e.kind.replace(/[^a-z0-9_-]/gi, "_"))}"><span class="${P}-t">${esc(when(e.t))}</span>${imp ? `<span class="${P}-imp">${e.impact !== void 0 ? e.impact.toFixed(2) : ""}</span>` : ""}<span class="${P}-k"${col(e.kind)}>${esc(e.kind)}</span>${e.html || E.html ? e.text : esc(e.text)}</div>`).join("") || `<p class="${P}-hint">${all.length ? "Nothing like that." : "Nothing logged yet."}</p>`;
+    return h;
+  }
+};
+function drawerCss(P = "dev") {
+  const D = "." + P;
+  return `${D}{--dv-bg:rgba(10,14,20,.94);--dv-line:#2a3644;--dv-fg:#d8e6f0;--dv-dim:#8196a9;--dv-hi:#ffe14a;--dv-up:#8ae6a0;--dv-down:#ff9a8a;--dv-acc:#6ad0ff;--dv-btn:#16202c;--dv-w:min(440px,46vw);position:fixed;z-index:60;top:0;bottom:0;left:0;width:var(--dv-w);min-width:min(300px,100vw);display:flex;flex-direction:column;box-sizing:border-box;margin:0;background:var(--dv-bg);color:var(--dv-fg);border-right:1px solid var(--dv-line);box-shadow:0 8px 30px rgba(0,0,0,.45);font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono","DejaVu Sans Mono",monospace;-webkit-font-smoothing:auto;letter-spacing:0;text-transform:none;text-align:left;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);touch-action:manipulation;-webkit-user-select:none;user-select:none;pointer-events:auto}
+${D}.${P}-right{left:auto;right:0;border-right:0;border-left:1px solid var(--dv-line);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0}
+${D}[hidden]{display:none}
+${D} *{box-sizing:border-box}
+${D} button,${D} input,${D} select,${D} summary{font:inherit;color:inherit;letter-spacing:0;text-transform:none}
+${D} button{background:var(--dv-btn);color:var(--dv-fg);border:1px solid var(--dv-line);border-radius:3px;padding:2px 8px;min-height:22px;line-height:1.25;margin:0;cursor:pointer;clip-path:none;box-shadow:none;transform:none;animation:none;text-shadow:none;opacity:1}
+${D} button:hover{border-color:var(--dv-acc)}
+${D} button:active:not(:disabled){transform:none;box-shadow:none}
+${D} button:disabled{opacity:.4;cursor:default}
+${D} button.on,${D} button.active{background:var(--dv-acc);color:#06121c;border-color:var(--dv-acc)}
+${D} button:focus-visible{outline:2px solid var(--dv-hi);outline-offset:1px}
+${D} input[type=search],${D} input[type=text],${D} input[type=number],${D} select{background:#0b1620;color:var(--dv-fg);border:1px solid #2a3a48;border-radius:3px;padding:2px 5px;min-height:22px;-webkit-user-select:text;user-select:text}
+${D} input[type=search]{min-width:9em;flex:1 1 9em}
+${D} input[type=checkbox]{width:13px;height:13px;margin:0;accent-color:var(--dv-acc)}
+${D} b{font-weight:700;color:#fff}
+${D} small{font-size:11px;color:var(--dv-dim)}
+${D} h3,${D} h4{display:block;margin:6px 0 4px;font-size:13px;font-weight:400;color:var(--dv-hi);letter-spacing:0;text-transform:none}
+${D} h5{display:block;margin:10px 0 4px;font-size:11px;font-weight:400;color:var(--dv-acc);text-transform:uppercase;letter-spacing:1px}
+${D} h3::before,${D} h3::after,${D} h4::after,${D} h5::after{content:none}
+${D} h5 small{text-transform:none;letter-spacing:0}
+${D} p{margin:3px 0}
+${D} a{color:var(--dv-acc);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+${D}-head{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 8px;border-bottom:1px solid var(--dv-line)}
+${D}-head>b{color:var(--dv-hi);letter-spacing:2px}
+${D}-tabs{display:flex;flex-wrap:wrap;gap:2px;flex:1}
+${D} ${D}-x{font-size:18px;line-height:1;background:none;border:0;color:var(--dv-dim);padding:0 6px;min-height:24px}
+${D}-overlays{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:center;padding:3px 8px;border-bottom:1px solid var(--dv-line);color:var(--dv-dim)}
+${D}-overlays label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}
+${D}-overlays select{min-height:20px;padding:0 3px}
+${D}-fps{margin-left:auto;font-variant-numeric:tabular-nums}
+${D}-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 10px 14px;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+${D}-kv{margin:1px 0;overflow-wrap:anywhere}
+${D}-hint,${D} .dim,${D} .sub{color:var(--dv-dim);font-size:inherit}
+${D} .up{color:var(--dv-up)}${D} .down{color:var(--dv-down)}
+${D}-t{color:var(--dv-dim);font-variant-numeric:tabular-nums;margin-right:6px}
+${D} .num,${D}-num{text-align:right;font-variant-numeric:tabular-nums}
+${D}-chips,${D} .buttons{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0;align-items:center}
+${D}-bar{display:inline-block;width:100%;min-width:40px;height:6px;background:#1c2836;border-radius:2px;overflow:hidden;vertical-align:middle}
+${D}-bar i{display:block;height:100%;background:#5aa0c8}
+${D}-bar i.warm{background:#e8b84a}${D}-bar i.hot{background:#ff6a5a}
+${D}-bars{display:grid;grid-template-columns:auto 1fr 3.2em;gap:2px 8px;align-items:center}
+${D} table{width:100%;border-collapse:collapse;font-size:11.5px}
+${D} th{text-align:left;color:var(--dv-dim);font-weight:400;border-bottom:1px solid var(--dv-line);padding:2px 4px}
+${D} th.num{text-align:right}
+${D} td{padding:2px 4px;border-bottom:1px solid rgba(42,54,68,.5);vertical-align:top}
+${D} tr.cur td,${D} tr.pick td{background:rgba(255,225,74,.12)}
+${D} tr.no td{opacity:.55}
+${D} td:last-child{overflow-wrap:anywhere}
+${D} details{margin:4px 0}${D} summary{cursor:pointer;color:var(--dv-acc)}
+${D}-step,${D}-choice{display:inline-flex;flex-wrap:wrap;align-items:center;gap:3px;margin:2px 12px 2px 0}
+${D}-lab{color:var(--dv-dim);margin-right:3px}
+${D}-step>b{min-width:3.4em;text-align:center;font-variant-numeric:tabular-nums}
+${D}-off>b,${D}-off>${D}-lab{color:var(--dv-hi)}
+${D} ${D}-choice${D}-off button.on{background:var(--dv-hi);border-color:var(--dv-hi)}
+${D} ${D}-reset{color:var(--dv-hi);border-color:var(--dv-hi)}
+${D} ${D}-tog::before{content:'';display:inline-block;width:8px;height:8px;margin-right:6px;border:1px solid currentColor;vertical-align:0}
+${D} ${D}-tog.on{background:var(--dv-btn);color:var(--dv-up);border-color:var(--dv-up)}
+${D} ${D}-tog.on::before{background:currentColor}
+${D} ${D}-tog.${P}-off{color:var(--dv-hi);border-color:var(--dv-hi)}
+${D}-ev{padding:2px 0;border-bottom:1px solid rgba(42,54,68,.5);overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+${D}-k{display:inline-block;min-width:56px;color:var(--dv-acc);margin-right:6px}
+${D}-imp{display:inline-block;min-width:3em;color:var(--dv-hi);margin-right:6px}
+${D} ${D}-apart{opacity:.65}
+${D}-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:2px 10px}
+${D}-tag{position:fixed;z-index:61;left:50%;bottom:max(4px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:90vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;background:#3a2a00;color:#ffe14a;border:1px solid #ffe14a;border-radius:3px;font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:0;text-transform:none;cursor:pointer;pointer-events:auto}
+${D}-tag[hidden],${D}-btn[hidden],${D}-layer[hidden]{display:none}
+${D}-layer{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:1}
+${D}-btn{position:fixed;z-index:59;left:max(8px,env(safe-area-inset-left));bottom:max(8px,env(safe-area-inset-bottom));font:11px/1 ui-monospace,Menlo,monospace;padding:4px 8px;color:#ffe14a;background:rgba(10,14,20,.85);border:1px solid #2a3644;border-radius:3px;cursor:pointer}
+@media (pointer:coarse){${D} button{min-height:28px;padding:3px 9px}${D} input[type=search],${D} select{min-height:28px}${D} ${D}-x{min-height:30px}}
+@media (max-height:480px){${D}{font-size:11px}${D} small{font-size:10px}${D} table{font-size:10.5px}${D}-body{padding:4px 8px 10px}}
+@media (max-aspect-ratio:4/5){${D},${D}.${P}-right{top:auto;left:0;right:0;width:auto;min-width:0;height:58vh;border:0;border-top:1px solid var(--dv-line);border-radius:10px 10px 0 0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}}
+${D} .${P}needs{display:grid;gap:2px;margin:4px 0}
+${D} .${P}needs>div{display:grid;grid-template-columns:5.5em 1fr 3em;gap:6px;align-items:center}
+${D} .${P}needs span{color:var(--dv-dim)}
+${D} .${P}needs i{display:block;height:6px;background:#1c2836;border-radius:2px;overflow:hidden}
+${D} .${P}needs b{display:block;height:100%}
+${D} .${P}needs em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
+${D} div.${P}why>div{padding:2px 6px;margin:2px 0;background:#121a24}
+${D} div.${P}why>div.pick{background:#12302e;box-shadow:inset 2px 0 0 var(--dv-acc)}
+${D} div.${P}why>div.no{opacity:.6}
+${D} .${P}day>div{padding:1px 4px}${D} .${P}day>div.cur{background:rgba(255,225,74,.12);color:var(--dv-hi)}${D} .${P}day span{color:var(--dv-dim);margin-right:4px}
+${D} .${P}log>div{padding:1px 0}
+${D} .${P}list{display:flex;flex-wrap:wrap;gap:3px}
+${D} .${P}list i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+${D} .${P}out>div{margin:1px 0;overflow-wrap:anywhere}
+`;
+}
 
 // src/shell/loader.ts
 var loader_exports = {};
@@ -6314,323 +7530,6 @@ var Music = class {
   }
 };
 
-// src/shell/inspect.ts
-var inspect_exports = {};
-__export(inspect_exports, {
-  Inspector: () => Inspector,
-  esc: () => esc,
-  hhmm: () => hhmm,
-  mind: () => mind
-});
-function hhmm(m) {
-  const h = (m / 60 % 24 + 24) % 24;
-  return String(Math.floor(h)).padStart(2, "0") + ":" + String(Math.floor(h % 1 * 60)).padStart(2, "0");
-}
-function esc(t) {
-  return String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
-}
-var NEED_COLORS = ["#3af0e0", "#ffb040", "#ff4a5a"];
-function mind(w, id, o = {}) {
-  const P = o.prefix ?? "insp", p = w.get(id);
-  const name = (x) => o.name ? o.name(x) : w.get(x) && w.get(x).name || x;
-  if (!p) return `<h3>${esc(name(id))}</h3><p class="dim">Not in the world.</p><div class="buttons"><button data-${P}do="close">Close</button></div>`;
-  const walk = o.walking ? o.walking(id) : "";
-  const d = p.doing, at = (pid) => o.place ? o.place(pid, id) : !pid ? "anywhere" : String(pid);
-  let h = `<h3>${esc(name(id))}</h3>${o.who ? `<p class="sub">${esc(o.who(id))}</p>` : ""}`;
-  const now = !d ? "Nothing, waiting to choose." : d.kind === "travel" ? `Walking${walk} from ${esc(at(d.from))} to ${esc(at(d.to))}, to ${d.action}, till ${hhmm(d.end)}.` : d.kind === "wait" ? `Waiting at ${esc(at(p.place))} till ${hhmm(d.end)}.` : `${d.action} at ${esc(at(d.place || p.place))}, till ${hhmm(d.end)}.`;
-  h += `<p><b>Now</b> ${now}${d && d.rank !== void 0 ? ` <small class="dim">(${d.layer || "free"}, rank ${d.rank})</small>` : ""}</p>`;
-  if (p.directive && !p.directive.done) h += `<p class="dim">Told to: ${p.directive.do}${p.directive.label ? " · " + esc(p.directive.label) : ""}</p>`;
-  const NC = o.needColors || NEED_COLORS;
-  h += `<div class="${P}needs">` + Object.keys(p.needs).map((k) => {
-    const v = w.needOf(id, k), c = v < 0 ? 0 : v > 1 ? 1 : v;
-    return `<div><span>${k}</span><i><b style="width:${Math.round(c * 100)}%;background:${v > 0.85 ? NC[2] : v > 0.6 ? NC[1] : NC[0]}"></b></i></div>`;
-  }).join("") + "</div>";
-  const rv = w.reverie;
-  if (rv) h += `<p class="dim">Mood ${(rv.mood(id) || 0).toFixed(2)}${o.about ? o.about(id, p) : ""}</p>`;
-  const dec = w.why(id);
-  if (!dec) h += '<h3>Why</h3><p class="dim">No choice made since the last time walk: play the clock on a little.</p>';
-  if (dec) {
-    h += `<h3>Why · ${hhmm(dec.t)}</h3><p class="dim">${esc(dec.reason || "")}</p><div class="${P}why">`;
-    const pk = dec.picked, isPick = (c) => !!pk && c.id === pk.id && c.place === pk.place && c.target === pk.target;
-    const cands = dec.candidates.slice().sort((a, b) => +isPick(b) - +isPick(a) || b.rank - a.rank || b.weight - a.weight).slice(0, o.options ?? 9);
-    if (pk) h += `<p>Chose <b>${pk.id}</b> at ${esc(at(pk.place))}${pk.layer ? ` <small class="dim">(${pk.layer})</small>` : ""}. It's drawn from the best few, by weight squared, so the top one doesn't always win.</p>`;
-    for (const c of cands) h += `<div class="${isPick(c) ? "pick" : c.blocked ? "no" : ""}"><b>${c.id}</b> <small>${esc(at(c.place))} · rank ${c.rank}${c.blocked ? "" : " · " + c.weight.toFixed(3)}</small><br><small>${esc(c.blocked || (c.parts || []).map(([n, v]) => n + " " + (+v).toFixed(2)).join(" × "))}</small></div>`;
-    h += "</div>";
-  }
-  const ra = w.mind.routineAt(p), plan = (w.mind.routineFor(p, w.now) || []).slice().sort((a, b) => a[0] - b[0]), cur = ra && ra.entry;
-  if (plan.length) h += `<h3>Today</h3><div class="${P}day">` + plan.map((e) => `<div class="${e === cur ? "cur" : ""}"><span>${String(Math.floor(e[0])).padStart(2, "0")}:${String(Math.round(e[0] % 1 * 60)).padStart(2, "0")}</span> ${e[2] === "*" ? "free" : e[2]} <small>${e[1] === null ? "" : esc(e[1] === "home" ? "home" : at(e[1]))}${e[3] && e[3].rank ? " · holds" : ""}</small></div>`).join("") + "</div>";
-  const lines = w.westmarch.chronicle(id, w.now - (o.lately ?? 12 * 60)).slice(-(o.lines ?? 10));
-  if (lines.length) h += `<h3>Lately</h3><div class="${P}log">` + lines.map((l) => `<div>${esc(l)}</div>`).join("") + "</div>";
-  const fs = w.fellowship ? w.fellowship.relations(id).slice(0, o.known ?? 4) : [];
-  const can = (x) => o.selectable ? o.selectable(x) : !!w.get(x);
-  if (fs.length) h += `<h3>People</h3><div class="${P}list">` + fs.map((f) => can(f.id) ? `<button data-${P}sel="${f.id}">${esc(name(f.id))} <small>regard ${f.regard.toFixed(2)}</small></button>` : `<span class="dim">${esc(f.id)} · ${f.regard.toFixed(2)}</span>`).join("") + "</div>";
-  h += `<div class="buttons">${o.buttons ? o.buttons(id) : ""}<button data-${P}do="close">Close</button></div>`;
-  return h;
-}
-var STEP_LABEL = (m) => (m < 0 ? "−" : "+") + (Math.abs(m) % 60 ? Math.abs(m) + "m" : Math.abs(m) / 60 + "h");
-var Inspector = class {
-  constructor(o) {
-    /** Whoever's picked. */
-    this.sel = null;
-    /** Who's somewhere, listed in the side: a title and their ids. */
-    this.list = null;
-    this.playing = false;
-    this.dots = [];
-    this.badges = [];
-    /** The canvas's size in CSS px, and the device pixels to one. */
-    this.w = 0;
-    this.h = 0;
-    this.dpr = 1;
-    this.root = null;
-    this.raf = 0;
-    this.last = 0;
-    this.sideT = 0;
-    this.o = o;
-    this.P = o.prefix ?? "insp";
-    this.speed = o.speed ?? 60;
-  }
-  /** An element of the panel, by its name (its id is the prefix and it). */
-  el(name) {
-    const r = this.root, id = this.P + name;
-    if (r && r.querySelector) return r.querySelector("#" + id);
-    return typeof document !== "undefined" ? document.getElementById(id) : null;
-  }
-  html() {
-    const P = this.P, speeds = this.o.speeds || [1, 10, 60, 240], steps = this.o.steps || [-60, -15, 15, 60];
-    const sp = speeds.map((v) => `<option value="${v}"${v === this.speed ? " selected" : ""}>×${v === 1 ? "1 (game)" : v}</option>`).join("");
-    const btn = (m) => `<button data-${P}="${m}"${m === -60 ? ' title="Back an hour"' : ""}>${STEP_LABEL(m)}</button>`;
-    const back = steps.filter((m) => m < 0).map(btn).join(""), on = steps.filter((m) => m > 0).map(btn).join("");
-    return `<div class="${P}"><div class="${P}bar">
-      <span class="${P}clock" id="${P}clock"></span>
-      ${back}<button data-${P}="play" class="go" id="${P}play">Play</button>${on}
-      <select id="${P}speed" aria-label="Speed">${sp}</select>
-      ${this.o.bar ? this.o.bar() : ""}
-    </div><div class="${P}body"><div class="${P}view" id="${P}view"><canvas id="${P}cv"></canvas></div><div class="${P}side" id="${P}side"></div></div></div>`;
-  }
-  /** Wires the panel in root (where html() went) and runs it. */
-  attach(root) {
-    this.root = root;
-    const P = this.P, cv = this.el("cv");
-    if (!cv) return;
-    root.querySelectorAll(`button[data-${P}]`).forEach((b) => b.onclick = () => {
-      const k = b.dataset[P];
-      if (k === "play") {
-        this.playing = !this.playing;
-        this.last = performance.now();
-      } else if (/^-?\d+(\.\d+)?$/.test(k)) this.step(+k);
-      else if (this.o.act && this.o.act(k, null, this) === false) return;
-      this.draw();
-      this.side(true);
-    });
-    const sp = this.el("speed");
-    if (sp) sp.onchange = (e) => {
-      this.speed = +e.target.value;
-    };
-    let down = null;
-    const V = this.o.view;
-    cv.onpointerdown = (e) => {
-      down = { x: e.clientX, y: e.clientY, at: V && V.grab ? V.grab(this) : null, moved: 0 };
-      cv.setPointerCapture(e.pointerId);
-    };
-    cv.onpointermove = (e) => {
-      if (!down) return;
-      const dx = e.clientX - down.x, dy = e.clientY - down.y;
-      down.moved = Math.max(down.moved, Math.abs(dx) + Math.abs(dy));
-      if (V && V.drag) V.drag(dx, dy, down.at, this);
-    };
-    cv.onpointerup = (e) => {
-      const d = down;
-      down = null;
-      if (d && d.moved < 6) {
-        const r = cv.getBoundingClientRect();
-        this.tap(e.clientX - r.left, e.clientY - r.top);
-      }
-    };
-    cv.onwheel = (e) => {
-      if (!V || !V.wheel) return;
-      const r = cv.getBoundingClientRect();
-      V.wheel(e, e.clientX - r.left, e.clientY - r.top, this);
-    };
-    this.size();
-    this.draw();
-    this.side(true);
-    cancelAnimationFrame(this.raf);
-    this.last = performance.now();
-    const tick2 = (t) => {
-      const c = this.el("cv");
-      if (this.o.open && !this.o.open() || !c || !c.isConnected) {
-        this.playing = false;
-        return;
-      }
-      const dt = Math.min(0.1, (t - this.last) / 1e3);
-      this.last = t;
-      if (this.playing) {
-        this.step(this.speed * dt, true);
-        this.draw();
-      }
-      if (t - this.sideT > 250) {
-        this.sideT = t;
-        this.side();
-        this.clock();
-      }
-      this.raf = requestAnimationFrame(tick2);
-    };
-    this.raf = requestAnimationFrame(tick2);
-  }
-  /** The canvas, sized to its box (or taller, as the view asks: the box scrolls). */
-  size() {
-    const cv = this.el("cv"), box = this.el("view");
-    if (!cv || !box) return;
-    const dpr = typeof window !== "undefined" && window.devicePixelRatio || 1, V = this.o.view;
-    const w = box.clientWidth, h = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
-    cv.style.width = w + "px";
-    cv.style.height = h + "px";
-    cv.width = Math.round(w * dpr);
-    cv.height = Math.round(h * dpr);
-    this.w = w;
-    this.h = h;
-    this.dpr = dpr;
-  }
-  /** Draws the view afresh (sized again if its box or its height changed). */
-  draw() {
-    const cv = this.el("cv"), box = this.el("view");
-    if (!cv || !box) return;
-    const V = this.o.view, want = V && V.height ? V.height(box.clientHeight, this) : box.clientHeight;
-    if (want !== this.h || cv.width !== Math.round(box.clientWidth * this.dpr)) this.size();
-    const g = cv.getContext("2d");
-    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    g.fillStyle = this.o.bg || "#0a0812";
-    g.fillRect(0, 0, this.w, this.h);
-    this.dots = [];
-    this.badges = [];
-    if (V) V.draw(g, this);
-  }
-  /** Someone on the view, at x, y (CSS px), in their color: a ring if
-   * they're picked, another if they're on the move. */
-  dot(g, x, y, col, id, moving, r = 2.2) {
-    const sel = id === this.sel;
-    if (sel) {
-      g.strokeStyle = "#ffffff";
-      g.lineWidth = 1.5;
-      g.beginPath();
-      g.arc(x, y, r + 3, 0, Math.PI * 2);
-      g.stroke();
-    }
-    g.fillStyle = col;
-    g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
-    g.fill();
-    if (moving) {
-      g.strokeStyle = "rgba(255,255,255,0.7)";
-      g.lineWidth = 1;
-      g.beginPath();
-      g.arc(x, y, r + 1.2, 0, Math.PI * 2);
-      g.stroke();
-    }
-    this.dots.push({ x, y, id });
-  }
-  /** A box on the view to tap. */
-  badge(b) {
-    this.badges.push(b);
-  }
-  /** A person's color now. */
-  color(id) {
-    const K = this.o.kinds || {}, k = this.o.kind ? this.o.kind(id) : "";
-    return (K[k] || K.other || { color: "#c8c0d8" }).color;
-  }
-  /** A tap at x, y (CSS px on the view): the nearest person within 9 px is
-   * picked; else the view hears of it, with the box under it. */
-  tap(x, y) {
-    let best = null, bd = 9;
-    for (const d of this.dots) {
-      const dd = Math.hypot(d.x - x, d.y - y);
-      if (dd < bd) {
-        bd = dd;
-        best = d;
-      }
-    }
-    if (best) {
-      this.sel = best.id;
-      this.list = null;
-      this.draw();
-      this.side(true);
-      return;
-    }
-    const b = this.badges.find((q) => x >= q.x0 && x <= q.x1 && y >= q.y0 && y <= q.y1) || null;
-    if (this.o.view && this.o.view.tap) this.o.view.tap(b, x, y, this);
-  }
-  /** The clock on (or back) by `min` game minutes; back no further than
-   * Esper remembers (the nearest quarter hour after, said unless quiet). */
-  step(min, quiet2) {
-    const w = this.o.world();
-    let t = this.o.clock.now() + min;
-    if (min < 0 && w && w.esper) {
-      const e = w.esper.earliest();
-      if (t < e) {
-        t = Math.ceil(e / 15) * 15;
-        if (!quiet2 && this.o.say) this.o.say("Esper only remembers back to " + hhmm(e) + ".");
-      }
-    }
-    this.o.clock.set(t);
-    this.clock();
-  }
-  /** The bar: the clock's text, Play or Pause, and the game's own. */
-  clock() {
-    const c = this.el("clock");
-    if (c) c.textContent = this.o.clock.text();
-    const p = this.el("play");
-    if (p) p.textContent = this.playing ? "Pause" : "Play";
-    if (this.o.status) this.o.status(this);
-  }
-  /** Picks someone (or nobody). */
-  select(id) {
-    this.sel = id;
-    this.list = null;
-    if (id && this.o.onSelect) this.o.onSelect(id, this);
-    this.draw();
-    this.side(true);
-  }
-  /** The side: someone's mind, a list, or the summary; not redrawn under
-   * the pointer while it's being read, unless forced. */
-  side(force) {
-    const el = this.el("side");
-    if (!el) return;
-    if (!force && el.matches(":hover")) return;
-    const w = this.o.world();
-    el.innerHTML = this.sel && w ? mind(w, this.sel, Object.assign({}, this.o, { prefix: this.P })) : this.list ? this.listHtml(this.list) : this.summary();
-    const P = this.P;
-    el.querySelectorAll(`[data-${P}sel]`).forEach((b) => b.onclick = () => this.select(b.dataset[P + "sel"]));
-    el.querySelectorAll(`[data-${P}do]`).forEach((b) => b.onclick = () => {
-      const k = b.dataset[P + "do"];
-      if (k === "close") {
-        this.sel = null;
-        this.list = null;
-      } else if (this.o.act && this.o.act(k, this.sel, this) === false) return;
-      this.draw();
-      this.side(true);
-    });
-  }
-  /** Counts of everyone by kind, with their colors and words. */
-  legend(n) {
-    const K = this.o.kinds || {};
-    return `<div class="${this.P}legend">` + Object.keys(K).filter((k) => n[k]).map((k) => `<span><i style="background:${K[k].color}"></i>${K[k].word} <b>${n[k]}</b></span>`).join("") + "</div>";
-  }
-  summary() {
-    if (this.o.summary) return this.o.summary(this);
-    const n = {}, ids = this.o.people();
-    for (const id of ids) {
-      const k = this.o.kind ? this.o.kind(id) : "other";
-      n[k] = (n[k] || 0) + 1;
-    }
-    return `<h3>${ids.length} people</h3><p class="dim">Tap someone to see their mind.</p>` + this.legend(n);
-  }
-  /** Who's somewhere: a button each, in their color, with what they're doing. */
-  listHtml(L) {
-    const P = this.P, name = (id) => this.o.name ? this.o.name(id) : id;
-    return `<h3>${L.title}</h3><div class="${P}list">` + L.ids.map((id) => `<button data-${P}sel="${id}"><i style="background:${this.color(id)}"></i>${name(id)} <small>${this.o.note ? this.o.note(id) : ""}</small></button>`).join("") + `</div><div class="buttons"><button data-${P}do="close">Back</button></div>`;
-  }
-};
-
 // src/shell/ui.ts
 var ui_exports = {};
 __export(ui_exports, {
@@ -6800,8 +7699,8 @@ var Rising = class {
 };
 function bind(root, handlers, tag = "button") {
   for (const key of Object.keys(handlers)) {
-    const m = /^([a-z0-9-]+)(.*)$/.exec(key), name = m[1], camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    root.querySelectorAll(`${tag}[data-${name}]${m[2]}`).forEach((b) => b.onclick = () => handlers[key](b.dataset[camel], b));
+    const m = /^([a-z0-9-]+)(.*)$/.exec(key), name = m[1], camel2 = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    root.querySelectorAll(`${tag}[data-${name}]${m[2]}`).forEach((b) => b.onclick = () => handlers[key](b.dataset[camel2], b));
   }
 }
 var Acts = class {

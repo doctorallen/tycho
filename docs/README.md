@@ -11,6 +11,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 - [play.md](play.md): `Tycho.input` (the controls and map gestures), `Tycho.items` (bags, things, slots, gear and counted views), `Tycho.guide` (a tutorial's steps).
 - [harm.md](harm.md#tycho-the-moment): `Tycho.harm`, the moment of a hit: a pipeline of stages (resist, armor, soak, react, knock, stagger, hold and the game's own), statuses and their reactions, means, moves, triggers, the feel and the player's wounds; the page is also the whole design for harm, with what follows in Morgul, a Tyrell module.
 - [shell.md](shell.md): `Tycho.save`, `Tycho.pwa`, `Tycho.dev`, `Tycho.loader`.
+- [dev.md](dev.md): `Tycho.dev`, the dev tools: the address and the flags, `Notes` (a log any game can write to), and the dev drawer (a console docked at the side while the game runs: the game's tabs, overlays, the events, steppers and toggles, a tag while a setting that changes play is off its default).
 - [audio.md](audio.md): `Tycho.audio`: sound made in code (the engine, the voices, the bank rendered ahead, the music's machinery).
 - [inspect.md](inspect.md): `Tycho.inspect`: the minds inspector for a game whose people are Tyrell's.
 - [ui.md](ui.md): `Tycho.ui`: toasts, rising lines, buttons wired by their data attributes, a screen's acts.

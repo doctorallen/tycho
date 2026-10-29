@@ -55,6 +55,7 @@ export interface MindsWorld {
             until: number;
         } | null;
         routineFor(p: MindsPerson, t?: number): MindsEntry[] | null;
+        options?(p: MindsPerson): MindsCandidate[];
     };
     westmarch: {
         chronicle(who: string, since: number): string[];
@@ -71,6 +72,15 @@ export interface MindsWorld {
     readonly esper?: {
         earliest(): number;
     } | null;
+    /** The pick's settings (its cut, how many it draws from, and the power of
+     * the weights), for the chances. */
+    readonly cfg?: {
+        cut: number;
+        top: number;
+        power: number;
+    };
+    /** Runs fn changing nothing (for the options weighed now). */
+    peek?<T>(fn: () => T): T;
 }
 /** HH:MM of a time in minutes (the time of day). */
 export declare function hhmm(m: number): string;
@@ -103,7 +113,24 @@ export interface MindOptions {
     lately?: number;
     lines?: number;
     known?: number;
+    /** Dense, for a dev drawer: each need's value beside its bar (numbers),
+     * the chance each option had of being drawn (chances, from the world's
+     * cfg), the options as a table (table), and what they'd choose if they
+     * chose now, every option weighed again without changing anything, with
+     * what's ruled out by reason (now: the world's peek and mind.options). */
+    numbers?: boolean;
+    chances?: boolean;
+    table?: boolean;
+    now?: boolean;
 }
+/** The chance each option had of being picked: Tyrell's pick, worked out
+ * (the top rank only, the weak cut, a draw from the best few by weight to
+ * the power). Those it couldn't draw aren't in the map. */
+export declare function chances(cands: MindsCandidate[], cfg?: {
+    cut: number;
+    top: number;
+    power: number;
+}): Map<MindsCandidate, number>;
 /** Someone's mind, as HTML: who, what now and until when, what they were
  * told to do, their needs, their mood, why (the last decision), today's
  * routine, lately, the people they know best, and buttons. */

@@ -1,6 +1,6 @@
 # The shell
 
-The parts around the game: saving, staying current as an installed app, dev settings and loading. Sound ([audio.md](audio.md)), the minds inspector ([inspect.md](inspect.md)) and the interface kit ([ui.md](ui.md)) have pages of their own.
+The parts around the game: saving, staying current as an installed app, dev settings and loading. The dev tools' drawer ([dev.md](dev.md)), sound ([audio.md](audio.md)), the minds inspector ([inspect.md](inspect.md)) and the interface kit ([ui.md](ui.md)) have pages of their own.
 
 ## Tycho.save
 
@@ -51,7 +51,7 @@ Once the game is installed, a browser tab never offers to install it again. `ins
 
 ## Tycho.dev
 
-`query(name)` says whether `?name` is in the address. `new Flags(key, defaults).load()` keeps testing switches in their own storage key (never in the save): `s` holds them, `save()` keeps them, `shown()` is true with `?dev` in the address or once it has been.
+`query(name)` says whether `?name` is in the address. `new Flags(key, defaults).load()` keeps testing switches in their own storage key (never in the save): `s` holds them, `save()` keeps them, `shown()` is true with `?dev` in the address or once it has been. The dev drawer (a console docked at the side while the game runs, with the game's tabs, overlays, the events and the pieces every tab shows), and `Notes`, a log any game can write to, are in [dev.md](dev.md).
 
 ## Tycho.loader
 

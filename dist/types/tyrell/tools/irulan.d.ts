@@ -14,8 +14,10 @@ export interface Beat {
     end?: Minutes;
     /** Whom it's about: the subject, or several people told as one ("Kofi and Sam"). Empty for what happened to nobody in particular (the rain). */
     who: Id[];
-    /** Others in it: the target, the company kept, the other side of a talk. */
+    /** Others who took part: the target, the other side of a talk, who joined in (an action done `together`). */
     with: Id[];
+    /** Others only about: at the same place while it happened (Fellowship's company), not taking part. */
+    around: Id[];
     /** Where, when it's known. */
     place?: Id;
     /** The kinds of entry it was made from. */
@@ -199,7 +201,7 @@ export declare class Irulan {
     private knows;
     /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
     private mine;
-    /** Whether a beat is about someone: theirs, with them in it, or naming them. */
+    /** Whether a beat is about someone: theirs, with them in it or about, or naming them. */
     private concerns;
     private fold;
     /** How much a clause matters, before what's rare counts. */
@@ -241,6 +243,15 @@ export declare class Irulan {
     private went;
     /** An action from start to finish: "went to Mara's Cafe and ate, with Ines there". */
     private acted;
+    /**
+     * Who else was about while someone did something. Company is only being
+     * at the same place (Fellowship's 'met'), not doing it together, so at
+     * someone's home it's told as being home ("had a shower, with Pip and
+     * Tomas home too", or "there too" for a visitor), never as sharing it;
+     * elsewhere as being there. In someone's own words they come last ("Pip
+     * and me"), and never "in the company of me".
+     */
+    private company;
     /** A talk (Bree): "argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row". */
     private talked;
     /** Any other entry: the game's words, Irulan's own, or describe's; null leaves it out. */

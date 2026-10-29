@@ -13,7 +13,8 @@
 // (Morgul, with Bree: a brawl at the Belt comes out blow by blow, Pip sets a
 // snare in the barn, Sam slips nightshade into the cafe's stew; wounds that
 // heal or fester, grudges, fear, suspicion, revenge, and Lena's first aid),
-// `seed`, `start`, `modules`, `config`, `esper` and `moduleConfig` (over its
+// `together` (now and then, partners shower together: room for two in the
+// Okafors' shower, and an action done together), `seed`, `start`, `modules`, `config`, `esper` and `moduleConfig` (over its
 // own). Without them, Rocinante runs as it always has.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory;
@@ -30,6 +31,8 @@
   const harm = !!opts.harm;
   // With opts.bree, Bree's interactions between the townsfolk, and the natures they read
   const bree = !!opts.bree || harm;
+  // With opts.together, partners now and then shower together (an action done `together`)
+  const together = !!opts.together;
   const own = { cradle: { autoPair: null }, voice: { onWell: ['regard+=0.02'], onBadly: ['regard-=0.02'], deed: 'talked' } };
   if (tuned) {
     own.fellowship = { friendship: 1.5, fading: 0.5 };   // friendships form half as fast again, and fade half as fast
@@ -80,7 +83,7 @@
 
   // ---- places ---------------------------------------------------------------
   const apartments = ['apt_1', 'apt_2', 'apt_3', 'apt_4', 'apt_5'];
-  for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: 1 } });
+  for (const f of apartments) w.place({ id: f, tags: ['home'], region: 'blocks', slots: { bed: f === 'apt_1' ? 3 : 2, shower: together && f === 'apt_1' ? 2 : 1 } });
   w.place({ id: 'cafe', name: 'Mara\'s Cafe', tags: ['food', 'social'], region: 'main', hours: [6, 21], slots: { seat: 8, counter: 1 }, owner: 'mara',
     stock: { bread: 30, flour: 12, ...kit({ stew: 16 }) }, restock: { flour: [8, 24], ...kit({ stew: [12, 24] }) } });
   w.place({ id: 'market', name: 'The Market', tags: ['shop'], region: 'main', hours: [8, 19], slots: { till: 1 }, owner: 'dev', stock: { food: 40, radio: 2 }, restock: { food: [20, 6], radio: [1, 48] } });
@@ -102,6 +105,9 @@
   w.action({ id: 'sleep', label: 'sleeping', tell: { did: 'slept', doing: 'was asleep' }, at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
   w.action({ id: 'nap', label: 'a nap', tell: { did: ['had a nap', 'dozed'], doing: 'was napping' }, at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
   w.action({ id: 'shower', tell: { did: ['showered', 'had a shower'], doing: 'was in the shower' }, at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
+  // (with together: a shower for two, partners only; the one asked joins in, if they're home and free)
+  if (together) w.action({ id: 'shower_together', label: 'a shower together', tell: { did: 'showered with {target}', doing: 'was in the shower with {target}' }, at: 'home', slot: 'shower', minutes: 20,
+    target: 'person', targetIf: ['bond:partner'], together: true, relieves: { hygiene: 0.85, company: 0.2 }, base: 0.03, pose: 'stand', feels: ['fresh'], tags: ['romantic'], cooldown: DAY });
   w.action({ id: 'read', label: 'reading', tell: { did: ['read', 'curled up with a book', 'sat and read'], doing: 'was reading' }, at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
   w.action({ id: 'eat_cafe', label: 'eating at the cafe', tell: { did: ['ate at {place}', 'had a meal at {place}', 'grabbed a bite at {place}'], doing: 'was eating at {place}' }, at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
   w.action({ id: 'eat_home', label: 'eating at home', tell: { did: 'ate', doing: 'was eating' }, at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });

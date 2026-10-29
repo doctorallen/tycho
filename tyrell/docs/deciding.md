@@ -79,6 +79,7 @@ Every field of `ActionDef`:
 | `tags` | string[] | none | Free labels. The engine reads `'sleep'` (exempt from the repeat penalty; Voight-Kampff's sleep check), `'social'` (Fellowship's regard factor), `'illegal'` (Mentat's cost), and any tag a Reverie feeling `boost`s |
 | `target` | `'person'` | none | Aimed at someone: one option per suitable person at the place (up to `config.targets`, six) |
 | `targetIf` | Cond[] | none | Conditions on the target: `ctx.target` is the candidate (`'regard>0.2'`, `'target.is:child'`) |
+| `together` | boolean | false | Done together: the target joins in for its length (a shower for two, a dance), if they're at the same place, doing nothing that outranks it, and there's room in its slot. They leave what they were doing, and their `started` entry has `layer: 'together'` and names who they joined (`with`). Without it, the target is only who it's aimed at: they go on with their own doing. Either way, others at the place are only about (Fellowship's `met`), never taking part |
 | `pose` | string | `'idle'` | What the body shows while doing it ('sit', 'work', 'sleep') |
 | `says` | string | none | A line topic said when it starts (Cityspeak): the person's best line on that topic, to the target if there is one, as with `cityspeak.say` (remembered, its `then` applied, a `say` event) |
 | `against` | string[] | none | Values it goes against (Reverie): weighs less for people who hold them, and costs them stress and a guilty conscience |

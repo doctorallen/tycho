@@ -649,7 +649,7 @@ test('Irulan folds a walk, an action, its company, its feeling and a shift into 
   // the walk there and the hour-long bakes one after another: one shift
   has(/^Mara went to Mara's Cafe and baked bread for eight hours/);
   // the company kept, and the feeling that came of it
-  has(/^Lena showered at home for half an hour, with Kofi there, and felt fresh\.$/);
+  has(/^Lena showered at home for half an hour, with Kofi home too, and felt fresh\.$/);
   // the same beat for several people at once, told once
   has(/^Mara, Ruth and Kofi wished for some fresh air\.$/);
   // a plan that fell through, and how they felt, in the same minute
@@ -700,6 +700,12 @@ test('Irulan takes the game\'s words, and falls back to the label and describe',
     ['Ruth caught a cold from Kofi.', 'Ruth had a few drinks too many again.', 'Ruth shook off the cold.']);
   w.athelas.course({ id: 'gout', label: 'A touch of gout', phases: [{ id: 'sore', minutes: 60 }] });
   assert.deepEqual(said([at(0, 'afflicted', { course: 'gout' }), at(90, 'recovered', { course: 'gout' })]), ['Ruth came down with a touch of gout.', 'Ruth got over a touch of gout.']);
+  // company is being about, not doing it together: at home, home too (or there too, visiting); elsewhere, there
+  const shower = (place, company) => [at(0, 'started', { action: 'shower', place }), ...company.map((id) => at(0, 'met', { target: id, minutes: 15 })), at(15, 'finished', { action: 'shower', place, frac: 1 })];
+  assert.deepEqual(said(shower('apt_4', ['kofi'])), ['Ruth showered at home, with Kofi there too.']);
+  assert.deepEqual(said(shower('apt_1', ['pip', 'tomas'])), ['Ruth showered at Mara\'s place, with Pip and Tomas home too.']);
+  assert.deepEqual(w.irulan.beats(shower('apt_1', ['tomas', 'pip']).map((e) => ({ ...e, who: 'mara' })), { as: 'tomas', voice: 'first', vary: false }).map((b) => b.text), ['Mara showered at home, with Pip and me home too.']);
+  assert.deepEqual(said([at(0, 'started', { action: 'sit_park', place: 'park' }), at(0, 'met', { target: 'kofi', minutes: 40 }), at(40, 'finished', { action: 'sit_park', place: 'park', frac: 1 })]), ['Ruth sat in Ring Park for 40 minutes, with Kofi there.']);
   // one thing two modules write in the same minute is said once
   const hurt = rocinante({ harm: true });
   assert.deepEqual(hurt.irulan.beats([at(0, 'recovered', { course: 'nightshade' }), at(0, 'healed', { course: 'nightshade' })], { vary: false }).map((b) => b.text), ['Ruth pulled through the poisoning.']);
@@ -737,7 +743,7 @@ test('Irulan gives every sentence in parts, the people and places in it tagged',
     for (const id of b.who) assert.ok(b.parts.some((p) => p.person === id), b.text);
   }
   const lena = w.irulan.beats(kept, { vary: false }).find((b) => /^Lena showered/.test(b.text));
-  assert.deepEqual(lena.parts, [{ text: 'Lena', person: 'lena' }, { text: ' showered at ' }, { text: 'home', place: 'apt_5' }, { text: ' for half an hour, with ' }, { text: 'Kofi', person: 'kofi' }, { text: ' there, and felt fresh.' }]);
+  assert.deepEqual(lena.parts, [{ text: 'Lena', person: 'lena' }, { text: ' showered at ' }, { text: 'home', place: 'apt_5' }, { text: ' for half an hour, with ' }, { text: 'Kofi', person: 'kofi' }, { text: ' home too, and felt fresh.' }]);
 });
 
 test('Irulan finds the storylines: a theft and what came of it, a snare, a poisoning', () => {
@@ -929,11 +935,69 @@ test('Irulan gives the headlines, and more of the people who matter to the game'
   const plain = w.irulan.beats(kept), focused = w.irulan.beats(kept, { focus: { ruth: 2 } });
   assert.equal(plain.length, focused.length);
   plain.forEach((b, i) => {
-    if (b.who.includes('ruth') || b.with.includes('ruth')) assert.ok(focused[i].score >= b.score);
+    if (b.who.includes('ruth') || b.with.includes('ruth') || b.around.includes('ruth')) assert.ok(focused[i].score >= b.score);
     else assert.equal(focused[i].score, b.score);
   });
   assert.ok(focused.some((b, i) => b.score > plain[i].score));
   assert.equal(w.irulan.when(DAY + 9 * HOUR), 'Day 1, morning');
+});
+
+test('an action done together: the target joins in for its length, in a slot beside them; others there are only about', () => {
+  const w = rocinante({ together: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(7 * DAY);
+  const joins = kept.filter((e) => e.k === 'started' && e.d.layer === 'together');
+  assert.ok(joins.length >= 1, 'someone joined in');
+  for (const j of joins) {
+    // begun by their partner that minute, with them as its target
+    const lead = kept.find((e) => e.k === 'started' && e.who === j.d.with && e.t === j.t && e.d.action === j.d.action);
+    assert.ok(lead && lead.d.target === j.who, JSON.stringify(j));
+    // and over for both at once
+    const end = (who) => kept.find((e) => (e.k === 'finished' || e.k === 'stopped') && e.who === who && e.t > j.t && e.d.action === j.d.action);
+    assert.equal(end(j.who).t, end(j.d.with).t);
+  }
+  // alone is still the usual way, with the others only about
+  assert.ok(kept.filter((e) => e.k === 'started' && e.d.action === 'shower' && e.d.place === 'apt_1').length > joins.length * 3);
+  // nobody in Rocinante without the option does anything together
+  const plain = rocinante();
+  const k2 = [];
+  plain.on('log', (e) => k2.push(e));
+  plain.advance(2 * DAY);
+  assert.ok(!k2.some((e) => e.d?.layer === 'together'));
+  // and it holds up: the same seed, the same world; going back and forth, the same
+  const report = Tyrell.VoightKampff.run({ build: (seed) => rocinante({ seed, together: true }), days: 3 });
+  assert.ok(report.passed, report.failures.join('\n'));
+});
+
+test('Irulan tells doing something together apart from others being about', () => {
+  const w = rocinante({ together: true });
+  const by = (who, t, k, d) => ({ t, k, who, d });
+  const beats = (entries) => w.irulan.beats(entries, { vary: false });
+  // Mara showers; Tomas and Pip are only home
+  const alone = beats([
+    by('mara', 0, 'started', { action: 'shower', place: 'apt_1' }), by('mara', 0, 'met', { target: 'tomas', minutes: 15 }), by('mara', 0, 'met', { target: 'pip', minutes: 15 }),
+    by('mara', 15, 'finished', { action: 'shower', place: 'apt_1', frac: 1 }),
+  ]);
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].text, 'Mara showered at home, with Tomas and Pip home too.');
+  assert.deepEqual([alone[0].with, alone[0].around], [[], ['tomas', 'pip']]);
+  // Mara and Tomas shower together; Pip is only home
+  const both = beats([
+    by('mara', 0, 'started', { action: 'shower_together', place: 'apt_1', target: 'tomas' }),
+    by('tomas', 0, 'started', { action: 'shower_together', place: 'apt_1', layer: 'together', target: 'mara', with: 'mara' }),
+    by('mara', 0, 'met', { target: 'tomas', minutes: 20 }), by('mara', 0, 'met', { target: 'pip', minutes: 20 }),
+    by('mara', 20, 'finished', { action: 'shower_together', place: 'apt_1', frac: 1 }), by('tomas', 20, 'finished', { action: 'shower_together', place: 'apt_1', frac: 1 }),
+  ]);
+  assert.equal(both.length, 1);
+  assert.equal(both[0].text, 'Mara showered with Tomas at home, with Pip home too.');
+  assert.deepEqual([both[0].with, both[0].around], [['tomas'], ['pip']]);
+  // told once, with everyone's entries
+  assert.equal(both[0].entries.filter((e) => e.k === 'finished').length, 2);
+  // an action done together with no words of its own says with whom
+  w.action({ id: 'dance', label: 'dancing', at: 'home', minutes: 30, target: 'person', together: true });
+  assert.equal(beats([by('mara', 0, 'started', { action: 'dance', place: 'apt_1', target: 'tomas' }), by('mara', 30, 'finished', { action: 'dance', place: 'apt_1', frac: 1 })])[0].text,
+    'Mara spent half an hour dancing with Tomas at home.');
 });
 
 test('Voight-Kampff: Rocinante behaves like people for a week', () => {

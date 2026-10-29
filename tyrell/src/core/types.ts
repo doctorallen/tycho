@@ -198,6 +198,14 @@ export interface ActionDef {
   target?: 'person';
   /** Conditions on the target (the ctx's target is the candidate). */
   targetIf?: Cond[];
+  /**
+   * Done together: the target joins in for its length (a shower for two, a
+   * dance), if they're at the same place, doing nothing that outranks it,
+   * and there's room in its slot; they leave what they were doing. Without
+   * it, the target is only who it's aimed at, and others there are only
+   * about. Their 'started' names who they joined (`with`).
+   */
+  together?: boolean;
   /** What the game should show: a pose name ('sit', 'work', 'walk'...). */
   pose?: string;
   /** A line topic said on starting (Cityspeak): the person's best line on it, to the target if there is one, as with cityspeak.say. */

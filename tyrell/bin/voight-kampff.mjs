@@ -219,11 +219,21 @@ function told_story(w) {
     return;
   }
   const { threads, rest } = w.irulan.threads(written2, { ...opts, min: Math.max(story, 0.4) });
+  // storylines under a heading of their own (not the timeline's): the title, who's in it, and when it ran
+  const span = (th) => `day ${Math.floor(th.t / Tyrell.DAY)} ${clock(th.t)} to day ${Math.floor(th.end / Tyrell.DAY)} ${clock(th.end)}`;
+  const people = (ids) => ids.slice(0, 4).map((id) => w.s.people[id]?.name ?? id).join(', ') + (ids.length > 4 ? ' and others' : '');
+  console.log(style('1', `${threads.length} storyline${threads.length === 1 ? '' : 's'}`) + style('2', `, the one that matters most first`));
   for (const th of threads) {
-    console.log('\n' + rule(th.title) + style('2', `  ${th.people.slice(0, 4).map((id) => w.s.people[id]?.name ?? id).join(', ')}${th.people.length > 4 ? ' and others' : ''}`));
+    console.log('\n' + style('1;36', `▌ ${th.title}`) + (th.active ? style('2', '  (still going)') : ''));
+    console.log(style('2', `▌ ${people(th.people)} · ${span(th)}`));
     for (const b of th.beats) console.log(`${style('2', `day ${Math.floor(b.t / Tyrell.DAY)}`)} ${clock(b.t)} ${mark(b.score)} ${say(b.parts, 15, 15)}`);
   }
-  if (rest.length) { console.log('\n' + style('1', 'Around town')); timeline(rest); }
+  // the rest of the town: only what else mattered most (the timeline tells it all)
+  const notable = rest.filter((b) => b.score >= Math.max(story, 0.55));
+  if (notable.length) {
+    console.log('\n' + style('1;36', '▌ Around town') + style('2', `  (what else mattered most; ${rest.length - notable.length} smaller beats left out: --story-by time tells them all)`));
+    for (const b of notable) console.log(`${style('2', `day ${Math.floor(b.t / Tyrell.DAY)}`)} ${clock(b.t)} ${mark(b.score)} ${say(b.parts, 15, 15)}`);
+  }
   console.log('');
 }
 

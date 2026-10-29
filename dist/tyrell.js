@@ -1724,8 +1724,41 @@ var Tyrell = (() => {
       if (p.directive && p.directive.do === a.id && c.layer === "story") p.directive.done = true;
       this.announce(p);
       this.carryFollowers(p);
+      if (a.together && c.target) this.together(p, a);
       this.meet(p);
       this.scheduleChecks(p);
+    }
+    /**
+     * An action done together (its `together`): the target joins in for its
+     * length, if they're at the same place, doing nothing that outranks it,
+     * and there's room in its slot. They leave what they were doing, and
+     * their 'started' names who they joined. Otherwise it's done alone, aimed
+     * at them.
+     */
+    together(p, a) {
+      const w = this.w;
+      const d = p.doing;
+      const o = d.target ? w.s.people[d.target] : void 0;
+      if (!o || o === p || o.status !== "active" || !o.place || !d.place || o.doing?.kind === "travel" || !w.ring.within(o.place, d.place)) return;
+      if (o.doing && o.doing.rank > d.rank) return;
+      if (a.slot && o.slot !== a.slot && (w.ring.free(d.place, a.slot) < 1 || !w.ring.allowed(d.place, a.slot, o))) return;
+      if (o.doing) this.interrupt(o, "joined " + p.name, false);
+      if (o.slot && o.place) {
+        w.ring.release(o.place, o.slot, o.id);
+        delete o.slot;
+      }
+      if (a.slot) {
+        w.ring.claim(d.place, a.slot, o.id);
+        o.slot = a.slot;
+      }
+      const seq = this.scheduleEnd(o, d.end);
+      o.place = d.place;
+      o.doing = { kind: "act", action: a.id, place: d.place, slot: a.slot, target: p.id, start: w.s.now, end: d.end, rank: d.rank, layer: "together", seq };
+      w.log("started", o.id, { action: a.id, place: d.place, layer: "together", target: p.id, with: p.id });
+      for (const m of w.hooks) m.started?.(o, o.doing);
+      if (!o.doing || o.doing.seq !== seq) return;
+      this.announce(o);
+      this.scheduleChecks(o);
     }
     /** The action or walk ran its course. */
     finish(p) {
@@ -2927,7 +2960,7 @@ var Tyrell = (() => {
       const focus = opts.focus || {};
       for (const c of clauses) {
         let s = this.weigh(c, weight) * (1 + 1 / (count.get(c.sig) || 1));
-        const by = Math.max(1, ...[c.who, ...c.with].map((id) => id !== void 0 ? focus[id] ?? 1 : 1));
+        const by = Math.max(1, ...[c.who, ...c.with, ...c.around ?? []].map((id) => id !== void 0 ? focus[id] ?? 1 : 1));
         score.set(c, Math.min(1, s * by));
       }
       const min = opts.min ?? 0;
@@ -2955,6 +2988,7 @@ var Tyrell = (() => {
           ...ends.length ? { end: Math.max(...ends) } : {},
           who: m.who === void 0 ? [] : [m.who],
           with: [...new Set(m.c.flatMap((c) => c.with))].filter((id) => id !== m.who),
+          around: [...new Set(m.c.flatMap((c) => c.around ?? []))].filter((id) => id !== m.who && !m.c.some((c) => c.with.includes(id))),
           ...m.c.find((c) => c.place) ? { place: m.c.find((c) => c.place).place } : {},
           kinds: [...new Set(m.c.flatMap((c) => c.kinds))],
           score: Math.round(Math.max(...m.c.map((c) => score.get(c))) * 1e3) / 1e3,
@@ -2966,6 +3000,7 @@ var Tyrell = (() => {
         if (same && !said.includes(this.name(m.who))) {
           same.who.push(m.who);
           same.with = same.with.filter((id) => id !== m.who);
+          same.around = same.around.filter((id) => id !== m.who);
           same.entries = same.entries.concat(beat.entries).sort((a, b) => a.t - b.t);
           same.score = Math.max(same.score, beat.score);
           continue;
@@ -3193,7 +3228,7 @@ var Tyrell = (() => {
         const end = (c.end ?? c.act.at) + 15;
         return entries.some((e) => e.k === "witnessed" && e.who === who && e.d?.recognized && e.d?.actor === c.who && e.t >= c.act.start && e.t <= end);
       }
-      return c.with.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
+      return c.with.includes(who) || !!c.around?.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
     }
     /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
     mine(b, who) {
@@ -3230,9 +3265,9 @@ var Tyrell = (() => {
       }
       return out;
     }
-    /** Whether a beat is about someone: theirs, with them in it, or naming them. */
+    /** Whether a beat is about someone: theirs, with them in it or about, or naming them. */
     concerns(b, who) {
-      return b.who.includes(who) || b.with.includes(who) || b.entries.some((e) => this.w.westmarch.about(e, who));
+      return b.who.includes(who) || b.with.includes(who) || b.around.includes(who) || b.entries.some((e) => this.w.westmarch.about(e, who));
     }
     // -------------------------------------------------------------------------
     // Folding: entries into clauses
@@ -3301,7 +3336,7 @@ var Tyrell = (() => {
             if (c && c.act.at === e.t) {
               if (d.target !== c.act.target && !c.act.company.includes(d.target)) {
                 c.act.company.push(d.target);
-                c.with.push(d.target);
+                (c.around ?? (c.around = [])).push(d.target);
               }
               c.entries.push(e);
               continue;
@@ -3393,7 +3428,12 @@ var Tyrell = (() => {
       const acts = /* @__PURE__ */ new Map();
       const once = kept.filter((c) => {
         if (!c.act || c.act.target === void 0) return true;
-        if (acts.has(`${c.act.target}>${c.who}@${c.act.start}:${c.act.action}`)) return false;
+        const first = acts.get(`${c.act.target}>${c.who}@${c.act.start}:${c.act.action}`);
+        if (first) {
+          first.entries = first.entries.concat(c.entries).sort((a, b) => a.t - b.t);
+          for (const k of c.kinds) if (!first.kinds.includes(k)) first.kinds.push(k);
+          return false;
+        }
         acts.set(`${c.who}>${c.act.target}@${c.act.start}:${c.act.action}`, c);
         return true;
       });
@@ -3405,7 +3445,7 @@ var Tyrell = (() => {
       const w = this.w;
       if (c.act) {
         const def = w.actions.get(c.act.action);
-        let s = weight("started") + (c.with.length ? 0.1 : 0);
+        let s = weight("started") + (c.with.length || c.around?.length ? 0.1 : 0);
         if (def?.job) s *= 0.3;
         if (def?.crime) s = Math.max(s, weight("witnessed"));
         if (c.act.ok === false) s += 0.15;
@@ -3665,14 +3705,32 @@ var Tyrell = (() => {
       } else words = gerund ? `was ${label}` : `had ${label}`;
       if (a.walked) words = words.replace(/\s+(at|in|on|to|into|around|across|from)\s+\{place\}/g, "");
       const placed = words.includes("{place}");
+      const named = words.includes("{target}");
       words = words.replace(/\{place\}/g, this.placeName(c.place, c.who)).replace(/\{target\}/g, this.name(a.target));
+      if (def?.together && a.target !== void 0 && !named) words += " with " + this.name(a.target);
       if (!placed && !a.walked && c.place !== void 0) words += " " + this.at(c.place, c.who);
       if (!going && !timed && minutes >= 30) words += " for " + lasting(minutes);
-      const company = list(a.company.map((id) => this.name(id)));
-      if (a.company.length) words += ", " + (this.first && a.company.includes(this.pov) ? `with ${company} there` : this.phrase("with", { x: company }, c.t, a.action));
+      if (a.company.length) words += ", " + this.company(c);
       if (a.ok === false) words += ", but it went badly";
       if (a.felt.length) words += ", and " + list(a.felt);
       return a.walked ? `${this.pick(PHRASES.went, "went", c.t, a.action)} ${this.to(c.place, c.who)} and ${words}` : words;
+    }
+    /**
+     * Who else was about while someone did something. Company is only being
+     * at the same place (Fellowship's 'met'), not doing it together, so at
+     * someone's home it's told as being home ("had a shower, with Pip and
+     * Tomas home too", or "there too" for a visitor), never as sharing it;
+     * elsewhere as being there. In someone's own words they come last ("Pip
+     * and me"), and never "in the company of me".
+     */
+    company(c) {
+      const a = c.act;
+      const ids = this.first && a.company.includes(this.pov) ? [...a.company.filter((id) => id !== this.pov), this.pov] : a.company;
+      const x = list(ids.map((id) => this.name(id)));
+      const people = this.w.s.people;
+      const isHome = c.place !== void 0 && (this.w.ring.get(c.place)?.tags?.includes("home") || Object.values(people).some((p) => p.def.home === c.place));
+      if (isHome) return `with ${x} ${ids.every((id) => people[id]?.def.home === c.place) ? "home" : "there"} too`;
+      return this.first && a.company.includes(this.pov) ? `with ${x} there` : this.phrase("with", { x }, c.t, a.action);
     }
     /** A talk (Bree): "argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row". */
     talked(c) {

@@ -126,7 +126,7 @@ world.irulan.threads(kept);
 
 It folds the entries into beats:
 
-- **An action from start to finish**, with the walk there, the company kept, how a social act went and a feeling it brought: "Lena showered at home for half an hour, with Kofi there, and felt fresh." The same action taken up again straight after is more of it, so a shift worked an hour at a time is one beat ("Mara went to Mara's Cafe and baked bread for eight hours"). One still going when the entries end is told as it was ("was reading").
+- **An action from start to finish**, with the walk there, the company kept, how a social act went and a feeling it brought: "Lena showered at home for half an hour, with Kofi home too, and felt fresh." Company is only being at the same place, not doing it together (it's in `around`, apart from those who took part, in `with`), so at someone's home it's told as being home ("with Pip and Tomas home too", "with Kofi there too" for a visitor), and elsewhere as being there ("with Mara and Kofi there"). The same action taken up again straight after is more of it, so a shift worked an hour at a time is one beat ("Mara went to Mara's Cafe and baked bread for eight hours"). One still going when the entries end is told as it was ("was reading").
 - **A talk** (Bree) from its first word to its last, through what it turned into: "Dev argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row."
 - **Whatever happened to someone in the same minute**, as one sentence: what happened, then how they felt, then what they did. "Kofi gave up on dinner at home (no way to get food) and was frustrated."
 - **The same beat for several people at once**, told once: "Mara, Ruth and Kofi wished for some fresh air."
@@ -168,7 +168,7 @@ The log keeps its last `config.logSize` entries, a day or so of a busy town, too
 
 | Call | Returns |
 |---|---|
-| `beats(entries?, opts?)` | The entries told as beats, oldest first: `{ t, end?, who, with, place?, kinds, score, text, parts, entries }`. `who` is the subject (several when told as one, none for what happened to nobody in particular); `with` the others in it. `entries` is a list (the game's own, kept from the `log` events, to reach back further than the log keeps) or a time to tell the log from; without it, the story kept (`config.storySize`), or the whole log |
+| `beats(entries?, opts?)` | The entries told as beats, oldest first: `{ t, end?, who, with, around, place?, kinds, score, text, parts, entries }`. `who` is the subject (several when told as one, none for what happened to nobody in particular); `with` the others who took part (the target, the other side of a talk, who joined in an action done `together`); `around` those only at the same place, not taking part. `entries` is a list (the game's own, kept from the `log` events, to reach back further than the log keeps) or a time to tell the log from; without it, the story kept (`config.storySize`), or the whole log |
 | `tell(entries, opts?)` | The beats as paragraphs, one for each part of each day, each starting with when: `'Day 0, morning. ...'` |
 | `day(id, since, opts?)` | Someone's day as one paragraph: the beats about them, `min` 0.3 unless given. `since` is a time or a list of entries |
 | `recap(entries, opts?)` | The headlines: the `limit` beats that matter most (default 5), in the order they happened |
@@ -292,7 +292,7 @@ node vendor/tycho/tyrell/bin/voight-kampff.mjs my-town.js --days 7 --baseline ba
 | `--who id` | With `--log`, only what's about one person: entries by them or naming them as `target`, `for` or `to`, and events with a field that names them |
 | `--chronicle id` | Print that person's chronicle at the end, a day at a time, from every entry written in the run (not only what the log still holds) |
 | `--story [min]` | Tell the run as a story at the end ([Irulan](#irulan)), from every entry written in the run, leaving out what scores under `min` (default 0.3; `--story 0` tells everything); with `--who`, only what's about them. A line for each beat with its time, `!` or `!!` by how much it matters, under a heading for each part of each day |
-| `--story-by how` | `time` (the default: the timeline), `person` (each person's own beats under their name), `thread` (the storylines, the one that matters most first, then the rest of the town as a timeline), or `day` (paragraphs) |
+| `--story-by how` | `time` (the default: the timeline), `person` (each person's own beats under their name), `thread` (the storylines, the one that matters most first, each under its title with who's in it, when it ran and whether it's still going; then, around town, only what else mattered most), or `day` (paragraphs) |
 | `--recap [n]` | Print the `n` headlines (default 5): the beats that matter most, in order |
 | `--focus id` | Count what's about this person twice over (`focus`); as many as you like |
 | `--feed [min]` | Print the story as it happens ([`feed`](#as-it-happens)), each beat as it completes, what scores under `min` left out (default 0.5) |
@@ -314,13 +314,17 @@ day 0 10:44  Dev            told Kofi about did:sam:theft · at The Market
 ```
 $ node bin/voight-kampff.mjs examples/rocinante.js --days 2 --seed voight-kampff --with harm --story 0.5 --story-by thread
 
-── Pip's snare ─────────────────────────────────────────────────────────  Pip, Mara, Tomas, Officer Vance and others
+11 storylines, the one that matters most first
+
+▌ Pip's snare  (still going)
+▌ Pip, Mara, Tomas, Officer Vance and others · day 0 12:20 to day 1 19:27
 day 0 12:20 !! Pip set a snare at The Old Barn, then went home and read for an hour.
 day 1 07:37 !! Tomas was caught in a snare at The Old Barn, was cut, was hurt in Pip's trap, was in
                pain, was shaken and was furious.
 day 1 08:00    Pip told Tomas about a trap, then sulked at home for two hours, with Tomas there.
 ...
-── Sam's nightshade ────────────────────────────────────────────────────  Sam, Tomas, Mara, Pip
+▌ Sam's nightshade  (still going)
+▌ Sam, Tomas, Mara, Pip · day 1 16:53 to day 2 00:19
 day 1 16:53 !! Sam slipped nightshade into the stew at Mara's Cafe, then went home and showered, and
                felt fresh.
 day 1 20:56 !! Tomas was poisoned and was hurt by what Sam put in the food.
@@ -363,4 +367,4 @@ console.log(world.describe('ruth'));
 <script>const world = buildRocinante(Tyrell, {});</script>
 ```
 
-Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`, `moduleConfig` (merged over Rocinante's own, module by module), `tuned` (a town tuned to taste: the headline knobs for everyone and a few people's own `tune`; see [Tuning](tuning.md#an-example)), `bree` (Bree's interactions between the townsfolk: see [Bree](modules/bree.md#example)), and `harm` (harm between them, with Bree: see [Morgul](modules/morgul.md#example)). Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.
+Options: `seed` (default `'rocinante'`), `start` (default 6:00 on day 0), `modules` (default all), `config`, `esper`, `moduleConfig` (merged over Rocinante's own, module by module), `tuned` (a town tuned to taste: the headline knobs for everyone and a few people's own `tune`; see [Tuning](tuning.md#an-example)), `bree` (Bree's interactions between the townsfolk: see [Bree](modules/bree.md#example)), `harm` (harm between them, with Bree: see [Morgul](modules/morgul.md#example)), and `together` (now and then, Mara and Tomas shower together: room for two in their shower, and an action done `together`; mostly they shower alone, with the others only home). Couples don't form on their own in Rocinante (`autoPair: null`); Mara and Tomas are partners from the start.

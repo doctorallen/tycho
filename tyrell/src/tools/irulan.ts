@@ -37,8 +37,10 @@ export interface Beat {
   end?: Minutes;
   /** Whom it's about: the subject, or several people told as one ("Kofi and Sam"). Empty for what happened to nobody in particular (the rain). */
   who: Id[];
-  /** Others in it: the target, the company kept, the other side of a talk. */
+  /** Others who took part: the target, the other side of a talk, who joined in (an action done `together`). */
   with: Id[];
+  /** Others only about: at the same place while it happened (Fellowship's company), not taking part. */
+  around: Id[];
   /** Where, when it's known. */
   place?: Id;
   /** The kinds of entry it was made from. */
@@ -220,6 +222,8 @@ interface Clause {
   sig: string;
   order: number;
   text?: string;
+  /** Who was only about (company), apart from who took part (with). */
+  around?: Id[];
   /** An action from start to finish (start), the latest time it was taken up again (at). */
   act?: { action: Id; start: Minutes; at: Minutes; target?: Id; company: Id[]; walked: boolean; ok?: boolean; felt: string[] };
   /** A talk (Bree), by the kinds it went through. */
@@ -328,7 +332,7 @@ export class Irulan {
     for (const c of clauses) {
       // (the only one of its kind counts twice, one of ten a tenth more: routine stays low however rare)
       let s = this.weigh(c, weight) * (1 + 1 / (count.get(c.sig) || 1));
-      const by = Math.max(1, ...[c.who, ...c.with].map((id) => (id !== undefined ? focus[id] ?? 1 : 1)));
+      const by = Math.max(1, ...[c.who, ...c.with, ...(c.around ?? [])].map((id) => (id !== undefined ? focus[id] ?? 1 : 1)));
       score.set(c, Math.min(1, s * by));
     }
     // whatever happened to someone in the same minute, as one sentence (of what matters enough to tell)
@@ -353,6 +357,7 @@ export class Irulan {
         t, ...(ends.length ? { end: Math.max(...ends) } : {}),
         who: m.who === undefined ? [] : [m.who],
         with: [...new Set(m.c.flatMap((c) => c.with))].filter((id) => id !== m.who),
+        around: [...new Set(m.c.flatMap((c) => c.around ?? []))].filter((id) => id !== m.who && !m.c.some((c) => c.with.includes(id))),
         ...(m.c.find((c) => c.place) ? { place: m.c.find((c) => c.place)!.place } : {}),
         kinds: [...new Set(m.c.flatMap((c) => c.kinds))],
         score: Math.round(Math.max(...m.c.map((c) => score.get(c)!)) * 1000) / 1000,
@@ -364,6 +369,7 @@ export class Irulan {
       if (same && !said.includes(this.name(m.who))) {
         same.who.push(m.who!);
         same.with = same.with.filter((id) => id !== m.who);
+        same.around = same.around.filter((id) => id !== m.who);
         same.entries = same.entries.concat(beat.entries).sort((a, b) => a.t - b.t);
         same.score = Math.max(same.score, beat.score);
         continue;
@@ -594,7 +600,7 @@ export class Irulan {
       const end = (c.end ?? c.act.at) + 15;
       return entries.some((e) => e.k === 'witnessed' && e.who === who && (e.d as any)?.recognized && (e.d as any)?.actor === c.who && e.t >= c.act!.start && e.t <= end);
     }
-    return c.with.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
+    return c.with.includes(who) || !!c.around?.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
   }
 
   /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
@@ -633,9 +639,9 @@ export class Irulan {
     return out;
   }
 
-  /** Whether a beat is about someone: theirs, with them in it, or naming them. */
+  /** Whether a beat is about someone: theirs, with them in it or about, or naming them. */
   private concerns(b: Beat, who: Id): boolean {
-    return b.who.includes(who) || b.with.includes(who) || b.entries.some((e) => this.w.westmarch.about(e, who));
+    return b.who.includes(who) || b.with.includes(who) || b.around.includes(who) || b.entries.some((e) => this.w.westmarch.about(e, who));
   }
 
   // -------------------------------------------------------------------------
@@ -691,7 +697,7 @@ export class Irulan {
         case 'met': {
           const c = doing.get(who);
           if (c && c.act!.at === e.t) {
-            if (d.target !== c.act!.target && !c.act!.company.includes(d.target)) { c.act!.company.push(d.target); c.with.push(d.target); }
+            if (d.target !== c.act!.target && !c.act!.company.includes(d.target)) { c.act!.company.push(d.target); (c.around ??= []).push(d.target); }
             c.entries.push(e);
             continue;
           }
@@ -760,11 +766,16 @@ export class Irulan {
       const c = kept[i];
       if (c.kinds[0] === 'suspect' && blamed.has(`${c.who}@${c.t}>${(c.entries[0].d as any)?.suspect}`)) kept.splice(i, 1);
     }
-    // a chat both started at once, told by the first
+    // a chat both started at once, or an action someone joined (`together`), told once, by the one who began it
     const acts = new Map<string, Clause>();
     const once = kept.filter((c) => {
       if (!c.act || c.act.target === undefined) return true;
-      if (acts.has(`${c.act.target}>${c.who}@${c.act.start}:${c.act.action}`)) return false;
+      const first = acts.get(`${c.act.target}>${c.who}@${c.act.start}:${c.act.action}`);
+      if (first) {
+        first.entries = first.entries.concat(c.entries).sort((a, b) => a.t - b.t);
+        for (const k of c.kinds) if (!first.kinds.includes(k)) first.kinds.push(k);
+        return false;
+      }
       acts.set(`${c.who}>${c.act.target}@${c.act.start}:${c.act.action}`, c);
       return true;
     });
@@ -777,7 +788,7 @@ export class Irulan {
     const w = this.w;
     if (c.act) {
       const def = w.actions.get(c.act.action);
-      let s = weight('started') + (c.with.length ? 0.1 : 0);
+      let s = weight('started') + (c.with.length || c.around?.length ? 0.1 : 0);
       if (def?.job) s *= 0.3;
       if (def?.crime) s = Math.max(s, weight('witnessed'));
       if (c.act.ok === false) s += 0.15;
@@ -1001,15 +1012,34 @@ export class Irulan {
     // where: in the words, after them, or already said by the walk there
     if (a.walked) words = words.replace(/\s+(at|in|on|to|into|around|across|from)\s+\{place\}/g, '');
     const placed = words.includes('{place}');
+    const named = words.includes('{target}');
     words = words.replace(/\{place\}/g, this.placeName(c.place, c.who)).replace(/\{target\}/g, this.name(a.target));
+    // (done together: with whom, when the words don't say)
+    if (def?.together && a.target !== undefined && !named) words += ' with ' + this.name(a.target);
     if (!placed && !a.walked && c.place !== undefined) words += ' ' + this.at(c.place, c.who);
     if (!going && !timed && minutes >= 30) words += ' for ' + lasting(minutes);
-    // (in someone's own words, they were there: never "in the company of me")
-    const company = list(a.company.map((id) => this.name(id)));
-    if (a.company.length) words += ', ' + (this.first && a.company.includes(this.pov!) ? `with ${company} there` : this.phrase('with', { x: company }, c.t, a.action));
+    if (a.company.length) words += ', ' + this.company(c);
     if (a.ok === false) words += ', but it went badly';
     if (a.felt.length) words += ', and ' + list(a.felt);
     return a.walked ? `${this.pick(PHRASES.went, 'went', c.t, a.action)} ${this.to(c.place, c.who)} and ${words}` : words;
+  }
+
+  /**
+   * Who else was about while someone did something. Company is only being
+   * at the same place (Fellowship's 'met'), not doing it together, so at
+   * someone's home it's told as being home ("had a shower, with Pip and
+   * Tomas home too", or "there too" for a visitor), never as sharing it;
+   * elsewhere as being there. In someone's own words they come last ("Pip
+   * and me"), and never "in the company of me".
+   */
+  private company(c: Clause): string {
+    const a = c.act!;
+    const ids = this.first && a.company.includes(this.pov!) ? [...a.company.filter((id) => id !== this.pov), this.pov!] : a.company;
+    const x = list(ids.map((id) => this.name(id)));
+    const people = this.w.s.people;
+    const isHome = c.place !== undefined && (this.w.ring.get(c.place)?.tags?.includes('home') || Object.values(people).some((p) => p.def.home === c.place));
+    if (isHome) return `with ${x} ${ids.every((id) => people[id]?.def.home === c.place) ? 'home' : 'there'} too`;
+    return this.first && a.company.includes(this.pov!) ? `with ${x} there` : this.phrase('with', { x }, c.t, a.action);
   }
 
   /** A talk (Bree): "argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row". */

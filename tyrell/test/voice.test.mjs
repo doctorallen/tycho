@@ -422,3 +422,69 @@ test('Rocinante: once you know about Ruth\'s radio, you can ask after it, and it
   assert.equal(v.landed, 'well');
   assert.equal(w.voice.acquaintances()[0].who, 'ruth');
 });
+
+test('a subject can open the talk: their greeting is its first beat, with answers, and it\'s never offered', () => {
+  const w = talky({ voice: { theirs: 0 } });
+  w.voice.thread({ id: 'pie', opens: true, if: ['need.hunger>0.6'], cooldown: 60, about: ['food'], beats: {
+    start: { text: 'Mind the crumbs. I\'m on my second pie.', answers: [{ say: 'What kind?', approach: 'ask', to: 'kind' }, { say: 'Don\'t let me stop you.', approach: 'warm' }] },
+    kind: { text: 'Pork. Always pork.', end: true } } });
+  w.person('ana', { home: 'home_a', needs: { hunger: 0.8 } });
+  w.person('bo', { home: 'home_b' });
+  const v = w.voice.start('ana');
+  assert.deepEqual(v.lines.map((l) => l.text), ['Mind the crumbs. I\'m on my second pie.'], 'no plain greeting before it');
+  assert.equal(v.thread.id, 'pie');
+  assert.equal(v.thread.theirs, true);
+  assert.deepEqual(v.answers.map((a) => a.say ?? a.kind), ['What kind?', 'Don\'t let me stop you.', 'drop', 'bye']);
+  const after = choose(w, (a) => a.say === 'What kind?');
+  assert.deepEqual(after.lines.map((l) => l.text), ['What kind?', 'Pork. Always pork.']);
+  assert.ok(!after.answers.some((a) => a.id === 'pie'), 'never offered');
+  w.voice.end();
+  w.advance(30);
+  assert.equal(w.voice.start('ana').lines[0].key, 'greet_hungry', 'within its cooldown: the plain greeting');
+  w.voice.end();
+  assert.equal(w.voice.start('bo').lines[0].key, 'greet_1', 'and where its conditions fail');
+});
+
+test('with followPull, subjects about what was just said are offered first; let lie, nothing is followed', () => {
+  const build = (followPull) => {
+    const w = talky({ voice: { theirs: 0, offers: 2, variety: 0, followPull } });
+    w.voice.thread({ id: 'garden', label: 'The garden', weight: 1, about: ['home'], beats: { start: { text: 'The beans are up.', end: true } } });
+    w.voice.thread({ id: 'kin', label: 'Your kin', weight: 0.5, about: ['home', 'kin'], beats: { start: { text: 'My sister\'s visiting.', end: true } } });
+    w.person('ana', { home: 'home_a' });
+    return w;
+  };
+  const off = build(1);
+  off.voice.start('ana');
+  assert.ok(!choose(off, (a) => a.id === 'garden').answers.some((a) => a.id === 'kin'), 'off by default: by weight alone');
+  const on = build(4);
+  on.voice.start('ana');
+  const v = choose(on, (a) => a.id === 'garden');
+  assert.equal(v.answers[0].id, 'kin', 'about home, as the garden was');
+  assert.equal(on.lang.value('about:home', on.ctx(on.get('ana'), { target: 'player' })), true);
+  const dropped = build(4);
+  dropped.voice.start('ana');
+  choose(dropped, (a) => a.id === 'how');
+  const d = choose(dropped, (a) => a.kind === 'drop');
+  assert.ok(!d.answers.some((a) => a.id === 'kin'));
+});
+
+test('an answer can turn the talk to a topic (the about effect); reshuffle draws the variety afresh each time', () => {
+  const w = talky({ voice: { theirs: 0, offers: 2, variety: 0, followPull: 4 } });
+  w.voice.thread({ id: 'kin', label: 'Your kin', weight: 0.5, about: ['kin'], beats: { start: { text: 'My sister\'s visiting.', end: true } } });
+  w.voice.thread({ id: 'chat', label: 'Chat', beats: { start: { text: 'Oh, this and that.', answers: [{ say: 'And your family?', then: ['about:kin'] }, { say: 'Quite.' }] } } });
+  w.person('ana', { home: 'home_a' });
+  w.voice.start('ana');
+  choose(w, (a) => a.id === 'chat');
+  assert.equal(choose(w, (a) => a.say === 'And your family?').answers[0].id, 'kin');
+  // the same day, the same order without reshuffle; with it, each return to the subjects draws again
+  const order = (reshuffle) => {
+    const x = talky({ voice: { theirs: 0, offers: 3, variety: 5, reshuffle } });
+    for (const id of ['a1', 'a2', 'a3', 'a4', 'a5']) x.voice.thread({ id, label: id, beats: { start: { text: id, end: true } } });
+    x.person('ana', { home: 'home_a' });
+    const seen = new Set();
+    for (let i = 0; i < 6; i++) { seen.add(x.voice.start('ana').answers.filter((a) => a.kind === 'thread').map((a) => a.id).join()); x.voice.end(); x.advance(5); }
+    return seen.size;
+  };
+  assert.equal(order(false), 1);
+  assert.ok(order(true) > 1);
+});

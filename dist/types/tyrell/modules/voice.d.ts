@@ -69,6 +69,15 @@ export interface ThreadDef {
     cooldown?: number;
     /** They raise it themselves (at the start, or between subjects), instead of being offered it. */
     theirs?: boolean;
+    /**
+     * They open the talk with it: when one can (its `if` holds, not talked of
+     * within its cooldown), its first beat is their greeting, with answers,
+     * in place of the plain one (one drawn by weight, if several can). It's
+     * never offered.
+     */
+    opens?: boolean;
+    /** What it's about: once it's talked of, subjects sharing a topic with it are offered first (config.followPull). */
+    about?: string[];
     /** A key it's for learning: it's more wanted until the speaker has learned it. */
     reveals?: string;
     /** Something learned about them that it recalls: it comes up only once the speaker has learned it, and its opener lands better (config.recallLand). */
@@ -158,6 +167,10 @@ export interface VoiceConfig {
     salientFloor: number;
     /** A little variety in what's offered: up to this much added to each subject's worth, the same for a pair all day. Default 0.2. */
     variety: number;
+    /** Variety drawn afresh each time the subjects are offered (each talk, and each return to them), not once a day. Default false. */
+    reshuffle: boolean;
+    /** A subject sharing a topic (`about`) with the one just talked of is worth this much more. Default 1 (it doesn't count). */
+    followPull: number;
     /** Days before a promise comes due, for a promise with no `days`. Default 3. */
     promiseDays: number;
     /** Days a settled promise is remembered (the `promise:` term reads it). Default 30. */
@@ -316,6 +329,8 @@ export declare class Voice implements Module {
     private knows;
     /** Words with what's been learned filled in: {learned.<key>} and {learned.<key>:<form>}, by `remembered` (an unlearned key is left as it is). */
     private fill;
+    /** They open the talk with a subject, when one can: its first beat is their greeting. Returns whether they did. */
+    private opening;
     /** Now and then they raise something of their own. Returns whether they did. */
     private theirTurn;
     private weightOf;

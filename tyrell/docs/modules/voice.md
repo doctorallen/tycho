@@ -9,6 +9,7 @@ Beside [Cityspeak](cityspeak.md)'s single lines and barks, Voice is for talks th
 - [Answers and approaches](#answers-and-approaches)
 - [Warmth and patience](#warmth-and-patience)
 - [What comes up](#what-comes-up)
+- [A talk that follows itself](#a-talk-that-follows-itself)
 - [The words](#the-words)
 - [What a talk leaves](#what-a-talk-leaves)
 - [Knowing someone](#knowing-someone)
@@ -97,9 +98,28 @@ score = weight × fresh × (0.1 if sore: soreWeight) × (1.5 if it reveals somet
 fresh = 1 if never talked of, else 1 - e^(-(minutes since) / cooldown)
 ```
 
-A subject under 0.05 (`salientFloor`) before the variety isn't offered. The variety is up to 0.2 (`variety`), the same for a pair all day (it changes nothing). `weight` can be a function. A subject just talked of comes round again gradually over its `cooldown` (`config.cooldown`, three days, by default).
+A subject under 0.05 (`salientFloor`) before the variety isn't offered. The variety is up to 0.2 (`variety`), the same for a pair all day (it changes nothing), or, with `reshuffle`, drawn afresh each time the subjects are offered (each talk, and each return to them). With `followPull`, a subject about what was just said is worth more ([below](#a-talk-that-follows-itself)). `weight` can be a function. A subject just talked of comes round again gradually over its `cooldown` (`config.cooldown`, three days, by default).
 
 **Their turn.** At the start of a talk, and whenever a subject ends, with chance `config.theirs` (0.3, times `chatter`), they raise a thread marked `theirs` (one whose `if` holds, not talked of within its cooldown, drawn by weight from the talk's own stream). Its first beat is theirs; there's no opener from the speaker. The view's thread says `theirs: true`.
+
+## A talk that follows itself
+
+By default a greeting is only a greeting, and the subjects on offer are weighed without regard to what was just said. A game can have the talk follow on from itself.
+
+**Opening with a subject.** A thread marked `opens` is how they start the talk when it can (its `if` holds, it recalls nothing not yet learned, and it hasn't been talked of within its `cooldown`): its first beat is their greeting, with answers, in place of the plain one, so what they say first can be answered (one is drawn by weight from the talk's stream if several can; with none, the plain greeting). It's theirs (the view's thread says `theirs: true`) and never offered. When it ends, they may raise something of their own as usual. The beat's `line` can be the greeting's own topic, so the words are the same and only the answers are new.
+
+```js
+v.thread({ id: 'at.pies', opens: true, if: ['doing:eat'], cooldown: 60, about: ['food'], beats: {
+  start: { line: 'greet', answers: [
+    { say: 'What kind?', approach: 'ask', to: 'kind' },
+    { say: 'Don\'t let me stop you.', approach: 'warm' },
+    { say: 'Who taught you to cook?', approach: 'ask', to: 'thread:family' }] },
+  kind: { text: 'Pork. Always pork.', end: true } } });
+```
+
+**What it's about.** A thread can say what it's about (`about: ['work', 'family']`). While it's talked of, and after it's talked through, those are the talk's topics (the term `about:<topic>`); an effect `about:<topic>` turns the talk to one more ("And your family?" with `then: ['about:family']`). At the hub, a subject sharing a topic with them is worth `followPull` times more, so what comes up follows from what was said. A subject let lie leaves nothing to follow, and a thread without `about` clears them. `followPull` is 1 by default: it changes nothing until a game sets it.
+
+Together with doors (`to: 'thread:<id>'`), which carry an answer straight into a related subject, these let a talk run from one thing to the next instead of back to the same few subjects.
 
 ## The words
 
@@ -117,6 +137,7 @@ Effects in beats, answers and threads run with the person talked to as the perso
 - `promise:<id>=<days>`: a promise to them (below).
 - `sore:<thread>=<days>` (the current thread, two days, `soreDays`, by default): a subject best left a while (weighed at a tenth).
 - `warmth+=n`: the talk warms (or cools).
+- `about:<topic>`: the talk turns to a topic ([A talk that follows itself](#a-talk-that-follows-itself)).
 
 Each pair keeps a bond: how many talks (counted as each ends), when the last ended, when each subject was last talked of, sore subjects, what's been learned, lines said lately. `familiarity` is half a point a talk plus a point for each thing learned (`familiarTalk`, `familiarLearned`). With `config.deed` set (say, `'talked'`), the end of a talk is a deed the speaker did for them (a [deed](../integration.md#sensing-and-deeds): feelings, regard, a note in their file).
 
@@ -212,6 +233,8 @@ In `world.s.mod.voice`, made with the first talk:
 | `weight` | 1 | A number, or `(ctx) => number` |
 | `cooldown` | `config.cooldown` (3 days) | Minutes for it to come round fresh again |
 | `theirs` | false | They raise it themselves |
+| `opens` | false | They open the talk with it when it can: its first beat is their greeting, with answers |
+| `about` | none | Topics it's about: subjects sharing one are offered first after it (`followPull`) |
 | `reveals` | none | A key it's for learning: wanted more until learned |
 | `recalls` | none | A key it recalls: it comes up only once that's learned, and its opener lands `recallLand` better |
 | `open` | the label | The speaker's opener: words or a topic, or `{ approach: words }` |
@@ -268,7 +291,7 @@ In `world.s.mod.voice`, made with the first talk:
 
 ## Terms, effects, events and log
 
-Terms (the person, with the speaker as target): `talks` (talks they've had), `familiar` (their familiarity with the speaker), `talking` / `talking:<by>`, `warmth`, `patience`, `landed`, `learned:<key>`, `sore:<thread>`, `talked:<thread>` (ever talked of), `talked` (minutes since their last talk ended, or `null`), `promise:<id>`. Effects: `learn:<key>=v`, `promise:<id>=days`, `sore:<thread>=days`, `warmth+=n`.
+Terms (the person, with the speaker as target): `talks` (talks they've had), `familiar` (their familiarity with the speaker), `talking` / `talking:<by>`, `warmth`, `patience`, `landed`, `about:<topic>` (the talk's on it), `learned:<key>`, `sore:<thread>`, `talked:<thread>` (ever talked of), `talked` (minutes since their last talk ended, or `null`), `promise:<id>`. Effects: `learn:<key>=v`, `promise:<id>=days`, `sore:<thread>=days`, `warmth+=n`, `about:<topic>`.
 
 | Event | Payload |
 |---|---|
@@ -302,6 +325,8 @@ Log entries: `talk`, `talked`, `learned`, `promised`, `promise`.
 | `soreDays`, `soreWeight` | 2, 0.1 | How long `sore` lasts with no number, and what a sore subject is worth |
 | `revealPull` | 1.5 | A subject for learning something not yet learned is worth this much more |
 | `salientFloor`, `variety` | 0.05, 0.2 | Subjects under this aren't offered; up to this much variety |
+| `reshuffle` | false | The variety drawn afresh each time the subjects are offered, not once a day |
+| `followPull` | 1 | A subject sharing a topic with the one just talked of is worth this much more (1: it doesn't count) |
 | `promiseDays`, `promiseKeep` | 3, 30 | A promise's `days` when it gives none; days a settled promise is remembered |
 
 See [Tuning](../tuning.md#voice); during play, `world.tune('voice', { ... })`.

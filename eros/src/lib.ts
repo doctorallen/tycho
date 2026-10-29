@@ -3,3 +3,5 @@
 export * from './code';
 export * from './recorder';
 export * from './tyrell';
+export * from './catalog';
+export * from './sandbox';

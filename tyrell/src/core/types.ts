@@ -351,8 +351,9 @@ export interface WishDef {
   minutes?: number;
   /** Wished at most once in a life (default: dreams yes, wishes no). */
   once?: boolean;
-  /** Effects when it's granted, and when it fades. ctx.data.x is what it was about (and ctx.target, if a person). */
+  /** Effects when it's granted. ctx.data.x is what it was about (and ctx.target, if a person). */
   then?: Effect[];
+  /** Effects when it fades ungranted, with the same ctx. */
   fades?: Effect[];
   /** A wish given at once when this one is granted (the next step of a dream). */
   next?: Id;
@@ -390,9 +391,11 @@ export interface TaskDef {
   id: Id;
   label?: string;
   relieves?: Record<Id, number | [number, number]>;
+  /** A flat appeal added to the relief, as an action's, for tasks people do for their own sake. */
   base?: number;
   at?: PlaceSpec | PlaceSpec[];
   if?: Cond[];
+  /** Who may take it on: conditions on the person. */
   who?: Cond[];
   rank?: number;
   considerations?: Consideration[];
@@ -603,6 +606,7 @@ export interface DeedDef {
   sentiment?: string;
   /** Change in standing with the receiver's groups (Fellowship). */
   fame?: number;
+  /** Infamy the doer gains with the receiver's groups (Fellowship). */
   infamy?: number;
   /** Treat as this crime when witnessed (Wormtongue). */
   crime?: string;

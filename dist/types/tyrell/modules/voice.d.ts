@@ -104,8 +104,11 @@ export interface PromiseDef {
     days?: number;
     /** What it comes to when it's due and neither kept nor broken. Default 'lapsed'. */
     lapse?: 'kept' | 'broken' | 'lapsed';
+    /** Effects when it's kept (the one promised to as the person, the one who promised as target). */
     onKept?: Effect[];
+    /** Effects when it's broken. */
     onBroken?: Effect[];
+    /** Effects when it comes due neither kept nor broken. */
     onLapsed?: Effect[];
 }
 export interface VoiceConfig {

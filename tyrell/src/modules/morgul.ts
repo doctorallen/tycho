@@ -62,6 +62,7 @@ export interface MeansDef {
   label?: string;
   /** The kinds of harm it does: 'blunt', 'cut', 'poison'... */
   kinds?: string[];
+  /** How it's used: 'strike', 'throw', 'shoot', 'cast', 'coat', 'dose' or 'set'. */
   use?: MeansUse;
   /** How bad its harm is, 0..1: a blow with it adds this to a fist's; a trap or a dose of it harms this much. */
   severity?: number;

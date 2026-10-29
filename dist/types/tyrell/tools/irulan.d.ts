@@ -59,6 +59,8 @@ export interface TellOptions {
     weights?: Record<string, number>;
     /** People who matter more to the story (the player, their friends): a beat with them in it scores this many times more, up to 1. */
     focus?: Record<Id, number>;
+    /** Vary the words: a `tell` with variants, and Irulan's own phrases, drawn afresh for each telling (the same every time for the same entries). Default true; false always takes the first. */
+    vary?: boolean;
     /** The parts of the day tell's paragraphs are made by: [the hour it starts, its name], earliest first. */
     periods?: Array<[number, string]>;
     /** A day's name, for tell's paragraphs. Default 'Day n'. */
@@ -89,9 +91,15 @@ export declare class Irulan {
     private w;
     private wordsFor;
     private ctx;
+    /** Whether this telling varies its words (TellOptions.vary). */
+    private varied;
     constructor(w: World);
     /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
     words(kind: string, fn: WordsFn): this;
+    /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
+    private pick;
+    /** One of Irulan's own phrases, its blanks filled. */
+    private phrase;
     /**
      * The entries told as beats, in the order they happened. `entries` is a
      * list (the game's own, kept from the 'log' events, to reach back further

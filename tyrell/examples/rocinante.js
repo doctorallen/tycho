@@ -100,18 +100,18 @@
   const night = { name: 'night', input: 'hour', range: [0, 24], curve: [[0, 1], [6 / 24, 1], [8 / 24, 0.12], [20 / 24, 0.3], [22.5 / 24, 1], [1, 1]] };
   const daylight = { name: 'daylight', input: 'hour', range: [0, 24], curve: [[0, 0.05], [7 / 24, 0.05], [9 / 24, 1], [19 / 24, 1], [21 / 24, 0.1], [1, 0.05]] };
   w.action({ id: 'sleep', label: 'sleeping', tell: { did: 'slept', doing: 'was asleep' }, at: 'home', slot: 'bed', minutes: [420, 510], relieves: { energy: 0.95 }, rates: { hunger: 0.4, fun: 0.2, company: 0.2, hygiene: 0.5 }, tags: ['sleep'], pose: 'sleep', considerations: [night] });
-  w.action({ id: 'nap', label: 'a nap', tell: { did: 'had a nap', doing: 'was napping' }, at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
-  w.action({ id: 'shower', tell: { did: 'showered', doing: 'was in the shower' }, at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
-  w.action({ id: 'read', label: 'reading', tell: { did: 'read', doing: 'was reading' }, at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
-  w.action({ id: 'eat_cafe', label: 'eating at the cafe', tell: { did: 'ate at {place}', doing: 'was eating at {place}' }, at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
+  w.action({ id: 'nap', label: 'a nap', tell: { did: ['had a nap', 'dozed'], doing: 'was napping' }, at: 'home', slot: 'bed', minutes: 60, relieves: { energy: 0.3 }, tags: ['sleep'], pose: 'sleep', cooldown: 6 * HOUR });
+  w.action({ id: 'shower', tell: { did: ['showered', 'had a shower'], doing: 'was in the shower' }, at: 'home', slot: 'shower', minutes: 15, relieves: { hygiene: 0.85 }, pose: 'stand', feels: ['fresh'] });
+  w.action({ id: 'read', label: 'reading', tell: { did: ['read', 'curled up with a book', 'sat and read'], doing: 'was reading' }, at: 'home', minutes: 60, relieves: { fun: 0.2 }, base: 0.02, pose: 'sit', tags: ['comfort'], trains: { lore: 0.5 }, palls: true });
+  w.action({ id: 'eat_cafe', label: 'eating at the cafe', tell: { did: ['ate at {place}', 'had a meal at {place}', 'grabbed a bite at {place}'], doing: 'was eating at {place}' }, at: 'tag:food', slot: 'seat', minutes: [30, 45], relieves: { hunger: [0.5, 0.7], company: 0.1 }, price: 6, pose: 'sit', tags: ['social', 'food'], feels: ['good_meal'], store: 'here', uses: { bread: 1 } });
   w.action({ id: 'eat_home', label: 'eating at home', tell: { did: 'ate', doing: 'was eating' }, at: 'home', minutes: 25, relieves: { hunger: 0.55 }, uses: { food: 1 }, pose: 'sit', tags: ['food'] });
   w.action({ id: 'buy_food', label: 'shopping', tell: { did: 'bought food at {place}', doing: 'was shopping at {place}' }, at: 'market', minutes: 10, buys: { food: 2 }, price: 8, pose: 'stand' });
   w.action({ id: 'steal_food', label: 'pocketing food', tell: { did: 'pocketed some food at {place}' }, at: 'market', minutes: 4, gives: { food: 1 }, tags: ['illegal'], against: ['honesty'], crime: 'theft', pose: 'stand' });
   w.action({ id: 'bar_snack', label: 'a bowl of noodles at the Belt', tell: { did: 'had a bowl of noodles at {place}' }, at: 'tag:drink', slot: 'stool', minutes: 20, relieves: { hunger: 0.45 }, price: 4, pose: 'sit', tags: ['food'] });
-  w.action({ id: 'drink', label: 'drinking at the Belt', tell: { did: 'drank at {place}', doing: 'was drinking at {place}' }, at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
-  w.action({ id: 'walk', label: 'a walk in the park', tell: { did: 'took a walk in {place}', doing: 'was walking in {place}' }, at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
-  w.action({ id: 'sit_park', label: 'sitting in the park', tell: { did: 'sat in {place}', doing: 'was sitting in {place}' }, at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
-  w.action({ id: 'chat', label: 'chatting', tell: { did: 'chatted with {target}', doing: 'was chatting with {target}' }, target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
+  w.action({ id: 'drink', label: 'drinking at the Belt', tell: { did: ['drank at {place}', 'had a few at {place}'], doing: 'was drinking at {place}' }, at: 'tag:drink', slot: 'stool', minutes: [60, 120], relieves: { fun: 0.4, company: 0.35 }, price: 5, pose: 'sit', tags: ['social'], palls: 'drink', then: ['afflict:ale'] });
+  w.action({ id: 'walk', label: 'a walk in the park', tell: { did: ['took a walk in {place}', 'went for a stroll in {place}'], doing: 'was walking in {place}' }, at: 'park', minutes: 45, relieves: { fun: 0.3 }, tags: ['outdoors'], pose: 'walk', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'sit_park', label: 'sitting in the park', tell: { did: ['sat in {place}', 'sat on a bench in {place}'], doing: 'was sitting in {place}' }, at: 'park', slot: 'bench', minutes: 40, relieves: { fun: 0.15, company: 0.15 }, tags: ['outdoors', 'social'], pose: 'sit', considerations: [daylight], palls: 'park' });
+  w.action({ id: 'chat', label: 'chatting', tell: { did: ['chatted with {target}', 'had a chat with {target}', 'passed the time with {target}'], doing: 'was chatting with {target}' }, target: 'person', at: 'here', minutes: 20, relieves: { company: 0.4, fun: 0.1 }, tags: ['social'], social: 'chat', pose: 'stand', cooldown: 30 });
   w.action({ id: 'help_out', label: 'helping out', tell: { did: 'helped {target} out', doing: 'was helping {target}' }, target: 'person', at: 'here', minutes: 30, base: 0.04, relieves: { company: 0.2 }, deed: 'helped', tags: ['social'], targetIf: ['regard>0.2'], cooldown: DAY });
   w.action({ id: 'sulk', label: 'sulking', tell: { did: 'sulked', doing: 'was sulking' }, at: 'home', minutes: 120, pose: 'sit', rank: -1 });
   w.action({ id: 'bender', label: 'a bender', tell: { did: 'went on a bender at {place}', doing: 'was on a bender at {place}' }, at: 'tag:drink', minutes: 240, relieves: { fun: 0.6 }, pose: 'sit', rank: -1 });
@@ -253,9 +253,9 @@
   // ---- Reverie: feelings, breaks, memories ----------------------------------
   const rv = w.reverie;
   if (rv) {
-    rv.feeling({ id: 'good_meal', label: 'A good meal', tell: 'enjoyed a good meal', weight: 0.08, minutes: 4 * HOUR, emotion: 'happy' });
-    rv.feeling({ id: 'fresh', label: 'Freshly showered', tell: 'felt fresh', weight: 0.05, minutes: 3 * HOUR, emotion: 'happy' });
-    rv.feeling({ id: 'lonely', label: 'Lonely', tell: 'felt lonely', weight: -0.1, minutes: 12 * HOUR, emotion: 'sad', boost: { social: 1.5 } });
+    rv.feeling({ id: 'good_meal', label: 'A good meal', tell: ['enjoyed a good meal', 'enjoyed the food'], weight: 0.08, minutes: 4 * HOUR, emotion: 'happy' });
+    rv.feeling({ id: 'fresh', label: 'Freshly showered', tell: ['felt fresh', 'felt refreshed'], weight: 0.05, minutes: 3 * HOUR, emotion: 'happy' });
+    rv.feeling({ id: 'lonely', label: 'Lonely', tell: ['felt lonely', 'felt alone'], weight: -0.1, minutes: 12 * HOUR, emotion: 'sad', boost: { social: 1.5 } });
     rv.breakdown({ id: 'sulk', level: 'minor', do: 'sulk', label: 'sulking at home', tell: 'broke down and sulked at home' });
     rv.breakdown({ id: 'bender', level: 'major', do: 'bender', label: 'a bender', tell: 'broke down and went on a bender', weight: [{ input: 'trait.courage', out: [0.3, 1.5] }] });
     rv.breakdown({ id: 'walkout', level: 'extreme', do: 'walk', label: 'walking it off', tell: 'broke down and walked out to clear their head' });
@@ -548,7 +548,7 @@
     data: (r) => ({ coat: r.pick(['gray', 'navy', 'rust', 'olive']) }),
   });
 
-  // ---- Irulan: the town's own words for its story (actions, feelings and kinds have their `tell`) ----
+  // ---- Irulan: the town's own words for its story (actions, feelings and kinds have their `tell`; a list is variants) ----
   const facts = {
     raining: ['rain set in', 'the rain stopped'],
     'closed:bar': ['the lights went out at the Belt', 'the power came back on at the Belt'],

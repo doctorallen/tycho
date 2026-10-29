@@ -133,6 +133,10 @@ A deed told by the action it came of isn't told again, nor a chat both sides sta
 
 Every beat is scored for how much it matters, 0 to 1: the weight of its kinds (`IRULAN_WEIGHTS`: routine low, the day's turns in the middle, what a story is made of high; a feeling by how strongly it moves the mood; a job's work lower still, a crime done, a hostile talk or one that went badly higher), up to twice that for what's rare among the entries told, and `focus` for the people who matter more to the game. `min` leaves out what scores under it, a clause at a time, so what matters isn't told with the routine around it.
 
+### Varied words
+
+Each telling varies its words: a `tell` given as a list is variants (`did: ['read', 'curled up with a book', 'sat and read']`), and Irulan's own phrases have theirs ("went", "headed", "made their way"; "told Ines about", "told Ines of", "mentioned ... to Ines"; "with Kofi there", "with Kofi around", "in the company of Kofi"). One is drawn for each telling from the world's seed and what's told, so the same entries read the same every time, another seed reads differently, and nothing in the world changes. The draw never depends on who it's about, so the same thing done by several people still reads alike and is told once. `vary: false` always takes the first.
+
 ### Parts
 
 Every beat's sentence also comes in `parts`: its words, and each person and place in them tagged with its id (`{ text: 'Sam', person: 'sam' }`, `{ text: 'home', place: 'apt_5' }`), so a game can make names links, color places or put a portrait by a name without searching the text. Joined, the parts' text is the sentence. A thread's title comes in parts too. The names `words` gets from its context (`name`, `place`) carry their tags into its words: put them in as they are. Words left to Westmarch's `describe` come untagged.
@@ -161,6 +165,7 @@ Matters are one story only when a single log entry links them (a quarrel that ca
 | `who` | everyone | Only what's about this person: beats that are theirs, have them in it, or name them; threads they're in |
 | `min` | 0 (`day`: 0.3, `threads`: 0.4) | Leave out what scores under this |
 | `weights` | `IRULAN_WEIGHTS` | Weights by kind of entry, over Irulan's own; 0 leaves a kind out (`{ told: 0 }`) |
+| `vary` | true | Vary the words; false always takes the first |
 | `focus` | none | People who matter more to the game (the player, their friends): `{ ruth: 2 }` scores a beat with Ruth in it twice as high, up to 1 |
 | `limit` | 5 | `recap`: how many |
 | `periods` | night, early morning (5), morning (8), afternoon (12), evening (17), night (21) | The parts of the day `tell` and `when` go by: `[hour it starts, name]`, earliest first |

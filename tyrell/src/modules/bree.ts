@@ -69,8 +69,8 @@ export interface OutcomeDo {
 export interface KindDef {
   id: Id;
   label?: string;
-  /** Its words in a story (Irulan), as they'd follow the name of the one who started it, {with} naming the others: 'argued with {with}'. Without it, 'had <label> with {with}'. */
-  tell?: string;
+  /** Its words in a story (Irulan), as they'd follow the name of the one who started it, {with} naming the others: 'argued with {with}'. Without it, 'had <label> with {with}'. A list is variants. */
+  tell?: string | string[];
   /** Free labels. The module reads 'hostile' (quarrels, avoidance) and 'romantic' (attraction). */
   tags?: string[];
   /** Who may start it: conditions on the one who starts it (the other is the target). */
@@ -437,10 +437,10 @@ export const DEFAULT_BREE: BreeConfig = {
 
 /** Feelings Bree gives (declared when Reverie is on; a game declares its own with the same ids to change them). */
 const BREE_FEELINGS = [
-  { id: 'good_talk', label: 'A good talk', tell: 'enjoyed the talk', weight: 0.05, minutes: 4 * HOUR, emotion: 'happy' },
+  { id: 'good_talk', label: 'A good talk', tell: ['enjoyed the talk', 'came away cheered'], weight: 0.05, minutes: 4 * HOUR, emotion: 'happy' },
   { id: 'long_chat', label: 'A proper long talk', tell: 'enjoyed a proper long talk', weight: 0.07, minutes: 7 * HOUR, emotion: 'happy' },
   { id: 'had_words', label: 'Had words with someone', tell: 'was sore from the words', weight: -0.1, minutes: 6 * HOUR, stack: 2, emotion: 'angry' },
-  { id: 'snubbed', label: 'Brushed off', tell: 'felt brushed off', weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: 'sad' },
+  { id: 'snubbed', label: 'Brushed off', tell: ['felt brushed off', 'felt snubbed'], weight: -0.05, minutes: 4 * HOUR, stack: 2, emotion: 'sad' },
   { id: 'fought', label: 'In a fight', tell: 'was shaken by the fight', weight: -0.2, minutes: DAY, stack: 2, emotion: 'angry' },
   { id: 'made_up', label: 'Made it up', tell: 'was glad to have made it up', weight: 0.1, minutes: DAY, emotion: 'relieved' },
   { id: 'saw_row', label: 'Saw a row', tell: 'was rattled by the row', weight: -0.04, minutes: 4 * HOUR, emotion: 'tense' },

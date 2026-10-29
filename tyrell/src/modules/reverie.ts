@@ -24,8 +24,8 @@ import { DAY, HOUR, clamp, round } from '../core/util';
 export interface FeelingDef {
   id: Id;
   label?: string;
-  /** Its words in a story (Irulan), as they'd follow the person's name: 'felt fresh', 'was frustrated'. Without it, the label is used. */
-  tell?: string;
+  /** Its words in a story (Irulan), as they'd follow the person's name: 'felt fresh', 'was frustrated'. Without it, the label is used. A list is variants, one drawn for each telling. */
+  tell?: string | string[];
   /** How much it lifts (+) or sinks (-) the mood, -1..1. */
   weight: number;
   /** How long it lasts. */
@@ -54,8 +54,8 @@ export interface BreakDef {
   /** The feeling afterward. Default 'catharsis'. */
   after?: Id;
   label?: string;
-  /** Its words in a story (Irulan), as they'd follow the person's name: 'broke down and walked out'. Without it, 'broke down (<label>)'. */
-  tell?: string;
+  /** Its words in a story (Irulan), as they'd follow the person's name: 'broke down and walked out'. Without it, 'broke down (<label>)'. A list is variants. */
+  tell?: string | string[];
 }
 
 export interface MemoryKindDef {
@@ -173,12 +173,12 @@ export const DEFAULT_REVERIE: ReverieConfig = {
 /** Feelings every world has (a game can declare its own with the same ids to change them). */
 const BUILTIN_FEELINGS: FeelingDef[] = [
   { id: 'catharsis', label: 'Got it out of my system', tell: 'got it out of their system', weight: 0.25, minutes: 2 * DAY, emotion: 'relieved' },
-  { id: 'conscience', label: 'A guilty conscience', tell: 'felt guilty', weight: -0.1, minutes: DAY, stack: 3, emotion: 'guilty' },
-  { id: 'witnessed', label: 'Saw something bad', tell: 'was shaken by what they saw', weight: -0.06, minutes: 12 * HOUR, stack: 2, emotion: 'tense' },
-  { id: 'frustrated', label: 'Nothing went right', tell: 'was frustrated', weight: -0.06, minutes: 6 * HOUR, stack: 3, emotion: 'angry' },
+  { id: 'conscience', label: 'A guilty conscience', tell: ['felt guilty', 'had a guilty conscience'], weight: -0.1, minutes: DAY, stack: 3, emotion: 'guilty' },
+  { id: 'witnessed', label: 'Saw something bad', tell: ['was shaken by what they saw', 'was unsettled by what they saw'], weight: -0.06, minutes: 12 * HOUR, stack: 2, emotion: 'tense' },
+  { id: 'frustrated', label: 'Nothing went right', tell: ['was frustrated', 'was fed up'], weight: -0.06, minutes: 6 * HOUR, stack: 3, emotion: 'angry' },
   { id: 'grief', label: 'Grieving', tell: 'grieved', weight: -0.3, minutes: 7 * DAY, emotion: 'sad' },
   { id: 'scared', label: 'Frightened', tell: 'was frightened', weight: -0.15, minutes: DAY, stack: 2, emotion: 'scared' },
-  { id: 'helped', label: 'Someone helped me', tell: 'was glad of the help', weight: 0.1, minutes: DAY, stack: 3, emotion: 'happy' },
+  { id: 'helped', label: 'Someone helped me', tell: ['was glad of the help', 'was grateful for the help'], weight: 0.1, minutes: DAY, stack: 3, emotion: 'happy' },
   { id: 'wronged', label: 'Someone did me wrong', tell: 'felt wronged', weight: -0.12, minutes: 2 * DAY, stack: 3, emotion: 'angry' },
 ];
 

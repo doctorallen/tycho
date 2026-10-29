@@ -60,7 +60,7 @@ Every field of `ActionDef`:
 |---|---|---|---|
 | `id` | string | required | The action's id |
 | `label` | string | none | A readable name: chronicles and Joi's prompts use it |
-| `tell` | `{ did?, doing? }` | none | Its words in a story ([Irulan](tools.md#irulan)), as they'd follow the person's name: what they did (`'took a walk in {place}'`, `'chatted with {target}'`) and what they were doing when the story ends (`'was reading'`). `{place}` and `{target}` are named; without `{place}`, where comes after (`'at home'`). Without it, the label is used |
+| `tell` | `{ did?, doing? }` | none | Its words in a story ([Irulan](tools.md#irulan)), as they'd follow the person's name: what they did (`'took a walk in {place}'`, `'chatted with {target}'`) and what they were doing when the story ends (`'was reading'`). `{place}` and `{target}` are named; without `{place}`, where comes after (`'at home'`). Without it, the label is used. A list is variants, one drawn for each telling |
 | `minutes` | number or `[min, max]` | required | How long it takes. A range is drawn from the person's stream |
 | `relieves` | `{ need: number or [min, max] }` | none | How much each need drops when it's done. A range is drawn at the end; the weighing uses the middle |
 | `base` | number | 0 | A flat appeal added to the relief, for things people do for their own sake |
@@ -438,7 +438,7 @@ Read them with `world.wishesOf(id)` (each `{ id, label, t, until?, x?, dream?, p
 |---|---|---|
 | `id` | required | |
 | `label` | the id | A readable name |
-| `tell` | none | Its words in a story ([Irulan](tools.md#irulan)) when it's wished: `'dreamed of becoming an expert baker'`. Without it, `'wished for <label>'` |
+| `tell` | none | Its words in a story ([Irulan](tools.md#irulan)) when it's wished: `'dreamed of becoming an expert baker'`. Without it, `'wished for <label>'`. A list is variants |
 | `if` | none | Who may wish it, and when |
 | `weight` | 1 | A number, considerations multiplied, or a function of the context |
 | `about` | none | A term or a function: what it's about |

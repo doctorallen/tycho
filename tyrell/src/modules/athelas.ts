@@ -105,9 +105,10 @@ export interface CourseDef {
   /**
    * Its words in a story (Irulan), as they'd follow the person's name: when
    * it comes on ('caught a cold') and when it's over ('shook off the cold').
-   * Without them, 'came down with <label>' and 'got over <label>'.
+   * Without them, 'came down with <label>' and 'got over <label>'. A list is
+   * variants, one drawn for each telling.
    */
-  tell?: { on?: string; over?: string };
+  tell?: { on?: string | string[]; over?: string | string[] };
   /** Free labels ('illness'): `under:tag:<tag>` asks whether any course with the tag is running. */
   tags?: string[];
   /** The phases, in order. */

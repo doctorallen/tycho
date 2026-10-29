@@ -20,7 +20,7 @@
 // changes nothing, so the same entries can be told as often as a game likes.
 import type { Id, LogEntry, Minutes } from '../core/types';
 import type { World } from '../core/world';
-import { DAY, HOUR } from '../core/util';
+import { DAY, HOUR, hash } from '../core/util';
 
 /** A piece of a sentence: words, or a person or a place by its id. */
 export interface Part {
@@ -84,6 +84,8 @@ export interface TellOptions {
   weights?: Record<string, number>;
   /** People who matter more to the story (the player, their friends): a beat with them in it scores this many times more, up to 1. */
   focus?: Record<Id, number>;
+  /** Vary the words: a `tell` with variants, and Irulan's own phrases, drawn afresh for each telling (the same every time for the same entries). Default true; false always takes the first. */
+  vary?: boolean;
   /** The parts of the day tell's paragraphs are made by: [the hour it starts, its name], earliest first. */
   periods?: Array<[number, string]>;
   /** A day's name, for tell's paragraphs. Default 'Day n'. */
@@ -135,6 +137,20 @@ const PERIODS: Array<[number, string]> = [[0, 'night'], [5, 'early morning'], [8
 const ENDED: Record<string, string> = { warm: 'and it went warmly', good: 'and it went well', awkward: 'and it got awkward', sour: 'and it turned sour', row: 'and it ended in a row' };
 /** Why someone's suspected or blamed (Morgul's reasons), after their name. */
 const WHY: Record<string, string> = { 'served it': 'who served it', 'was about': 'who was about', 'bore a grudge': 'who bore them a grudge', 'was told': 'as they\'d been told' };
+/**
+ * Irulan's own phrases, and their variants: one is drawn for each telling,
+ * from the world's seed and what's told (never who tells it, so the same
+ * thing done by several people still reads alike and is told once).
+ */
+const PHRASES = {
+  went: ['went', 'headed', 'made their way'],
+  with: ['with {x} there', 'with {x} around', 'in the company of {x}'],
+  then: [', then ', ', and then '],
+  told: ['told {to} about {about}', 'told {to} of {about}', 'mentioned {about} to {to}'],
+  saw: ['saw {about}', 'witnessed {about}', 'caught sight of {about}'],
+  report: ['reported {about} to {to}', 'went to {to} about {about}'],
+  granted: ['got {wish}, as they\'d wished', 'got {wish} at last'],
+};
 const NUMBERS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 /** Kinds of entry that make what passed between two people a story (a chat that went fine isn't one). */
 const BETWEEN = new Set(['grudge', 'feud', 'mended', 'escalated', 'did', 'harm', 'blamed', 'suspect', 'yielded', 'respond', 'warned', 'saw']);
@@ -216,6 +232,8 @@ const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 export class Irulan {
   private wordsFor = new Map<string, WordsFn>();
   private ctx: WordsContext;
+  /** Whether this telling varies its words (TellOptions.vary). */
+  private varied = true;
 
   constructor(private w: World) {
     this.ctx = { world: w, name: (id) => this.name(id), place: (id, who) => this.placeName(id, who) };
@@ -224,6 +242,18 @@ export class Irulan {
   /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
   words(kind: string, fn: WordsFn): this { this.wordsFor.set(kind, fn); return this; }
 
+  /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
+  private pick(words: string | string[] | undefined, ...what: Array<string | number>): string | undefined {
+    if (!Array.isArray(words)) return words;
+    if (!words.length) return undefined;
+    return this.varied ? words[hash(this.w.s.seed, 'irulan', ...what) % words.length] : words[0];
+  }
+
+  /** One of Irulan's own phrases, its blanks filled. */
+  private phrase(name: keyof typeof PHRASES, fill: Record<string, string>, ...what: Array<string | number>): string {
+    return this.pick(PHRASES[name], name, ...what)!.replace(/\{(\w+)\}/g, (_, k) => fill[k] ?? '');
+  }
+
   /**
    * The entries told as beats, in the order they happened. `entries` is a
    * list (the game's own, kept from the 'log' events, to reach back further
@@ -231,6 +261,7 @@ export class Irulan {
    */
   beats(entries: LogEntry[] | Minutes, opts: TellOptions = {}): Beat[] {
     const all = typeof entries === 'number' ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
+    this.varied = opts.vary ?? true;
     const weights = { ...IRULAN_WEIGHTS, ...(opts.weights || {}) };
     const weight = (k: string): number => weights[k] ?? 0.3;
     const clauses = this.fold(all).filter((c) => weight(c.kinds[0]) > 0 && c.text !== '');
@@ -582,7 +613,7 @@ export class Irulan {
     const words = cs.map((c) => c.text!);
     if (words.length < 2) return words[0];
     const last = cs[cs.length - 1];
-    return words.slice(0, -1).join(', ') + (last.act || last.talk ? ', then ' : ' and ') + words[words.length - 1];
+    return words.slice(0, -1).join(', ') + (last.act || last.talk ? this.pick(PHRASES.then, 'then', last.t, last.sig)! : ' and ') + words[words.length - 1];
   }
 
   // -------------------------------------------------------------------------
@@ -754,7 +785,7 @@ export class Irulan {
 
   /** A walk not followed by anything told with it. */
   private went(c: Clause): string {
-    return c.walk!.arrived !== undefined ? `went ${this.to(c.walk!.to, c.who)}` : `set out for ${this.placeName(c.walk!.to, c.who)}`;
+    return c.walk!.arrived !== undefined ? `${this.pick(PHRASES.went, 'went', c.t, c.walk!.to)} ${this.to(c.walk!.to, c.who)}` : `set out for ${this.placeName(c.walk!.to, c.who)}`;
   }
 
   /** An action from start to finish: "went to Mara's Cafe and ate, with Ines there". */
@@ -768,8 +799,9 @@ export class Irulan {
     const minutes = (c.end ?? a.start) - a.start;
     let words: string;
     let timed = false;
-    if (going) words = def?.tell?.doing ?? (gerund ? `was ${label}` : `was having ${label}`);
-    else if (def?.tell?.did) words = def.tell.did;
+    const did = this.pick(def?.tell?.did, 'did', c.t, a.action), doing = this.pick(def?.tell?.doing, 'doing', c.t, a.action);
+    if (going) words = doing ?? (gerund ? `was ${label}` : `was having ${label}`);
+    else if (did) words = did;
     else if (gerund && minutes >= 30) { words = `spent ${lasting(minutes)} ${label}`; timed = true; }
     else words = gerund ? `was ${label}` : `had ${label}`;
     // where: in the words, after them, or already said by the walk there
@@ -778,10 +810,10 @@ export class Irulan {
     words = words.replace(/\{place\}/g, this.placeName(c.place, c.who)).replace(/\{target\}/g, this.name(a.target));
     if (!placed && !a.walked && c.place !== undefined) words += ' ' + this.at(c.place, c.who);
     if (!going && !timed && minutes >= 30) words += ' for ' + lasting(minutes);
-    if (a.company.length) words += ', with ' + list(a.company.map((id) => this.name(id))) + ' there';
+    if (a.company.length) words += ', ' + this.phrase('with', { x: list(a.company.map((id) => this.name(id))) }, c.t, a.action);
     if (a.ok === false) words += ', but it went badly';
     if (a.felt.length) words += ', and ' + list(a.felt);
-    return a.walked ? `went ${this.to(c.place, c.who)} and ${words}` : words;
+    return a.walked ? `${this.pick(PHRASES.went, 'went', c.t, a.action)} ${this.to(c.place, c.who)} and ${words}` : words;
   }
 
   /** A talk (Bree): "argued with Lena at Mara's Cafe, which turned into a fight, and it ended in a row". */
@@ -790,7 +822,7 @@ export class Irulan {
     const t = c.talk!;
     const first = kinds?.get(t.kinds[0]);
     const others = list(c.with.map((id) => this.name(id))) || 'nobody';
-    let words = (first?.tell ?? `had ${first?.label ?? t.kinds[0]} with {with}`).replace(/\{with\}/g, others);
+    let words = (this.pick(first?.tell, 'kind', c.t, t.kinds[0]) ?? `had ${first?.label ?? t.kinds[0]} with {with}`).replace(/\{with\}/g, others);
     if (c.place !== undefined) words += ' ' + this.at(c.place, c.who);
     if (t.kinds.length > 1) { const last = kinds?.get(t.kinds[t.kinds.length - 1]); words += `, which turned into ${last?.label ?? t.kinds[t.kinds.length - 1]}`; }
     const ended = t.outcome !== undefined ? ENDED[t.outcome] : undefined;
@@ -828,16 +860,21 @@ export class Irulan {
     const over = (why: unknown) => (why === 'harm' ? 'being hurt' : w.bree?.kinds.has(String(why)) ? kind(String(why)) : String(why));
     switch (e.k) {
       case 'day': case 'timer': case 'route': case 'planned': case 'director': case 'tuned': return null;
-      case 'felt': { const f = w.reverie?.feelingDefs.get(d.feeling); if (f?.tell) return f.tell; break; }
-      case 'broke': { const b = w.reverie?.breakDefs.get(d.kind); return b?.tell ?? `broke down${b?.label ? ' (' + b.label + ')' : ''}`; }
-      case 'told': return `told ${name(d.to)} about ${about(d.key)}`;
+      case 'felt': { const f = this.pick(w.reverie?.feelingDefs.get(d.feeling)?.tell, 'felt', e.t, d.feeling); if (f) return f; break; }
+      case 'broke': { const b = w.reverie?.breakDefs.get(d.kind); return this.pick(b?.tell, 'broke', e.t, d.kind) ?? `broke down${b?.label ? ' (' + b.label + ')' : ''}`; }
+      case 'told': return this.phrase('told', { to: name(d.to), about: about(d.key) }, e.t, d.key, d.to);
       // (someone who saw a crime done to them was in it: the crime tells it)
-      case 'witnessed': return d.what === e.who ? null : d.recognized ? `saw ${name(d.actor)}'s ${d.kind}${typeof d.what === 'string' && w.s.people[d.what] ? ' against ' + name(d.what) : ''}` : `saw ${article(d.kind)} without seeing who did it`;
-      case 'report': return `reported ${d.actor === 'someone' ? article(d.kind) : name(d.actor) + '\'s ' + d.kind}${d.to ? ' to ' + name(d.to) : ''}`;
+      case 'witnessed': return d.what === e.who ? null : d.recognized
+        ? this.phrase('saw', { about: `${name(d.actor)}'s ${d.kind}${typeof d.what === 'string' && w.s.people[d.what] ? ' against ' + name(d.what) : ''}` }, e.t, d.actor, d.kind)
+        : `saw ${article(d.kind)} without seeing who did it`;
+      case 'report': {
+        const what = d.actor === 'someone' ? article(d.kind) : name(d.actor) + '\'s ' + d.kind;
+        return d.to ? this.phrase('report', { about: what, to: name(d.to) }, e.t, d.actor, d.kind) : `reported ${what}`;
+      }
       case 'gave-up': return `gave up on ${task(d.task)} (${d.why})`;
       case 'done-plan': return `saw ${task(d.task)} through`;
-      case 'wished': return w.wishes.get(d.wish)?.tell ?? `wished for ${wish(d.wish)}`;
-      case 'granted': return `got ${wish(d.wish)}, as they'd wished`;
+      case 'wished': return this.pick(w.wishes.get(d.wish)?.tell, 'wished', e.t, d.wish) ?? `wished for ${wish(d.wish)}`;
+      case 'granted': return this.phrase('granted', { wish: wish(d.wish) }, e.t, d.wish);
       case 'faded': return `stopped wishing for ${wish(d.wish)}`;
       case 'sentiment': return `thought ${Number(d.by) < 0 ? 'less' : 'well'} of ${name(d.target)}: "${d.label}"`;
       case 'regard': return `thought ${Number(d.by) < 0 ? 'less' : 'more'} of ${name(d.target)}`;
@@ -848,9 +885,9 @@ export class Irulan {
       case 'afflicted': {
         // (from whom only for what's caught: a cut from a trap says nothing of who set it)
         const def = w.athelas?.courses.get(d.course);
-        return `${def?.tell?.on ?? `came down with ${course(d.course)}`}${d.again ? ' again' : ''}${d.from && def?.contagion ? ' from ' + name(d.from) : ''}`;
+        return `${this.pick(def?.tell?.on, 'on', e.t, d.course) ?? `came down with ${course(d.course)}`}${d.again ? ' again' : ''}${d.from && def?.contagion ? ' from ' + name(d.from) : ''}`;
       }
-      case 'recovered': case 'healed': return w.athelas?.courses.get(d.course)?.tell?.over ?? `got over ${course(d.course)}`;
+      case 'recovered': case 'healed': return this.pick(w.athelas?.courses.get(d.course)?.tell?.over, 'over', e.t, d.course) ?? `got over ${course(d.course)}`;
       case 'course': return `${course(d.course)} turned to ${w.athelas?.courses.get(d.course)?.phases.find((p) => p.id === d.phase)?.label ?? d.phase}`;
       case 'shows': return `was ${w.athelas?.courses.get(d.course)?.phases.find((p) => p.id === d.phase)?.label ?? d.phase}`;
       case 'tended': return `was seen to${d.by ? ' by ' + name(d.by) : ''}`;
@@ -860,7 +897,7 @@ export class Irulan {
       case 'feud': return Number(d.strength) > 0 ? `was in ${deep(d.strength)}feud with ${name(d.with)}` : `ended the feud with ${name(d.with)}`;
       case 'mended': return `made it up with ${name(d.with)}`;
       case 'escalated': return `turned ${kind(d.from)} with ${name(d.against)} into ${kind(d.to)}`;
-      case 'exchange': return `${w.bree?.kinds.get(d.kind)?.tell?.replace(/\{with\}/g, names(d.with)) ?? `had ${kind(d.kind)} with ${names(d.with)}`}`;
+      case 'exchange': return `${this.pick(w.bree?.kinds.get(d.kind)?.tell, 'kind', e.t, d.kind)?.replace(/\{with\}/g, names(d.with)) ?? `had ${kind(d.kind)} with ${names(d.with)}`}`;
       // Morgul
       case 'harm': {
         const badly = Number(d.severity) >= 0.6 ? 'badly ' : '';

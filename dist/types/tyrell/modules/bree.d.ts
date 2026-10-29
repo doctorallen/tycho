@@ -29,8 +29,8 @@ export interface OutcomeDo {
 export interface KindDef {
     id: Id;
     label?: string;
-    /** Its words in a story (Irulan), as they'd follow the name of the one who started it, {with} naming the others: 'argued with {with}'. Without it, 'had <label> with {with}'. */
-    tell?: string;
+    /** Its words in a story (Irulan), as they'd follow the name of the one who started it, {with} naming the others: 'argued with {with}'. Without it, 'had <label> with {with}'. A list is variants. */
+    tell?: string | string[];
     /** Free labels. The module reads 'hostile' (quarrels, avoidance) and 'romantic' (attraction). */
     tags?: string[];
     /** Who may start it: conditions on the one who starts it (the other is the target). */

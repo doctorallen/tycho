@@ -4,8 +4,8 @@ import type { World } from '../core/world';
 export interface FeelingDef {
     id: Id;
     label?: string;
-    /** Its words in a story (Irulan), as they'd follow the person's name: 'felt fresh', 'was frustrated'. Without it, the label is used. */
-    tell?: string;
+    /** Its words in a story (Irulan), as they'd follow the person's name: 'felt fresh', 'was frustrated'. Without it, the label is used. A list is variants, one drawn for each telling. */
+    tell?: string | string[];
     /** How much it lifts (+) or sinks (-) the mood, -1..1. */
     weight: number;
     /** How long it lasts. */
@@ -33,8 +33,8 @@ export interface BreakDef {
     /** The feeling afterward. Default 'catharsis'. */
     after?: Id;
     label?: string;
-    /** Its words in a story (Irulan), as they'd follow the person's name: 'broke down and walked out'. Without it, 'broke down (<label>)'. */
-    tell?: string;
+    /** Its words in a story (Irulan), as they'd follow the person's name: 'broke down and walked out'. Without it, 'broke down (<label>)'. A list is variants. */
+    tell?: string | string[];
 }
 export interface MemoryKindDef {
     id: Id;

@@ -644,7 +644,7 @@ test('Irulan folds a walk, an action, its company, its feeling and a shift into 
   const kept = [];
   w.on('log', (e) => kept.push(e));
   w.advance(DAY);
-  const text = w.irulan.beats(kept).map((b) => b.text);
+  const text = w.irulan.beats(kept, { vary: false }).map((b) => b.text);
   const has = (re) => assert.ok(text.some((t) => re.test(t)), `${re}\n${text.join('\n')}`);
   // the walk there and the hour-long bakes one after another: one shift
   has(/^Mara went to Mara's Cafe and baked bread for eight hours/);
@@ -685,7 +685,7 @@ test('Irulan takes the game\'s words, and falls back to the label and describe',
   w.action({ id: 'juggle', label: 'juggling', at: 'home', minutes: 45 });
   w.action({ id: 'kip', label: 'a kip', at: 'home', minutes: 20 });
   const at = (t, k, d) => ({ t, k, who: 'ruth', d });
-  const said = (entries) => w.irulan.beats(entries).map((b) => b.text);
+  const said = (entries) => w.irulan.beats(entries, { vary: false }).map((b) => b.text);
   // Rocinante's words for the rain, and the words a game gives that leave an entry out
   assert.deepEqual(said([{ t: 0, k: 'fact', d: { key: 'raining', value: true } }]), ['Rain set in.']);
   assert.deepEqual(said([{ t: 0, k: 'fact', d: { key: 'other', value: 1 } }]), ['Other became 1.']);
@@ -714,7 +714,7 @@ test('Irulan tells a talk from its first word to its last (Bree)', () => {
     by('dev', 10, 'exchange', { id: 7, kind: 'argue', with: ['lena'], why: 'meet' }),
     by('dev', 14, 'escalated', { id: 7, from: 'argue', to: 'fight', against: 'lena' }),
     by('dev', 16, 'exchanged', { id: 7, kind: 'fight', with: ['lena'], outcome: 'row', turns: 6, why: 'done' }),
-  ]).map((b) => b.text);
+  ], { vary: false }).map((b) => b.text);
   assert.deepEqual(text, ['Dev went to Mara\'s Cafe.', 'Dev argued with Lena at Mara\'s Cafe, which turned into a fight, and it ended in a row.']);
 });
 
@@ -733,7 +733,7 @@ test('Irulan gives every sentence in parts, the people and places in it tagged',
     // everyone a beat is about is tagged in it
     for (const id of b.who) assert.ok(b.parts.some((p) => p.person === id), b.text);
   }
-  const lena = w.irulan.beats(kept).find((b) => /^Lena showered/.test(b.text));
+  const lena = w.irulan.beats(kept, { vary: false }).find((b) => /^Lena showered/.test(b.text));
   assert.deepEqual(lena.parts, [{ text: 'Lena', person: 'lena' }, { text: ' showered at ' }, { text: 'home', place: 'apt_5' }, { text: ' for half an hour, with ' }, { text: 'Kofi', person: 'kofi' }, { text: ' there, and felt fresh.' }]);
 });
 
@@ -743,7 +743,7 @@ test('Irulan finds the storylines: a theft and what came of it, a snare, a poiso
   w.on('log', (e) => kept.push(e));
   w.advance(2 * DAY);
   const before = w.hash();
-  const { threads, rest } = w.irulan.threads(kept);
+  const { threads, rest } = w.irulan.threads(kept, { vary: false });
   const titled = (t) => threads.find((th) => th.title === t);
   // the theft: done, seen, told and reported, with how the thief felt
   const theft = titled('Sam\'s theft');
@@ -771,6 +771,29 @@ test('Irulan finds the storylines: a theft and what came of it, a snare, a poiso
   // someone's own
   assert.ok(w.irulan.threads(kept, { who: 'pip' }).threads.every((th) => th.people.includes('pip')));
   assert.equal(w.hash(), before);
+});
+
+test('Irulan varies its words, the same way every time, and still tells the same thing once', () => {
+  const w = rocinante();
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(DAY);
+  const plain = w.irulan.beats(kept, { vary: false }), varied = w.irulan.beats(kept), again = w.irulan.beats(kept);
+  assert.deepEqual(varied.map((b) => b.text), again.map((b) => b.text));
+  assert.equal(varied.length, plain.length);
+  const differ = varied.filter((b, i) => b.text !== plain[i].text);
+  assert.ok(differ.length > 10, `${differ.length} differ`);
+  // Irulan's own phrases and the town's variants both turn up
+  const all = varied.map((b) => b.text).join('\n');
+  assert.match(all, / (headed|made their way) /);
+  assert.match(all, /curled up with a book|sat and read|had a meal at|grabbed a bite at/);
+  assert.ok(varied.some((b) => b.who.length > 1));
+  // another seed, other words
+  const v = rocinante({ seed: 'another' });
+  const k2 = [];
+  v.on('log', (e) => k2.push(e));
+  v.advance(DAY);
+  assert.ok(v.irulan.beats(k2).some((b, i, bs) => b.text !== v.irulan.beats(k2, { vary: false })[i]?.text));
 });
 
 test('Irulan gives the headlines, and more of the people who matter to the game', () => {

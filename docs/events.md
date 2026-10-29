@@ -71,7 +71,7 @@ Today Westmarch keeps its last 1,000 entries and drops the oldest first. With im
 
 ## The view
 
-Part of Tycho's development tools (`Tycho.dev`, beside the dev switches), not a part of its own: the list, the threshold, the filters and the details. The minds inspector (`Tycho.inspect`, the White Dragon's Tyrell mode) carries it as a tab, and a game drawing it in its own dev drawer places it there; a game with no drawer (Lodestar) opens it as a panel of its own with `?dev` in the address. From an event you can go straight to what it touched:
+Part of Tycho's development tools (`Tycho.dev`, beside the dev switches), not a part of its own: the list, the threshold, the filters and the details. Its home is the dev drawer's events ([dev.md](dev.md#the-events)), which already merge a game's notes with another log by time, filter by kind and find words, with room for an impact column and a least impact. The minds inspector (`Tycho.inspect`, the White Dragon's Tyrell mode) carries it as a tab, and a game drawing it in its own dev drawer places it there; a game with no drawer (Lodestar) opens it as a panel of its own with `?dev` in the address. From an event you can go straight to what it touched:
 
 - **Open the mind** of anyone in it: what they're doing, their needs and feelings, why they chose what they did.
 - **Go there**: the dev drawer's Go to, landing by them or at the place.
@@ -104,6 +104,6 @@ Settled on 2026-10-28:
 ## The order to build it
 
 1. **Westmarch**: impact from the game's table, the bands, `find` by a least impact, keeping by band, and words for every kind; log entries for what modules emit but don't log. Tests that a world without a table hashes as now, and that impacts are the same on a replay. After the harm work, which adds Morgul's entries to the same log.
-2. **The view in `Tycho.dev`**: the list, threshold, filters, details, alerts, folded runs and copy, and the small log for games without Tyrell, with tests and a section in the shell's page.
+2. **The view in `Tycho.dev`**: the list, threshold, filters, details, alerts, folded runs and copy, and the small log for games without Tyrell, with tests and a section in the shell's page. Begun: the dev drawer's events (the list, filters by kind, a find box, pause and clear, another log merged in by time, an impact's column and a least impact when events carry one) and `Notes`, the small log.
 3. **The bridge**: Westmarch's entries as the view's events, and the inspector's tab.
 4. **Each game**: its table, and the view in its dev tools; Lodestar's panel with `?dev`.

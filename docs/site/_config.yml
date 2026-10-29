@@ -30,6 +30,7 @@ nav:
       - { title: Play, url: /docs/play.html }
       - { title: Harm, url: /docs/harm.html }
       - { title: The shell, url: /docs/shell.html }
+      - { title: The dev tools, url: /docs/dev.html }
       - { title: Sound, url: /docs/audio.html }
       - { title: The interface kit, url: /docs/ui.html }
       - { title: The inspector, url: /docs/inspect.html }

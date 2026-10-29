@@ -99,7 +99,7 @@ The log is in every snapshot and every save, so its size is the biggest lever on
 
 ## Irulan
 
-The narrator, named for the Princess Irulan of Dune, who wrote the histories of Muad'Dib. Westmarch keeps the log a line at a time; Irulan tells it as a story: for an inspector's "their day so far", a town journal, a recap after time away, the storylines running through the town, or reading a Voight-Kampff run.
+The narrator, named for the Princess Irulan of Dune, who wrote the histories of Muad'Dib. Westmarch keeps the log a line at a time; Irulan tells it as a story: for an inspector's "their day so far", a town journal, a recap after time away, the storylines running through the town, what someone says when asked what's new, or reading a Voight-Kampff run.
 
 ```js
 const kept = [];
@@ -113,6 +113,7 @@ world.irulan.beats(kept, { min: 0.3 });
 world.irulan.tell(kept, { min: 0.3 });     // ['Day 0, morning. Sam went to The Market and ...', ...]
 world.irulan.day('ruth', kept);            // 'Ruth went to Tomas\'s Workshop and had the radio fixed, with Tomas there. ...'
 world.irulan.recap(kept, { limit: 3 });    // the three beats that matter most, in order
+world.irulan.recount('tomas', kept);     // ['Early yesterday, I was caught in a snare at The Old Barn, ...', 'Yesterday evening, I was poisoned and was hurt by tainted food.']
 world.irulan.threads(kept);
 // { threads: [{ title: "Sam's nightshade", people: ['tomas', 'sam', ...], keys: ['harm:5', 'taint:x4'], beats: [
 //     "Sam slipped nightshade into the stew at Mara's Cafe.", "Tomas was poisoned and was hurt by what Sam put in the food.",
@@ -141,6 +142,12 @@ Each telling varies its words: a `tell` given as a list is variants (`did: ['rea
 
 Every beat's sentence also comes in `parts`: its words, and each person and place in them tagged with its id (`{ text: 'Sam', person: 'sam' }`, `{ text: 'home', place: 'apt_5' }`), so a game can make names links, color places or put a portrait by a name without searching the text. Joined, the parts' text is the sentence. A thread's title comes in parts too. The names `words` gets from its context (`name`, `place`) carry their tags into its words: put them in as they are. Words left to Westmarch's `describe` come untagged.
 
+### Point of view
+
+`as` tells only what one person knows, as they know it: what they did, what was done to them or in front of them, and what they were told. Not what others felt, wished, planned or thought of them (their feelings, wishes, grudges, suspicions, even folded into what they did); not a crime done in front of them they didn't catch (Wormtongue's witnesses); not who did something to them they couldn't have seen (a quiet harm: poisoned food is "tainted food", not "Sam's"). `voice: 'first'` tells it in their words: "I", "me", "my" ("Officer Vance told me about Sam's theft", "Tomas was hurt by my tainted food", "Kofi and I"), and the subject's "they" becomes "I" ("as I'd wished"). For gossip, for what someone says when asked, for a journal kept by the player's character.
+
+`recount(id, entries, opts?)` is what they'd say when asked what's new: the few beats they know that matter most (`limit`, default 3, scoring `min`, default 0.4), in order, in their words, with when from `now` (default the world's): "Yesterday evening, I was poisoned and was hurt by tainted food." `ago(t, now?)` is when on its own: "this morning", "last night", "yesterday afternoon", "three days ago".
+
 ### Threads
 
 `threads` finds the storylines running through the entries:
@@ -157,6 +164,8 @@ Matters are one story only when a single log entry links them (a quarrel that ca
 | `day(id, since, opts?)` | Someone's day as one paragraph: the beats about them, `min` 0.3 unless given. `since` is a time or a list of entries |
 | `recap(entries, opts?)` | The headlines: the `limit` beats that matter most (default 5), in the order they happened |
 | `threads(entries, opts?)` | `{ threads, rest }`: the storylines, the one that matters most first, and the beats in none |
+| `recount(id, entries, opts?)` | What someone would say of what's new: the beats they know that matter most, in their words, with when |
+| `ago(t, now?)` | When something was, from now: `'yesterday evening'` |
 | `when(t, opts?)` | A time as the paragraphs say it: `'Day 0, early morning'` |
 | `words(kind, fn)` | Gives a kind of entry the game's own words: `fn(entry, { name, place, world })` returns what follows the person's name (or the whole sentence, for an entry with no person), `null` to leave the entry out, or `undefined` for Irulan's own. A definition: declare it again on every start |
 
@@ -165,9 +174,11 @@ Matters are one story only when a single log entry links them (a quarrel that ca
 | `who` | everyone | Only what's about this person: beats that are theirs, have them in it, or name them; threads they're in |
 | `min` | 0 (`day`: 0.3, `threads`: 0.4) | Leave out what scores under this |
 | `weights` | `IRULAN_WEIGHTS` | Weights by kind of entry, over Irulan's own; 0 leaves a kind out (`{ told: 0 }`) |
+| `as` | none | Tell only what this person knows, as they know it ([point of view](#point-of-view)) |
+| `voice` | `'third'` | With `as`, `'first'` tells it in their words |
 | `vary` | true | Vary the words; false always takes the first |
 | `focus` | none | People who matter more to the game (the player, their friends): `{ ruth: 2 }` scores a beat with Ruth in it twice as high, up to 1 |
-| `limit` | 5 | `recap`: how many |
+| `limit` | 5 (`recount`: 3) | `recap` and `recount`: how many |
 | `periods` | night, early morning (5), morning (8), afternoon (12), evening (17), night (21) | The parts of the day `tell` and `when` go by: `[hour it starts, name]`, earliest first |
 | `day` | `'Day n'` | A day's name, for `tell` and `when` |
 

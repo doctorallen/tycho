@@ -2773,6 +2773,36 @@ var PHRASES = {
   report: ["reported {about} to {to}", "went to {to} about {about}"],
   granted: ["got {wish}, as they'd wished", "got {wish} at last"]
 };
+var INNER = /* @__PURE__ */ new Set([
+  "felt",
+  "wished",
+  "granted",
+  "faded",
+  "gave-up",
+  "no-plan",
+  "planned",
+  "replanned",
+  "done-plan",
+  "set-aside",
+  "resumed",
+  "regard",
+  "sentiment",
+  "grudge",
+  "feud",
+  "suspect",
+  "blamed",
+  "noticed",
+  "skill",
+  "owes",
+  "changed",
+  "sensed",
+  "directed",
+  "released",
+  "witnessed",
+  "report",
+  "silenced"
+]);
+var MINE = [[/\bthey'd\b/g, "I'd"], [/\bthey're\b/g, "I'm"], [/\bthemselves\b|\bthemself\b/g, "myself"], [/\bthey\b/g, "I"], [/\btheir\b/g, "my"], [/\bthem\b/g, "me"]];
 var NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 var BETWEEN = /* @__PURE__ */ new Set(["grudge", "feud", "mended", "escalated", "did", "harm", "blamed", "suspect", "yielded", "respond", "warned", "saw"]);
 var FLOOR = 0.15;
@@ -2819,6 +2849,8 @@ var Irulan = class {
     this.wordsFor = /* @__PURE__ */ new Map();
     /** Whether this telling varies its words (TellOptions.vary). */
     this.varied = true;
+    /** And whether in their words. */
+    this.first = false;
     this.ctx = { world: w, name: (id) => this.name(id), place: (id, who) => this.placeName(id, who) };
   }
   /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
@@ -2844,9 +2876,12 @@ var Irulan = class {
   beats(entries, opts = {}) {
     const all = typeof entries === "number" ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
     this.varied = opts.vary ?? true;
+    this.pov = opts.as;
+    this.first = opts.as !== void 0 && opts.voice === "first";
     const weights = { ...IRULAN_WEIGHTS, ...opts.weights || {} };
     const weight = (k) => weights[k] ?? 0.3;
-    const clauses = this.fold(all).filter((c) => weight(c.kinds[0]) > 0 && c.text !== "");
+    const pov = opts.as;
+    const clauses = this.fold(all).filter((c) => weight(c.kinds[0]) > 0 && c.text !== "" && (pov === void 0 || this.knows(c, pov, all)));
     const count = /* @__PURE__ */ new Map();
     for (const c of clauses) count.set(c.sig, (count.get(c.sig) || 0) + 1);
     const score = /* @__PURE__ */ new Map();
@@ -2902,6 +2937,7 @@ var Irulan = class {
     for (const b of out) {
       const marked = b.who.length ? `${list(b.who.map((id) => this.name(id)))} ${b.who.length > 1 ? b.text.replace(/\bwas\b/g, "were") : b.text}.` : `${b.text}.`;
       b.parts = partsOf(marked);
+      if (pov !== void 0 && opts.voice === "first") b.parts = this.mine(b, pov);
       if (!b.who.length && b.parts.length) b.parts[0].text = capital(b.parts[0].text);
       b.text = textOf(b.parts);
     }
@@ -3026,6 +3062,81 @@ var Irulan = class {
     let i = 0;
     for (let j = 0; j < periods.length; j++) if (hour >= periods[j][0]) i = j;
     return `${(opts.day ?? ((d) => `Day ${d}`))(day)}, ${periods[i][1]}`;
+  }
+  /**
+   * What someone remembers: the beats they know that matter most (`limit`,
+   * default 3, scoring `min`, default 0.4), in the order they happened, told
+   * in their words with when, from `now` (default the world's): "This
+   * morning, Officer Vance told me about Sam's theft." For what a person
+   * says when asked what's new.
+   */
+  recount(as, entries, opts = {}) {
+    const now2 = opts.now ?? this.w.now;
+    const beats = this.recap(entries, { min: 0.4, ...opts, as, voice: opts.voice ?? "first", limit: opts.limit ?? 3 }).filter((b) => b.t <= now2);
+    for (const b of beats) {
+      b.parts = [{ text: capital(this.ago(b.t, now2)) + ", " }, ...b.parts];
+      b.text = textOf(b.parts);
+    }
+    return beats;
+  }
+  /** When something was, from now, as someone would say it: "this morning", "last night", "yesterday afternoon", "three days ago". */
+  ago(t, now2 = this.w.now) {
+    const days = Math.floor((now2 + 1e-6) / DAY) - Math.floor((t + 1e-6) / DAY);
+    const hour = (t % DAY + DAY) % DAY / HOUR;
+    const part = hour < 5 ? "night" : hour < 8 ? "early" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "late";
+    if (days <= 0) return { night: "last night", early: "early this morning", morning: "this morning", afternoon: "this afternoon", evening: "this evening", late: "tonight" }[part];
+    if (days === 1) return { night: "the night before last", early: "early yesterday", morning: "yesterday morning", afternoon: "yesterday afternoon", evening: "yesterday evening", late: "last night" }[part];
+    return days < 7 ? `${NUMBERS[days]} days ago` : "a while back";
+  }
+  /**
+   * Whether someone knows of a clause: theirs; or, for what isn't anyone's
+   * inner life, done to them, in front of them or told to them. A crime
+   * done in front of them they know only if they caught it (Wormtongue's
+   * witness).
+   */
+  knows(c, who, entries) {
+    if (c.who === who) return true;
+    if (INNER.has(c.kinds[0])) return false;
+    if (c.act && this.w.actions.get(c.act.action)?.crime) {
+      const end = (c.end ?? c.act.at) + 15;
+      return entries.some((e) => e.k === "witnessed" && e.who === who && e.d?.recognized && e.d?.actor === c.who && e.t >= c.act.start && e.t <= end);
+    }
+    return c.with.includes(who) || c.entries.some((e) => this.w.westmarch.about(e, who));
+  }
+  /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
+  mine(b, who) {
+    const own = b.who.length === 1 && b.who[0] === who;
+    const out = [];
+    const parts = b.parts;
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p.person === who) {
+        const next = parts[i + 1];
+        if (next && next.person === void 0 && next.place === void 0 && next.text.startsWith("'s")) {
+          out.push({ text: "my", person: who });
+          out.push({ ...next, text: next.text.slice(2) });
+          i++;
+          continue;
+        }
+        out.push({ text: i < b.who.length * 2 && b.who.includes(who) ? "I" : "me", person: who });
+        continue;
+      }
+      out.push(own && p.person === void 0 && p.place === void 0 ? { text: MINE.reduce((s, [re, to]) => s.replace(re, to), p.text) } : { ...p });
+    }
+    if (b.who.length > 1 && b.who.includes(who)) {
+      const names = out.slice(0, b.who.length * 2 - 1);
+      const meAt = names.findIndex((p) => p.person === who);
+      const others = names.filter((p, j) => j !== meAt && p.person !== void 0);
+      const rest = out.slice(b.who.length * 2 - 1);
+      const list2 = [...others, out[meAt]];
+      const joined = [];
+      list2.forEach((p, j) => {
+        if (j) joined.push({ text: j === list2.length - 1 ? " and " : ", " });
+        joined.push(p);
+      });
+      return [...joined, ...rest];
+    }
+    return out;
   }
   /** Whether a beat is about someone: theirs, with them in it, or naming them. */
   concerns(b, who) {
@@ -3175,6 +3286,7 @@ var Irulan = class {
       const act = finished.get(`${c.who}@${c.t}`);
       const cause = c.entries[0].d?.cause;
       if (!act || !c.text || cause !== void 0 && cause !== act.act.action) return true;
+      if (this.pov !== void 0 && this.pov !== c.who) return true;
       act.act.felt.push(c.text);
       act.kinds.push("felt");
       act.entries.push(c.entries[0]);
@@ -3464,7 +3576,8 @@ var Irulan = class {
     words = words.replace(/\{place\}/g, this.placeName(c.place, c.who)).replace(/\{target\}/g, this.name(a.target));
     if (!placed && !a.walked && c.place !== void 0) words += " " + this.at(c.place, c.who);
     if (!going && !timed && minutes >= 30) words += " for " + lasting(minutes);
-    if (a.company.length) words += ", " + this.phrase("with", { x: list(a.company.map((id) => this.name(id))) }, c.t, a.action);
+    const company = list(a.company.map((id) => this.name(id)));
+    if (a.company.length) words += ", " + (this.first && a.company.includes(this.pov) ? `with ${company} there` : this.phrase("with", { x: company }, c.t, a.action));
     if (a.ok === false) words += ", but it went badly";
     if (a.felt.length) words += ", and " + list(a.felt);
     return a.walked ? `${this.pick(PHRASES.went, "went", c.t, a.action)} ${this.to(c.place, c.who)} and ${words}` : words;
@@ -3593,8 +3706,8 @@ var Irulan = class {
       // Morgul
       case "harm": {
         const badly = Number(d.severity) >= 0.6 ? "badly " : "";
-        const by = d.by ? name(d.by) : "someone";
-        const how = d.via === "trap" ? `was ${badly}hurt in ${by === "someone" ? "a" : by + "'s"} trap` : d.via === "dose" || d.via === "taint" ? `was ${badly}hurt by what ${by} put in the food` : `was ${badly}hurt${d.by ? " by " + by : ""}`;
+        const by = d.by && !(d.quiet && this.pov !== void 0 && this.pov !== d.by) ? name(d.by) : "someone";
+        const how = d.via === "trap" ? `was ${badly}hurt in ${by === "someone" ? "a" : by + "'s"} trap` : d.via === "dose" || d.via === "taint" ? `was ${badly}hurt by ${by === "someone" ? "tainted food" : by + "'s tainted food"}` : `was ${badly}hurt${d.by ? " by " + by : ""}`;
         return how + (d.intent === "careless" ? ", by accident" : "");
       }
       case "blamed":

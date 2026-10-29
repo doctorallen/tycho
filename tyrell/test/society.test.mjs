@@ -796,6 +796,47 @@ test('Irulan varies its words, the same way every time, and still tells the same
   assert.ok(v.irulan.beats(k2).some((b, i, bs) => b.text !== v.irulan.beats(k2, { vary: false })[i]?.text));
 });
 
+test('Irulan tells what someone knows, as they know it, in their own words', () => {
+  const w = rocinante({ seed: 'voight-kampff', harm: true });
+  const kept = [];
+  w.on('log', (e) => kept.push(e));
+  w.advance(2 * DAY);
+  const before = w.hash();
+  // Tomas: what he did, what was done to him or in front of him, what he was told; nobody else's inner life
+  const tomas = w.irulan.beats(kept, { as: 'tomas', vary: false });
+  assert.ok(tomas.length > 10);
+  for (const b of tomas) {
+    assert.ok(b.who.includes('tomas') || b.with.includes('tomas') || b.entries.some((e) => w.westmarch.about(e, 'tomas')), b.text);
+    assert.ok(b.who.includes('tomas') || !b.kinds.some((k) => ['felt', 'wished', 'grudge', 'suspect', 'sentiment'].includes(k)), b.text);
+  }
+  // poisoned without seeing it done, he doesn't know by whom; Sam does
+  assert.ok(tomas.some((b) => /^Tomas was poisoned.* hurt by tainted food\.$/.test(b.text)), tomas.map((b) => b.text).join('\n'));
+  assert.ok(!tomas.some((b) => /Sam's tainted food|slipped nightshade/.test(b.text)));
+  const sam = w.irulan.beats(kept, { as: 'sam', voice: 'first', vary: false }).map((b) => b.text);
+  assert.ok(sam.some((t) => t.startsWith('I slipped nightshade into the stew at Mara\'s Cafe')), sam.join('\n'));
+  assert.ok(sam.includes('Tomas was hurt by my tainted food.'), sam.join('\n'));
+  // a crime done in front of someone is theirs to tell only if they caught it
+  const ruth = w.irulan.beats(kept, { as: 'ruth', vary: false }).map((b) => b.text);
+  assert.ok(!ruth.some((t) => /pocketed some food/.test(t)));
+  const dev = w.irulan.beats(kept, { as: 'dev', voice: 'first', vary: false }).map((b) => b.text);
+  assert.ok(dev.some((t) => /^Sam went to The Market and pocketed some food, with me there\.$/.test(t)), dev.join('\n'));
+  // their own words: I, me, my, and "they" become theirs
+  const mine = w.irulan.beats(kept, { as: 'tomas', voice: 'first', vary: false });
+  assert.ok(mine.every((b) => !b.parts.some((p) => p.person === 'tomas' && p.text === 'Tomas')));
+  assert.ok(mine.some((b) => /^I broke down and walked out to clear my head/.test(b.text)), mine.map((b) => b.text).join('\n'));
+  assert.ok(mine.some((b) => / me[ .,]/.test(b.text) && !b.text.startsWith('I ')));
+  for (const b of mine) assert.equal(b.parts.map((p) => p.text).join(''), b.text);
+  // what they'd say, with when
+  const said = w.irulan.recount('tomas', kept, { limit: 3, vary: false });
+  assert.equal(said.length, 3);
+  for (const b of said) assert.match(b.text, /^(Last night|Early this morning|This morning|This afternoon|This evening|Tonight|The night before last|Early yesterday|Yesterday \w+|Last night|\w+ days ago|A while back), /);
+  assert.equal(w.irulan.ago(2 * DAY + 9 * HOUR, 2 * DAY + 12 * HOUR), 'this morning');
+  assert.equal(w.irulan.ago(DAY + 19 * HOUR, 2 * DAY + 12 * HOUR), 'yesterday evening');
+  assert.equal(w.irulan.ago(DAY + 22 * HOUR, 2 * DAY + 1 * HOUR), 'last night');
+  assert.equal(w.irulan.ago(9 * HOUR, 3 * DAY), 'three days ago');
+  assert.equal(w.hash(), before);
+});
+
 test('Irulan gives the headlines, and more of the people who matter to the game', () => {
   const w = rocinante({ bree: true });
   const kept = [];

@@ -59,6 +59,15 @@ export interface TellOptions {
     weights?: Record<string, number>;
     /** People who matter more to the story (the player, their friends): a beat with them in it scores this many times more, up to 1. */
     focus?: Record<Id, number>;
+    /**
+     * Tell only what this person knows, as they know it: what they did, what
+     * was done to them or in front of them, and what they were told; not what
+     * others felt, wished or thought, a crime they didn't catch, or who did
+     * something to them they couldn't have seen.
+     */
+    as?: Id;
+    /** With `as`, 'first' tells it in their words: "Officer Vance told me about Sam's theft." Default 'third'. */
+    voice?: 'first' | 'third';
     /** Vary the words: a `tell` with variants, and Irulan's own phrases, drawn afresh for each telling (the same every time for the same entries). Default true; false always takes the first. */
     vary?: boolean;
     /** The parts of the day tell's paragraphs are made by: [the hour it starts, its name], earliest first. */
@@ -93,6 +102,10 @@ export declare class Irulan {
     private ctx;
     /** Whether this telling varies its words (TellOptions.vary). */
     private varied;
+    /** Whose knowledge this telling keeps to (TellOptions.as). */
+    private pov;
+    /** And whether in their words. */
+    private first;
     constructor(w: World);
     /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
     words(kind: string, fn: WordsFn): this;
@@ -135,6 +148,28 @@ export declare class Irulan {
     };
     /** When a time is, as tell's paragraphs say it: "Day 0, early morning". */
     when(t: Minutes, opts?: TellOptions): string;
+    /**
+     * What someone remembers: the beats they know that matter most (`limit`,
+     * default 3, scoring `min`, default 0.4), in the order they happened, told
+     * in their words with when, from `now` (default the world's): "This
+     * morning, Officer Vance told me about Sam's theft." For what a person
+     * says when asked what's new.
+     */
+    recount(as: Id, entries: LogEntry[] | Minutes, opts?: TellOptions & {
+        limit?: number;
+        now?: Minutes;
+    }): Beat[];
+    /** When something was, from now, as someone would say it: "this morning", "last night", "yesterday afternoon", "three days ago". */
+    ago(t: Minutes, now?: Minutes): string;
+    /**
+     * Whether someone knows of a clause: theirs; or, for what isn't anyone's
+     * inner life, done to them, in front of them or told to them. A crime
+     * done in front of them they know only if they caught it (Wormtongue's
+     * witness).
+     */
+    private knows;
+    /** A beat's parts in someone's own words: "I", "me", "my", "Kofi and I". */
+    private mine;
     /** Whether a beat is about someone: theirs, with them in it, or naming them. */
     private concerns;
     private fold;

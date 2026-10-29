@@ -49,6 +49,10 @@ export interface Thread {
     end: Minutes;
     /** Its best beat's score. */
     score: number;
+    /** Which it is, the same from one telling to the next: the first of its keys to turn up. Two that turn out to be one story take the older's. */
+    id: string;
+    /** Whether it's still going: something in it within a day of now. */
+    active: boolean;
 }
 export interface TellOptions {
     /** Only the beats about this person: theirs, or with them in it. */
@@ -109,6 +113,17 @@ export declare class Irulan {
     constructor(w: World);
     /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
     words(kind: string, fn: WordsFn): this;
+    /** The story kept beyond the log (config.storySize), oldest first. */
+    book(): LogEntry[];
+    /**
+     * Keeps an entry in the story, if it matters enough (config.storyMin), as
+     * Westmarch writes it: inside the simulation, so the story saves, rewinds
+     * and replays with the world. A talk keeps where it was. Past
+     * config.storySize, the least that matters goes, the oldest of it first.
+     */
+    keep(e: LogEntry): void;
+    /** What an entry is worth keeping: its kind's weight; a crime or a deed done, and its end; a feeling by how much it moves the mood. */
+    private worth;
     /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
     private pick;
     /** One of Irulan's own phrases, its blanks filled. */
@@ -116,19 +131,20 @@ export declare class Irulan {
     /**
      * The entries told as beats, in the order they happened. `entries` is a
      * list (the game's own, kept from the 'log' events, to reach back further
-     * than the log keeps) or a time to tell the log from.
+     * than the log keeps) or a time to tell the log from; without it, the
+     * story (config.storySize), or the whole log.
      */
-    beats(entries: LogEntry[] | Minutes, opts?: TellOptions): Beat[];
+    beats(entries?: LogEntry[] | Minutes, opts?: TellOptions): Beat[];
     /**
      * The entries told as paragraphs, one for each part of the day, each
      * starting with when: "Day 0, early morning. Mara went to Mara's Cafe and
      * baked bread. ..."
      */
-    tell(entries: LogEntry[] | Minutes, opts?: TellOptions): string[];
+    tell(entries?: LogEntry[] | Minutes, opts?: TellOptions): string[];
     /** Someone's day as one paragraph: the beats about them since a time (or from a list of entries), the routine left out (min 0.3). */
     day(who: Id, since: LogEntry[] | Minutes, opts?: TellOptions): string;
     /** The headlines: the `limit` beats that matter most (default 5), in the order they happened. For a recap after time away. */
-    recap(entries: LogEntry[] | Minutes, opts?: TellOptions & {
+    recap(entries?: LogEntry[] | Minutes, opts?: TellOptions & {
         limit?: number;
     }): Beat[];
     /**
@@ -142,7 +158,7 @@ export declare class Irulan {
      * two beats and one scoring `min` (default 0.4); the rest are what score
      * `min` too.
      */
-    threads(entries: LogEntry[] | Minutes, opts?: TellOptions): {
+    threads(entries?: LogEntry[] | Minutes, opts?: TellOptions): {
         threads: Thread[];
         rest: Beat[];
     };
@@ -155,7 +171,7 @@ export declare class Irulan {
      * morning, Officer Vance told me about Sam's theft." For what a person
      * says when asked what's new.
      */
-    recount(as: Id, entries: LogEntry[] | Minutes, opts?: TellOptions & {
+    recount(as: Id, entries?: LogEntry[] | Minutes, opts?: TellOptions & {
         limit?: number;
         now?: Minutes;
     }): Beat[];

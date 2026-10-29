@@ -73,6 +73,10 @@ export interface Thread {
   end: Minutes;
   /** Its best beat's score. */
   score: number;
+  /** Which it is, the same from one telling to the next: the first of its keys to turn up. Two that turn out to be one story take the older's. */
+  id: string;
+  /** Whether it's still going: something in it within a day of now. */
+  active: boolean;
 }
 
 export interface TellOptions {
@@ -260,6 +264,35 @@ export class Irulan {
   /** Gives a kind of entry the game's own words (a definition: declare it again on every start). */
   words(kind: string, fn: WordsFn): this { this.wordsFor.set(kind, fn); return this; }
 
+  /** The story kept beyond the log (config.storySize), oldest first. */
+  book(): LogEntry[] { return this.w.s.story ?? []; }
+
+  /**
+   * Keeps an entry in the story, if it matters enough (config.storyMin), as
+   * Westmarch writes it: inside the simulation, so the story saves, rewinds
+   * and replays with the world. A talk keeps where it was. Past
+   * config.storySize, the least that matters goes, the oldest of it first.
+   */
+  keep(e: LogEntry): void {
+    const w = this.w;
+    if (this.worth(e) < w.cfg.storyMin) return;
+    const at = e.k === 'exchange' && e.who !== undefined ? w.s.people[e.who]?.place : undefined;
+    const story = w.s.story ?? (w.s.story = []);
+    story.push(at ? { ...e, d: { ...(e.d || {}), at } } : e);
+    if (story.length <= w.cfg.storySize) return;
+    let drop = 0, low = Infinity;
+    for (let i = 0; i < story.length; i++) { const v = this.worth(story[i]); if (v < low) { low = v; drop = i; } }
+    story.splice(drop, 1);
+  }
+
+  /** What an entry is worth keeping: its kind's weight; a crime or a deed done, and its end; a feeling by how much it moves the mood. */
+  private worth(e: LogEntry): number {
+    const d: any = e.d || {};
+    if (e.k === 'started' || e.k === 'finished' || e.k === 'stopped') { const def = this.w.actions.get(d.action); return def?.crime || def?.deed ? 0.65 : 0; }
+    if (e.k === 'felt') return Math.abs(this.w.reverie?.feelingDefs.get(d.feeling)?.weight ?? 0) >= 0.1 ? 0.45 : 0.2;
+    return IRULAN_WEIGHTS[e.k] ?? 0.3;
+  }
+
   /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
   private pick(words: string | string[] | undefined, ...what: Array<string | number>): string | undefined {
     if (!Array.isArray(words)) return words;
@@ -275,10 +308,11 @@ export class Irulan {
   /**
    * The entries told as beats, in the order they happened. `entries` is a
    * list (the game's own, kept from the 'log' events, to reach back further
-   * than the log keeps) or a time to tell the log from.
+   * than the log keeps) or a time to tell the log from; without it, the
+   * story (config.storySize), or the whole log.
    */
-  beats(entries: LogEntry[] | Minutes, opts: TellOptions = {}): Beat[] {
-    const all = typeof entries === 'number' ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
+  beats(entries?: LogEntry[] | Minutes, opts: TellOptions = {}): Beat[] {
+    const all = entries === undefined ? (this.w.cfg.storySize > 0 ? this.book().slice() : this.w.s.log.slice()) : typeof entries === 'number' ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
     this.varied = opts.vary ?? true;
     this.pov = opts.as;
     this.first = opts.as !== undefined && opts.voice === 'first';
@@ -354,7 +388,7 @@ export class Irulan {
    * starting with when: "Day 0, early morning. Mara went to Mara's Cafe and
    * baked bread. ..."
    */
-  tell(entries: LogEntry[] | Minutes, opts: TellOptions = {}): string[] {
+  tell(entries?: LogEntry[] | Minutes, opts: TellOptions = {}): string[] {
     const out: string[] = [];
     let at = '';
     let words: string[] = [];
@@ -373,7 +407,7 @@ export class Irulan {
   }
 
   /** The headlines: the `limit` beats that matter most (default 5), in the order they happened. For a recap after time away. */
-  recap(entries: LogEntry[] | Minutes, opts: TellOptions & { limit?: number } = {}): Beat[] {
+  recap(entries?: LogEntry[] | Minutes, opts: TellOptions & { limit?: number } = {}): Beat[] {
     const beats = this.beats(entries, opts);
     const top = new Set(beats.slice().sort((a, b) => b.score - a.score || a.t - b.t).slice(0, opts.limit ?? 5));
     return beats.filter((b) => top.has(b));
@@ -390,7 +424,7 @@ export class Irulan {
    * two beats and one scoring `min` (default 0.4); the rest are what score
    * `min` too.
    */
-  threads(entries: LogEntry[] | Minutes, opts: TellOptions = {}): { threads: Thread[]; rest: Beat[] } {
+  threads(entries?: LogEntry[] | Minutes, opts: TellOptions = {}): { threads: Thread[]; rest: Beat[] } {
     const min = opts.min ?? 0.4;
     const beats = this.beats(entries, { ...opts, min: Math.min(min, FLOOR), who: undefined });
     // what each beat is about; matters are one story only when a single entry links them (a quarrel that
@@ -416,7 +450,8 @@ export class Irulan {
       for (const b of g.beats) for (const id of [...b.who, ...b.with]) n.set(id, (n.get(id) || 0) + 1);
       for (const k of g.keys) for (const id of this.keyPeople(k, g.beats)) n.set(id, (n.get(id) || 0) + 2);
       const people = [...n.keys()].filter((id) => this.w.s.people[id]).sort((a, b) => n.get(b)! - n.get(a)!);
-      threads.push({ keys: [...g.keys].sort(), title: '', parts: [], people, beats: g.beats, t: g.beats[0].t, end: 0, score: 0 });
+      const first = about[beats.indexOf(g.beats[0])].keys.filter((k) => g.keys.has(k)).sort();
+      threads.push({ keys: [...g.keys].sort(), title: '', parts: [], people, beats: g.beats, t: g.beats[0].t, end: 0, score: 0, id: first[0] ?? [...g.keys].sort()[0], active: false });
     }
     // what its core people felt in its course comes with it (the closest thread before, when there are several)
     const taken = new Set(threads.flatMap((th) => th.beats));
@@ -440,6 +475,7 @@ export class Irulan {
       const story = th.keys.some((k) => !k.startsWith('pair:')) || th.beats.some((b) => b.entries.some((e) => BETWEEN.has(e.k)) || this.hostile(b));
       if (th.beats.length < 2 || th.score < min || !story) continue;
       th.end = Math.max(...th.beats.map((b) => b.end ?? b.t));
+      th.active = this.w.now - th.end <= DAY;
       th.parts = partsOf(this.title(th));
       th.title = textOf(th.parts);
       kept.push(th);
@@ -471,7 +507,7 @@ export class Irulan {
    * morning, Officer Vance told me about Sam's theft." For what a person
    * says when asked what's new.
    */
-  recount(as: Id, entries: LogEntry[] | Minutes, opts: TellOptions & { limit?: number; now?: Minutes } = {}): Beat[] {
+  recount(as: Id, entries?: LogEntry[] | Minutes, opts: TellOptions & { limit?: number; now?: Minutes } = {}): Beat[] {
     const now = opts.now ?? this.w.now;
     const beats = this.recap(entries, { min: 0.4, ...opts, as, voice: opts.voice ?? 'first', limit: opts.limit ?? 3 }).filter((b) => b.t <= now);
     for (const b of beats) {
@@ -626,7 +662,7 @@ export class Irulan {
           break;
         }
         case 'exchange': {
-          talks.set(d.id, add({ t: e.t, who, with: [...(d.with || [])], place: here.get(who), kinds: ['exchange'], entries: [e], sig: 'talk:' + d.kind, talk: { kinds: [d.kind] } }));
+          talks.set(d.id, add({ t: e.t, who, with: [...(d.with || [])], place: here.get(who) ?? d.at, kinds: ['exchange'], entries: [e], sig: 'talk:' + d.kind, talk: { kinds: [d.kind] } }));
           continue;
         }
         case 'joined': case 'parted': case 'escalated': case 'exchanged': {

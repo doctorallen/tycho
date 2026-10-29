@@ -39,6 +39,7 @@ Everything that changes:
 | Facts | All of them |
 | The queue | Pending action ends, thoughts, the hourly tick, game timers (`world.at`), module timers (witnesses' pending reports), returns from away |
 | The log | The last `config.logSize` entries |
+| The story | With `config.storySize`, the entries Irulan keeps beyond the log ([Irulan](tools.md#the-story-kept)) |
 | Module state | Feelings, memories, beliefs, files, stress; relationships, standing, partners; heat, reports, secrets, favors; lines said; deck draws, intensity; purses, pantries, rent; stages, parents, the departed; promoted strangers |
 | Kept game state | Everything in `world.keep` |
 | Tuning | Settings changed during play with `world.tune` (and people's own `tune`, in their definitions) |

@@ -61,6 +61,8 @@ export const DEFAULT_CONFIG: Config = {
   backoff: 15,
   budgetMs: 4,
   logSize: 1000,
+  storySize: 0,
+  storyMin: 0.3,
   decisions: 12,
   checksOnce: false,
   habitFast: 0.25,

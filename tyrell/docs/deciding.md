@@ -475,6 +475,8 @@ Pass any of these in `Tyrell.create({ config: { ... } })`. They're definitions, 
 | `backoff` | 15 | Minutes an action is ruled out at a place after it failed there (a closed door, a taken slot, a body's report) |
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame |
 | `logSize` | 1000 | Westmarch log entries kept |
+| `storySize` | 0 | Irulan's story: entries that matter kept beyond the log, so storylines last for weeks (0: off; see [Irulan](tools.md#the-story-kept)) |
+| `storyMin` | 0.3 | What an entry must weigh to be kept in the story |
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `checksOnce` | false | A check already queued for someone at a moment isn't queued again (see [When people think](#when-people-think)) |
 | `habitFast` | 0.25 | Learning rate of the fast habit weight |

@@ -837,6 +837,42 @@ test('Irulan tells what someone knows, as they know it, in their own words', () 
   assert.equal(w.hash(), before);
 });
 
+test('Irulan keeps the story beyond the log, so storylines last the week, and it saves and rewinds', () => {
+  // off by default: no story, the world as it was
+  const plain = rocinante({ harm: true });
+  plain.advance(DAY);
+  assert.equal(plain.s.story, undefined);
+  assert.deepEqual(plain.irulan.book(), []);
+  const w = rocinante({ harm: true, config: { logSize: 200, storySize: 400 } });
+  w.advance(DAY);
+  // the same people living the same day, story or not
+  assert.equal(JSON.stringify(w.s.people), JSON.stringify(plain.s.people));
+  const day1 = w.irulan.threads();
+  w.advance(4 * DAY);
+  const book = w.irulan.book();
+  assert.ok(book.length <= 400 && book.length > 200);
+  assert.ok(book[0].t < w.s.log[0].t, 'the story reaches back further than the log');
+  // what's kept matters: no walks, no company, no routine action
+  assert.ok(!book.some((e) => ['set-out', 'arrived', 'met'].includes(e.k)));
+  assert.ok(book.every((e) => e.k !== 'started' || w.actions.get(e.d.action).crime || w.actions.get(e.d.action).deed));
+  // told without entries, from the story; a storyline keeps its id from one telling to the next
+  const day5 = w.irulan.threads();
+  assert.ok(day5.threads.some((th) => th.end - th.t > 2 * DAY), 'a storyline over days');
+  const again = day1.threads.filter((th) => day5.threads.some((x) => x.id === th.id));
+  assert.ok(again.length, day1.threads.map((th) => th.id).join(' ') + ' / ' + day5.threads.map((th) => th.id).join(' '));
+  assert.ok(day5.threads.some((th) => th.active) && day5.threads.every((th) => th.active === w.now - th.end <= DAY));
+  // it saves, loads and rewinds with the world
+  const copy = rocinante({ harm: true, config: { logSize: 200, storySize: 400 } });
+  copy.load(JSON.stringify(w.save()));
+  assert.deepEqual(copy.irulan.book(), book);
+  assert.equal(copy.hash(), w.hash());
+  const t = w.now, n = book.length, last = book[book.length - 1];
+  w.advance(12 * HOUR);
+  w.seek(t);
+  assert.equal(w.irulan.book().length, n);
+  assert.deepEqual(w.irulan.book()[n - 1], last);
+});
+
 test('Irulan gives the headlines, and more of the people who matter to the game', () => {
   const w = rocinante({ bree: true });
   const kept = [];

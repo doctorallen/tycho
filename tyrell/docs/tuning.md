@@ -153,6 +153,8 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `backoff` | 15 | Minutes an action is ruled out at a place after it failed there |
 | `budgetMs` | 4 | Milliseconds of simulation per `world.tick` frame. Set it directly at any time |
 | `logSize` | 1000 | Westmarch log entries kept |
+| `storySize` | 0 | Irulan's story: entries that matter kept beyond the log, so storylines last for weeks (0: off; see [Irulan](tools.md#the-story-kept)) |
+| `storyMin` | 0.3 | What an entry must weigh to be kept in Irulan's story |
 | `decisions` | 12 | Decisions Palantír keeps per person |
 | `checksOnce` | false | A check (a boundary or an urge) already queued for someone at a moment isn't queued again, so each moment is thought over once |
 | `habitFast` | 0.25 | How fast the fast habit weight learns from how a go turned out |

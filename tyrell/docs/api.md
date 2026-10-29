@@ -90,6 +90,8 @@ The decision settings, habits, pastimes and wishes:
 | `desperateRank` | 2.5 | | `budgetMs` | 4 |
 | `cut` | 0.25 | | `logSize` | 1000 |
 | `top` | 3 | | `decisions` | 12 |
+| | | | `storySize` | 0 |
+| | | | `storyMin` | 0.3 |
 | `power` | 2 | | `habitFast` | 0.25 |
 | `inertia` | 1.15 | | `habitSlow` | 0.05 |
 | `repeat` | 0.75 | | `habitMin` | 0.25 |
@@ -131,7 +133,7 @@ The decision settings, habits, pastimes and wishes:
 | `esper` | Esper | Time walk: `on`, `config`, `earliest()`, `latest()`, `span()`, `size()`, `mark(name)`, `seekMark(name)`, `export()`, `import(h)` |
 | `westmarch` | Westmarch | The log: `find(filter)`, `since(t, k?)`, `chronicle(id, since)` |
 | `palantir` | Palantir | The inspector: `why`, `whyNot`, `describe`, `history(id)`, `inspect(id)`, `parts(c)`, `enabled` |
-| `irulan` | Irulan | The narrator: `beats(entries, opts?)`, `tell(entries, opts?)`, `day(id, since, opts?)`, `recap(entries, opts?)`, `threads(entries, opts?)`, `recount(id, entries, opts?)`, `when(t)`, `ago(t)`, `words(kind, fn)` |
+| `irulan` | Irulan | The narrator: `beats(entries, opts?)`, `tell(entries, opts?)`, `day(id, since, opts?)`, `recap(entries, opts?)`, `threads(entries, opts?)`, `recount(id, entries, opts?)`, `book()`, `when(t)`, `ago(t)`, `words(kind, fn)` |
 | `strangers` | Strangers | `define`, `at`, `find`, `promote` (input), `promoted` |
 | `skills` | Skills | Skills: `defs`, `def(id)`, `level(p, skill, t?)`, `talent(p, skill)`, `of(p)` (every skill and its level), `named(p, skill)` (the named level reached); engine: `applyTrain(p, skill, hours, mul?)`, `applySet(p, skill, level)` |
 | `modules` | Map | Modules by name |

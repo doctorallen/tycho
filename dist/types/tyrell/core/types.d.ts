@@ -594,6 +594,8 @@ export interface WorldState {
     q: QueueItem[];
     /** Westmarch: the log of what happened (a bounded list). */
     log: LogEntry[];
+    /** Irulan: what matters, kept beyond the log (with config.storySize). */
+    story?: LogEntry[];
     /** Module state, by module name. */
     mod: Record<string, any>;
     /** State the game keeps with the world so it rewinds too. */
@@ -653,6 +655,14 @@ export interface Config {
     budgetMs: number;
     /** Westmarch log size. Default 1000. */
     logSize: number;
+    /**
+     * Irulan's story: entries that matter kept beyond the log, so storylines
+     * can be followed for weeks (world.s.story; it saves and rewinds). This
+     * many at most, the least that matters going first. Default 0: off.
+     */
+    storySize: number;
+    /** What an entry must weigh to be kept in the story (Irulan's weights). Default 0.3. */
+    storyMin: number;
     /** Palantír keeps this many decisions per person. Default 12. */
     decisions: number;
     /**

@@ -2224,6 +2224,7 @@ var Westmarch = class {
     log.push(e);
     const over = log.length - w.cfg.logSize;
     if (over > 0) log.splice(0, over);
+    if (w.cfg.storySize > 0) w.irulan.keep(e);
     w.emit("log", e);
   }
   /** Entries matching a filter, oldest first. */
@@ -2797,6 +2798,43 @@ var Irulan = class {
     this.wordsFor.set(kind, fn);
     return this;
   }
+  /** The story kept beyond the log (config.storySize), oldest first. */
+  book() {
+    return this.w.s.story ?? [];
+  }
+  /**
+   * Keeps an entry in the story, if it matters enough (config.storyMin), as
+   * Westmarch writes it: inside the simulation, so the story saves, rewinds
+   * and replays with the world. A talk keeps where it was. Past
+   * config.storySize, the least that matters goes, the oldest of it first.
+   */
+  keep(e) {
+    const w = this.w;
+    if (this.worth(e) < w.cfg.storyMin) return;
+    const at = e.k === "exchange" && e.who !== void 0 ? w.s.people[e.who]?.place : void 0;
+    const story = w.s.story ?? (w.s.story = []);
+    story.push(at ? { ...e, d: { ...e.d || {}, at } } : e);
+    if (story.length <= w.cfg.storySize) return;
+    let drop = 0, low = Infinity;
+    for (let i = 0; i < story.length; i++) {
+      const v = this.worth(story[i]);
+      if (v < low) {
+        low = v;
+        drop = i;
+      }
+    }
+    story.splice(drop, 1);
+  }
+  /** What an entry is worth keeping: its kind's weight; a crime or a deed done, and its end; a feeling by how much it moves the mood. */
+  worth(e) {
+    const d = e.d || {};
+    if (e.k === "started" || e.k === "finished" || e.k === "stopped") {
+      const def = this.w.actions.get(d.action);
+      return def?.crime || def?.deed ? 0.65 : 0;
+    }
+    if (e.k === "felt") return Math.abs(this.w.reverie?.feelingDefs.get(d.feeling)?.weight ?? 0) >= 0.1 ? 0.45 : 0.2;
+    return IRULAN_WEIGHTS[e.k] ?? 0.3;
+  }
   /** One of some words' variants, drawn from the world's seed and what's told (the first, when not varying). */
   pick(words, ...what) {
     if (!Array.isArray(words)) return words;
@@ -2810,10 +2848,11 @@ var Irulan = class {
   /**
    * The entries told as beats, in the order they happened. `entries` is a
    * list (the game's own, kept from the 'log' events, to reach back further
-   * than the log keeps) or a time to tell the log from.
+   * than the log keeps) or a time to tell the log from; without it, the
+   * story (config.storySize), or the whole log.
    */
   beats(entries, opts = {}) {
-    const all = typeof entries === "number" ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
+    const all = entries === void 0 ? this.w.cfg.storySize > 0 ? this.book().slice() : this.w.s.log.slice() : typeof entries === "number" ? this.w.westmarch.find({ since: entries }) : entries.slice().sort((a, b) => a.t - b.t);
     this.varied = opts.vary ?? true;
     this.pov = opts.as;
     this.first = opts.as !== void 0 && opts.voice === "first";
@@ -2953,7 +2992,8 @@ var Irulan = class {
       for (const b of g.beats) for (const id of [...b.who, ...b.with]) n.set(id, (n.get(id) || 0) + 1);
       for (const k of g.keys) for (const id of this.keyPeople(k, g.beats)) n.set(id, (n.get(id) || 0) + 2);
       const people = [...n.keys()].filter((id) => this.w.s.people[id]).sort((a, b) => n.get(b) - n.get(a));
-      threads.push({ keys: [...g.keys].sort(), title: "", parts: [], people, beats: g.beats, t: g.beats[0].t, end: 0, score: 0 });
+      const first = about2[beats.indexOf(g.beats[0])].keys.filter((k) => g.keys.has(k)).sort();
+      threads.push({ keys: [...g.keys].sort(), title: "", parts: [], people, beats: g.beats, t: g.beats[0].t, end: 0, score: 0, id: first[0] ?? [...g.keys].sort()[0], active: false });
     }
     const taken = new Set(threads.flatMap((th) => th.beats));
     for (const b of beats) {
@@ -2981,6 +3021,7 @@ var Irulan = class {
       const story = th.keys.some((k) => !k.startsWith("pair:")) || th.beats.some((b) => b.entries.some((e) => BETWEEN.has(e.k)) || this.hostile(b));
       if (th.beats.length < 2 || th.score < min || !story) continue;
       th.end = Math.max(...th.beats.map((b) => b.end ?? b.t));
+      th.active = this.w.now - th.end <= DAY;
       th.parts = partsOf(this.title(th));
       th.title = textOf(th.parts);
       kept.push(th);
@@ -3179,7 +3220,7 @@ var Irulan = class {
           break;
         }
         case "exchange": {
-          talks.set(d.id, add({ t: e.t, who, with: [...d.with || []], place: here.get(who), kinds: ["exchange"], entries: [e], sig: "talk:" + d.kind, talk: { kinds: [d.kind] } }));
+          talks.set(d.id, add({ t: e.t, who, with: [...d.with || []], place: here.get(who) ?? d.at, kinds: ["exchange"], entries: [e], sig: "talk:" + d.kind, talk: { kinds: [d.kind] } }));
           continue;
         }
         case "joined":
@@ -3907,6 +3948,8 @@ var DEFAULT_CONFIG = {
   backoff: 15,
   budgetMs: 4,
   logSize: 1e3,
+  storySize: 0,
+  storyMin: 0.3,
   decisions: 12,
   checksOnce: false,
   habitFast: 0.25,

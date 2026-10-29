@@ -1,6 +1,6 @@
 # Tools
 
-Palantír (the inspector), Westmarch (the log), Irulan (the narrator), Voight-Kampff (behavior tests) and Rocinante (the sample town).
+Palantír (the inspector), Westmarch (the log), Irulan (the narrator), Voight-Kampff (behavior tests) and Rocinante (the sample town). To try them all at once on a town, live, there's [Eros](../../docs/eros.md), Tycho's sandbox in the terminal (`npm run eros`): it runs Rocinante or any setup file, tells its story with every one of Irulan's settings, shows Palantír's account of anyone, and keeps the living documentation of every kind of thing a town can declare.
 
 - [Palantír](#palantír)
 - [Westmarch](#westmarch)

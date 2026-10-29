@@ -65,7 +65,9 @@ export interface SocialActDef {
   acceptIf?: Cond[];
   /** Accepted when the score beats a draw against it (default) or this threshold. */
   threshold?: number;
+  /** Effects when the target accepts (the asker as the person, the target as target). */
   onAccept?: Effect[];
+  /** Effects when the target refuses. */
   onRefuse?: Effect[];
   /** Feelings: for the asker on yes and no, and for the target. */
   feelings?: { accepted?: Id; refused?: Id; target?: Id };

@@ -18,6 +18,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 - [minds.md](minds.md): the bridge, `Tycho.minds` (`dist/tycho-minds.js`): the glue between a game and Tyrell.
 - [installable.md](installable.md): the service worker (`dist/tycho-sw.js`).
 - [testkit.md](testkit.md): the Node test kit (`dist/testkit.cjs`).
+- [eros.md](eros.md): Eros, a sandbox in the terminal for Tyrell: a town live, its story, everything it's made of to see, add and change, the living documentation of every kind, and setup files opened and exported (`npm run eros`).
 - [brand/](brand/README.md): the logo, its files and colors, and the script that draws it.
 - [move.md](move.md): moving the three games onto Tycho, phase by phase: what moved, what changed, what's left.
 

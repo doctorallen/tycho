@@ -149,6 +149,7 @@ export type TopicSource = 'beliefs' | 'memories' | 'events' | 'likes' | 'doing' 
 export interface TopicDef {
   id: Id;
   label?: string;
+  /** Free labels kinds can ask for in their topics ('tag:deep'). */
   tags?: string[];
   /**
    * Where its subject comes from: 'beliefs' (news the speaker has and the
@@ -180,9 +181,11 @@ export interface MannerDef {
   label?: string;
   /** Who can have it: conditions on the person. */
   if?: Cond[];
-  /** How well it fits someone: base, plus rules (the person), plus their nature (trait role -> weight a point). */
+  /** How well it fits someone, to start with; its rules and their nature add to it. */
   base?: number;
+  /** Rules that make it fit someone more or less (read for the person). */
   fits?: LandRules;
+  /** Their nature: how much each trait role adds, a point at a time. */
   traits?: Record<string, number>;
   /** How words in this manner land with whoever hears them (the listener as the person, the speaker as target). */
   lands?: LandRules;

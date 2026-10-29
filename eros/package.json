@@ -1,0 +1,22 @@
+{
+  "name": "tycho-eros",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Eros: a sandbox in the terminal for Tyrell, Tycho's minds engine. Load a town, watch it live, read its story, and see, add and change everything it's made of.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && node out/eros.mjs",
+    "test": "node build.mjs && node --test test/*.test.mjs",
+    "typecheck": "node ../node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ink": "5.2.1",
+    "react": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.31",
+    "ink-testing-library": "4.0.0"
+  }
+}

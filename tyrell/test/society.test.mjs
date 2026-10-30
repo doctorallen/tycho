@@ -46,6 +46,68 @@ test('a witness who knows you well is slower to report you: familiarReport, with
   assert.equal(capped.reports.length, 1, 'a cap of 0 takes nothing off');
 });
 
+test('repeats: a witness counts the times they see you do it and warn you, the count lapses, and it rewinds', () => {
+  const w = rocinante({ start: 10 * HOUR, moduleConfig: { wormtongue: { repeatDays: 2 } } });
+  w.wormtongue.crime({ kind: 'strip', severity: 0.6, reportTo: 'watch', report: 0 });
+  w.did('player', 'fixed', { for: 'dev' }); // (Dev knows the player: he always recognizes them)
+  const W = w.wormtongue, seen = [], ctx = () => ({ world: w, person: w.get('dev') });
+  w.on('witnessed', (e) => { if (e.id === 'dev') seen.push(e.times); });
+  const strip = () => w.sense({ kind: 'strip', actor: 'player', what: 'till', place: 'market', seenBy: ['dev'] });
+  assert.equal(W.seenTimes('dev', 'player', 'strip'), 0);
+  strip();
+  assert.equal(W.seenTimes('dev', 'player', 'strip'), 1);
+  W.warn('dev', 'player', 'strip');
+  w.advance(HOUR); strip();
+  assert.equal(W.seenTimes('dev', 'player', 'strip'), 2);
+  assert.equal(W.warnedTimes('dev', 'player', 'strip'), 1);
+  assert.deepEqual(seen, [1, 2]);
+  // the terms: lines and choices read it
+  assert.ok(w.lang.test('witnessed:player.strip>=2', ctx()));
+  assert.ok(w.lang.test('warned:player.strip>=1', ctx()));
+  assert.ok(!w.lang.test('witnessed:player.theft>=1', ctx()), 'kept by kind');
+  assert.ok(!w.lang.test('witnessed:player.strip>=1', { world: w, person: w.get('ruth') }), 'kept by witness');
+  // told as it is: the log, and the story
+  assert.ok(w.westmarch.find({ k: 'warn' }).some((e) => e.who === 'dev'));
+  assert.match(w.irulan.tell(0, { who: 'dev' }).join(' '), /warned the player about their strip|warned [^.]* about their strip/);
+  // rewound to before the second time, it's one again; replayed, two
+  const h = w.hash(); w.rewind(30); assert.equal(W.seenTimes('dev', 'player', 'strip'), 1); w.advance(30); assert.equal(w.hash(), h);
+  // two days without and it lapses: the next time is the first again, warnings and all
+  w.advance(2 * DAY + HOUR);
+  assert.equal(W.seenTimes('dev', 'player', 'strip'), 0);
+  w.advance(DAY);
+  assert.equal(((w.s.mod.wormtongue.seen || {}).dev || {})['player:strip'], undefined, 'let go at the midnight after');
+  strip();
+  assert.equal(W.seenTimes('dev', 'player', 'strip'), 1);
+  assert.equal(W.warnedTimes('dev', 'player', 'strip'), 0);
+  // warning about what isn't counted does nothing
+  W.warn('ruth', 'player', 'strip');
+  assert.equal(W.warnedTimes('ruth', 'player', 'strip'), 0);
+});
+
+test('repeats are off by default: nothing counted, nothing kept', () => {
+  const w = rocinante({ start: 10 * HOUR });
+  w.wormtongue.crime({ kind: 'strip', severity: 0.6, reportTo: 'watch', report: 0 });
+  w.did('player', 'fixed', { for: 'dev' });
+  for (let i = 0; i < 3; i++) w.sense({ kind: 'strip', actor: 'player', place: 'market', seenBy: ['dev'] });
+  assert.equal(w.wormtongue.seenTimes('dev', 'player', 'strip'), 0);
+  assert.equal(w.s.mod.wormtongue.seen, undefined);
+  assert.ok(!w.westmarch.find({ k: 'witnessed' }).some((e) => e.d.times), 'no times in the log');
+});
+
+test('repeats: each time seen before makes a report likelier (repeatReport)', () => {
+  const run = (repeatReport) => {
+    const w = rocinante({ start: 10 * HOUR, moduleConfig: { wormtongue: { repeatDays: 2, repeatReport, gossip: 0 } } }); // (no reports by way of gossip)
+    w.wormtongue.crime({ kind: 'strip', severity: 0.6, reportTo: 'watch', report: 0.0005 });
+    w.did('player', 'fixed', { for: 'dev' });
+    const reports = [];
+    w.on('report', (r) => { if (r.actor === 'player') reports.push(r); });
+    for (let i = 0; i < 3; i++) { w.sense({ kind: 'strip', actor: 'player', place: 'market', seenBy: ['dev'] }); w.advance(2 * HOUR); }
+    return reports.length;
+  };
+  assert.equal(run(0), 0, 'a tiny chance, three times over');
+  assert.equal(run(1e5), 2, 'the second and third time, certain');
+});
+
 test('a good disguise means nobody knows who it was', () => {
   const w = rocinante({ start: 10 * HOUR });
   w.sense({ kind: 'strip', actor: 'player', place: 'market', seenBy: ['dev', 'ruth', 'kofi'], disguise: 1 });

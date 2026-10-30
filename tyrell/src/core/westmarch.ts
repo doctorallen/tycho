@@ -102,7 +102,8 @@ export class Westmarch {
       case 'regard': return `thought ${Number(d.by) < 0 ? 'less' : 'more'} of ${name(d.target)}: ${d.why}`;
       case 'sentiment': return `felt about ${name(d.target)}: ${d.label}`;
       // Wormtongue
-      case 'witnessed': return `saw ${d.kind} by ${d.recognized ? name(d.actor) : 'someone'}${d.what ? ' (' + d.what + ')' : ''}`;
+      case 'witnessed': return `saw ${d.kind} by ${d.recognized ? name(d.actor) : 'someone'}${d.what ? ' (' + d.what + ')' : ''}${d.times ? ', ' + d.times + ' times now' : ''}`;
+      case 'warn': return `warned ${name(d.actor)} about ${d.kind}${d.n > 1 ? ', ' + d.n + ' times now' : ''}`;
       case 'report': return `reported ${d.kind} by ${name(d.actor)}${d.to ? ' to ' + name(d.to) : ''}`;
       case 'silenced': return `${d.ok ? 'was' : 'wasn\'t'} silenced by ${name(d.actor)} (${d.how})`;
       case 'told': return `told ${name(d.to)} about ${d.key}`;

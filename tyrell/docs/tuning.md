@@ -332,6 +332,8 @@ Each table lists a part's settings: the name, the default, and what it does and 
 | `trustAlone` | 0.7 | The trust without Fellowship |
 | `toldKeep` | 0.9 | The share of a belief's strength that survives a telling, before trust |
 | `exposedAt` | 4 | A secret counts as exposed once this many know it |
+| `repeatDays` | 0 | For how many days a witness keeps count of the times they've seen someone do the same thing, and warned them about it ([repeats](modules/wormtongue.md#repeats)); that long without seeing it again and the count lapses. 0: nobody counts, and the world hashes as without it |
+| `repeatReport` | 0 | Each time before that a witness saw it makes them this much more likely to report it: the third time, 1 + 2 × this |
 
 ### Cityspeak
 

@@ -173,6 +173,8 @@ Each module registers its terms when it's switched on. With a module off, its te
 | `owes:<id>` | Favors the person owes `id` (default the target) |
 | `owed:<id>` | Favors `id` owes the person (default the target) |
 | `saw:<actor>.<kind>` | The person believes the actor did it: `saw:player.strip` |
+| `witnessed:<actor>.<kind>` | How many times lately the person has seen the actor do it (Wormtongue's [repeats](modules/wormtongue.md#repeats); 0 with `repeatDays` off): `witnessed:player.strip>=2` |
+| `warned:<actor>.<kind>` | How many times lately the person has warned the actor about it (`warn`) |
 
 ### Cityspeak
 

@@ -138,7 +138,7 @@ export const IRULAN_WEIGHTS: Readonly<Record<string, number>> = {
   felt: 0.3, 'gave-up': 0.3, 'no-plan': 0.3, wished: 0.3, faded: 0.2, granted: 0.45, regard: 0.25, sentiment: 0.35, owes: 0.3, rent: 0.35,
   exchange: 0.35, told: 0.35, learned: 0.4, sensed: 0.3, directed: 0.4, away: 0.4, back: 0.4, fact: 0.4, did: 0.45, afflicted: 0.45, recovered: 0.35,
   tended: 0.4, saw: 0.4, promised: 0.5, promise: 0.45, talk: 0.45, skill: 0.55, stage: 0.55, promoted: 0.4, changed: 0.3, up: 0.4, healed: 0.45,
-  noticed: 0.5, warned: 0.5, disarmed: 0.5, respond: 0.5,
+  noticed: 0.5, warned: 0.5, disarmed: 0.5, respond: 0.5, warn: 0.45,
   // what a story is made of
   witnessed: 0.65, report: 0.6, silenced: 0.7, exposed: 0.75, broke: 0.75, grudge: 0.6, feud: 0.7, mended: 0.6, escalated: 0.6, blamed: 0.6,
   suspect: 0.6, set: 0.65, tainted: 0.75, sprung: 0.8, yielded: 0.65, spared: 0.6, mutated: 0.6, paired: 0.8, harm: 0.85, down: 0.8, fatal: 0.9,
@@ -883,7 +883,7 @@ export class Irulan {
       switch (e.k) {
         case 'started': { const crime = w.actions.get(d.action)?.crime; if (crime) deed(who, crime); break; }
         case 'told': { const m = /^did:([^:]+):(.+)$/.exec(String(d.key)); if (m) deed(m[1], m[2]); else if (/^(trap|taint):/.test(String(d.key))) out.add(String(d.key)); break; }
-        case 'witnessed': case 'report': case 'silenced': deed(d.actor, d.kind); break;
+        case 'witnessed': case 'report': case 'silenced': case 'warn': deed(d.actor, d.kind); break;
         case 'exchange': {
           for (const o of d.with || []) pair(who, o);
           const crime = w.bree?.kinds.get(d.kind)?.crime;
@@ -1091,8 +1091,10 @@ export class Irulan {
       case 'told': return this.phrase('told', { to: name(d.to), about: about(d.key) }, e.t, d.key, d.to);
       // (someone who saw a crime done to them was in it: the crime tells it)
       case 'witnessed': return d.what === e.who ? null : d.recognized
-        ? this.phrase('saw', { about: `${name(d.actor)}'s ${d.kind}${typeof d.what === 'string' && w.s.people[d.what] ? ' against ' + name(d.what) : ''}` }, e.t, d.actor, d.kind)
+        ? this.phrase('saw', { about: `${name(d.actor)}'s ${d.kind}${typeof d.what === 'string' && w.s.people[d.what] ? ' against ' + name(d.what) : ''}` }, e.t, d.actor, d.kind) + (d.times > 1 ? ' again' : '')
         : `saw ${article(d.kind)} without seeing who did it`;
+      // (Wormtongue's repeats: a word with them about it)
+      case 'warn': return `warned ${name(d.actor)} about their ${d.kind}${d.n > 1 ? ' again' : ''}`;
       case 'report': {
         const what = d.actor === 'someone' ? article(d.kind) : name(d.actor) + '\'s ' + d.kind;
         return d.to ? this.phrase('report', { about: what, to: name(d.to) }, e.t, d.actor, d.kind) : `reported ${what}`;

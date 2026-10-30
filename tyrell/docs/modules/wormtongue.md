@@ -7,6 +7,7 @@ The ideas come from Thief's guards and Skyrim's crimes (witnesses who report), H
 - [Crimes](#crimes)
 - [Witnessing](#witnessing)
 - [Reports and heat](#reports-and-heat)
+- [Repeats](#repeats)
 - [Silencing](#silencing)
 - [Gossip](#gossip)
 - [Lies](#lies)
@@ -68,6 +69,25 @@ When a report comes due, it's made only if the witness is still around and still
 Heat is the weight of reports against someone. It fades by `heatDecay` (to 85%) every day (to the power of the headline knob `cooling`), and is dropped under 0.05 (`heatFloor`). The game reads it with `heat(actor)` or the `heat` term, and can add to it with `addHeat`.
 
 A member of the authority who hears about a crime through gossip takes it as a report too, with the teller as the witness and the belief's value as `what` (not when the belief is that it didn't happen).
+
+## Repeats
+
+With `repeatDays` set, each witness keeps count of the times they've seen someone do the same thing lately, so what they say and do can build: "Hey! That's not yours!" the first time, "What did I just tell you?" the second, "I'm not telling you again" the third.
+
+```js
+Tyrell.create({ moduleConfig: { wormtongue: { repeatDays: 3, repeatReport: 0.5 } } });
+world.sense({ kind: 'strip', actor: 'player', seenBy: ['goro'] });   // the second time he's seen it
+world.wormtongue.seenTimes('goro', 'player', 'strip');                // 2
+world.wormtongue.warn('goro', 'player', 'strip');                     // he said something about it
+cityspeak.addLines([{ key: 'again', topic: 'strip', when: ['witnessed:player.strip>=2', 'warned:player.strip>=1'], text: 'What did I just tell you?' }]);
+```
+
+- **Each sighting counts**, whether or not the witness could say who it was (step 1 above): they know it's the same one doing it again. A count for each witness, actor and kind, with when it was last seen. The `witnessed` log entry and event carry `times`, and the story tells it as seen "again".
+- **A warning counts** when the game says the witness had a word with them about it: `warn(witness, actor, kind)` (an input), which logs `warn`. Only a sighting still counted can be warned about.
+- **It lapses**: `repeatDays` without seeing it again, and the count (warnings and all) starts over from the next sighting; lapsed counts are let go at midnight.
+- **It makes a report likelier**: each time before that the witness saw it multiplies the chance they report it by `1 + repeatReport × (times - 1)` (0 by default: no change).
+
+Read it with the `witnessed:<actor>.<kind>` and `warned:<actor>.<kind>` terms (lines, choices, anything with conditions), or `seenTimes` and `warnedTimes`. With `repeatDays` at 0, the default, nothing is counted or kept, and a world hashes as it did without it.
 
 ## Silencing
 
@@ -132,6 +152,7 @@ In `world.s.mod.wormtongue`:
 | `reports` | Reports: `{ t, witness, actor, kind, what?, to? }` |
 | `secrets` | Secrets by id |
 | `favors` | Favors by `'debtor>creditor'` |
+| `seen` | With `repeatDays`: by witness, then `'actor:kind'`, `{ n, t, warned }` (absent until something's counted) |
 
 Pending reports are module timers in the world's queue.
 
@@ -152,23 +173,28 @@ Pending reports are module timers in the world's queue.
 | `owe(debtor, creditor, n = 1)` | void | **Input.** Adds favors owed (negative settles) |
 | `owes(debtor, creditor)` | number | Favors owed |
 | `applyOwe(debtor, creditor, n)` | void | **Engine.** The direct version |
+| `seenTimes(witness, actor, kind)` | number | Times lately the witness saw the actor do it ([repeats](#repeats)) |
+| `warnedTimes(witness, actor, kind)` | number | Times lately the witness warned them about it |
+| `repeat(witness, actor, kind)` | Repeat or null | The count itself, `{ n, t, warned }`, unless it's lapsed |
+| `warn(witness, actor, kind)` | void | **Input.** The witness had a word with the actor about it |
+| `applyWarn(witness, actor, kind)` | void | **Engine.** The direct version |
 | `config`, `crimes` | | The config and the declared crimes |
 
 ## Terms
 
-`heat` / `heat:<actor>`, `owes:<id>`, `owed:<id>`, `saw:<actor>.<kind>`. See [Conditions](../conditions.md#wormtongue).
+`heat` / `heat:<actor>`, `owes:<id>`, `owed:<id>`, `saw:<actor>.<kind>`, `witnessed:<actor>.<kind>`, `warned:<actor>.<kind>`. See [Conditions](../conditions.md#wormtongue).
 
 ## Events
 
 | Event | Payload |
 |---|---|
-| `witnessed` | `{ id, actor, kind, recognized }`: `id` is the witness; `actor` is `'someone'` when not recognized |
+| `witnessed` | `{ id, actor, kind, recognized, times }`: `id` is the witness; `actor` is `'someone'` when not recognized; `times`, how many times lately they've seen it, this one included (1 with `repeatDays` off) |
 | `report` | `{ t, witness, actor, kind, what?, to?, heat }`: `heat` is the actor's heat after it |
 | `silenced` | `{ witness, actor, how, ok }` |
 | `told` | `{ from, to, key, v, lie }` |
 | `exposed` | `{ about, key }`: a secret reached four people |
 
-Log entries: `witnessed`, `report`, `silenced`, `told`, `exposed`, `owes`.
+Log entries: `witnessed` (with `times` when it's been seen before), `warn`, `report`, `silenced`, `told`, `exposed`, `owes`.
 
 A `'*'` listener gets `{ kind, ...payload, event }`. Read the event's name from `event`: for `witnessed` and `report`, whose payloads have their own `kind`, `kind` is the crime (`'theft'`).
 
@@ -190,6 +216,8 @@ A `'*'` listener gets `{ kind, ...payload, event }`. Read the event's name from 
 | `heat` | 1 | Headline knob: how much heat each report adds |
 | `cooling` | 1 | Headline knob: how fast heat cools (0: never) |
 | `lies` | 1 | Headline knob: how readily liars shift the blame (0: nobody lies) |
+| `repeatDays` | 0 | Days a witness keeps count of the times they've seen someone do the same thing ([repeats](#repeats)); 0: nobody counts |
+| `repeatReport` | 0 | Each time before makes a report this much likelier |
 
 A person's own `tune: { wormtongue: { ... } }` multiplies the knobs for them: as the teller for `gossip` and `lies`, the witness for `reporting`, the actor for `heat` and `cooling`. The finer numbers, each explained in [Tuning](../tuning.md#wormtongue): `heatPerSeverity` (10), `heatFloor` (0.05), `sawStrength` (0.3), `crimeMemory` (4), `severityMemory` (6), `plainMemory` (3), `fearWeight` (0.3), `loyalty` (0.8), `familiarReport` (0) and `familiarReportMax` (1), `crimeSeen` (0.8), `infamyAuthority` (0.2), `infamyGroups` (0.1), `toldAuthority` (0.8), the bribe's `bribeGreed` (0.6), `bribeFull` (100), `bribeMoney` (0.5), `bribeHonesty` (0.4), `bribeBase` (0.1), the threat's `scareFear` (0.8), `scareHonesty` (0.2), `scareBase` (0.1), `scareRegard` (-0.3), and gossip's `secretSpite` (-0.3), `juicyCrime` (3), `juicyDeed` (1.5), `gossipRecency` (0.99), `liarBelow` (0.3), `lieSpite` (-0.3), `scapegoat` (-0.2), `trustBase` (0.6), `trustRegard` (0.4), `trustMin` (0.2), `trustMax` (1), `trustAlone` (0.7), `toldKeep` (0.9), `exposedAt` (4). During play, `world.tune('wormtongue', { ... })` changes any of them as an input.
 

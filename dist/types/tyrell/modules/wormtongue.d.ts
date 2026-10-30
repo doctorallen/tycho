@@ -23,6 +23,12 @@ export interface Report {
     what?: string;
     to?: Id;
 }
+/** How many times a witness has seen someone do something lately (n), when last (t), and how many times they've warned them about it (warned). */
+export interface Repeat {
+    n: number;
+    t: number;
+    warned: number;
+}
 export interface Secret {
     about: Id;
     key: string;
@@ -34,6 +40,8 @@ interface State {
     reports: Report[];
     secrets: Record<string, Secret>;
     favors: Record<string, number>;
+    /** With repeatDays: by witness, then by 'actor:kind'. (Absent until something's counted, so a world without it hashes as before.) */
+    seen?: Record<Id, Record<string, Repeat>>;
 }
 export interface WormtongueConfig {
     /** Base chance a witness reports a crime. */
@@ -125,6 +133,15 @@ export interface WormtongueConfig {
     toldKeep: number;
     /** A secret counts as exposed once this many know it. Default 4. */
     exposedAt: number;
+    /**
+     * Repeats: for how many days a witness keeps count of the times they've
+     * seen someone do the same thing (each sighting, recognized or not), and warned
+     * them about it (warn). That many days without seeing it again and the
+     * count lapses. Default 0: nobody counts.
+     */
+    repeatDays: number;
+    /** Each time before that a witness saw it makes them this much more likely to report it (the third time, 1 + 2 × this). Default 0. */
+    repeatReport: number;
 }
 export declare const DEFAULT_WORMTONGUE: WormtongueConfig;
 export declare class Wormtongue implements Module {
@@ -156,6 +173,18 @@ export declare class Wormtongue implements Module {
     reports(actor?: Id): Report[];
     /** Everyone who believes they saw the actor do something criminal and hasn't been silenced. */
     witnesses(actor: Id, kind?: string): Id[];
+    /** A witness's count of someone doing something, if it hasn't lapsed. */
+    repeat(witness: Id, actor: Id, kind: string): Repeat | null;
+    /** How many times lately the witness has seen the actor do it (0 with repeatDays off). */
+    seenTimes(witness: Id, actor: Id, kind: string): number;
+    /** How many times lately the witness has warned the actor about it. */
+    warnedTimes(witness: Id, actor: Id, kind: string): number;
+    /** The witness has had a word with the actor about it (an input): they warned them. */
+    warn(witness: Id, actor: Id, kind: string): void;
+    /** The direct version (engine). Only a sighting still counted can be warned about. */
+    applyWarn(witness: Id, actor: Id, kind: string): void;
+    /** One more sighting: counted from 1 again once the last has lapsed. */
+    private counted;
     sensed(stim: Stimulus): void;
     timer(item: {
         who?: Id;

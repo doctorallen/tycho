@@ -12,6 +12,9 @@
 //   silencing  a witness can be paid or scared off
 //   secrets    with a list of who knows them
 //   favors     owed between people, called in later
+//   repeats    (with repeatDays) how many times each has seen someone do the
+//              same thing lately, and warned them about it: "What did I
+//              just tell you?", and more likely to report it each time
 import type { Module } from '../core/module';
 import type { Id, PersonState, Stimulus, Value } from '../core/types';
 import type { World } from '../core/world';
@@ -33,6 +36,8 @@ export interface CrimeDef {
 }
 
 export interface Report { t: number; witness: Id; actor: Id; kind: string; what?: string; to?: Id }
+/** How many times a witness has seen someone do something lately (n), when last (t), and how many times they've warned them about it (warned). */
+export interface Repeat { n: number; t: number; warned: number }
 export interface Secret { about: Id; key: string; value: Value; knownBy: Id[] }
 
 interface State {
@@ -40,6 +45,8 @@ interface State {
   reports: Report[];
   secrets: Record<string, Secret>;
   favors: Record<string, number>;
+  /** With repeatDays: by witness, then by 'actor:kind'. (Absent until something's counted, so a world without it hashes as before.) */
+  seen?: Record<Id, Record<string, Repeat>>;
 }
 
 export interface WormtongueConfig {
@@ -139,6 +146,15 @@ export interface WormtongueConfig {
   toldKeep: number;
   /** A secret counts as exposed once this many know it. Default 4. */
   exposedAt: number;
+  /**
+   * Repeats: for how many days a witness keeps count of the times they've
+   * seen someone do the same thing (each sighting, recognized or not), and warned
+   * them about it (warn). That many days without seeing it again and the
+   * count lapses. Default 0: nobody counts.
+   */
+  repeatDays: number;
+  /** Each time before that a witness saw it makes them this much more likely to report it (the third time, 1 + 2 × this). Default 0. */
+  repeatReport: number;
 }
 
 export const DEFAULT_WORMTONGUE: WormtongueConfig = {
@@ -150,6 +166,7 @@ export const DEFAULT_WORMTONGUE: WormtongueConfig = {
   scareFear: 0.8, scareHonesty: 0.2, scareBase: 0.1, scareRegard: -0.3,
   secretSpite: -0.3, juicyCrime: 3, juicyDeed: 1.5, gossipRecency: 0.99, liarBelow: 0.3, lieSpite: -0.3, scapegoat: -0.2,
   trustBase: 0.6, trustRegard: 0.4, trustMin: 0.2, trustMax: 1, trustAlone: 0.7, toldKeep: 0.9, exposedAt: 4,
+  repeatDays: 0, repeatReport: 0,
 };
 
 export class Wormtongue implements Module {
@@ -179,6 +196,10 @@ export class Wormtongue implements Module {
       const [actor, kind] = a.split('.');
       return w.reverie.belief(c.person.id, `did:${actor}:${kind}`) !== undefined;
     });
+    // 'witnessed:player.strip', 'warned:player.strip': how many times lately (repeatDays)
+    w.lang.term('witnessed', (c, a) => { if (!c.person) return 0; const [actor, kind] = a.split('.'); return this.seenTimes(c.person.id, actor, kind); });
+    w.lang.term('warned', (c, a) => { if (!c.person) return 0; const [actor, kind] = a.split('.'); return this.warnedTimes(c.person.id, actor, kind); });
+    w.defineInput('warn', (witness: Id, actor: Id, kind: string) => this.applyWarn(witness, actor, kind));
     w.defineInput('silence', (witness: Id, actor: Id, how: string, amount: number) => this.applySilence(witness, actor, how, amount));
     w.defineInput('secret', (id: string, s: Secret) => { this.st.secrets[id] = { ...s, knownBy: [...s.knownBy] }; for (const k of s.knownBy) w.reverie?.applyBelieve(k, s.key, s.value, 'knew'); });
     w.defineInput('owe', (debtor: Id, creditor: Id, n: number) => this.applyOwe(debtor, creditor, n));
@@ -219,6 +240,36 @@ export class Wormtongue implements Module {
   }
 
   // -------------------------------------------------------------------------
+  // Repeats
+  // -------------------------------------------------------------------------
+
+  /** A witness's count of someone doing something, if it hasn't lapsed. */
+  repeat(witness: Id, actor: Id, kind: string): Repeat | null {
+    const days = this.c.repeatDays, r = this.st.seen?.[witness]?.[actor + ':' + kind];
+    return r && days > 0 && this.w.s.now - r.t <= days * DAY ? r : null;
+  }
+  /** How many times lately the witness has seen the actor do it (0 with repeatDays off). */
+  seenTimes(witness: Id, actor: Id, kind: string): number { return this.repeat(witness, actor, kind)?.n ?? 0; }
+  /** How many times lately the witness has warned the actor about it. */
+  warnedTimes(witness: Id, actor: Id, kind: string): number { return this.repeat(witness, actor, kind)?.warned ?? 0; }
+  /** The witness has had a word with the actor about it (an input): they warned them. */
+  warn(witness: Id, actor: Id, kind: string): void { this.w.input('warn', [witness, actor, kind]); }
+  /** The direct version (engine). Only a sighting still counted can be warned about. */
+  applyWarn(witness: Id, actor: Id, kind: string): void {
+    const r = this.repeat(witness, actor, kind);
+    if (!r) return;
+    r.warned++;
+    this.w.log('warn', witness, { actor, kind, n: r.warned });
+  }
+  /** One more sighting: counted from 1 again once the last has lapsed. */
+  private counted(witness: Id, actor: Id, kind: string): number {
+    if (this.c.repeatDays <= 0) return 1;
+    const was = this.repeat(witness, actor, kind), seen = (this.st.seen ??= {}), mine = (seen[witness] ??= {});
+    mine[actor + ':' + kind] = was ? { n: was.n + 1, t: this.w.s.now, warned: was.warned } : { n: 1, t: this.w.s.now, warned: 0 };
+    return mine[actor + ':' + kind].n;
+  }
+
+  // -------------------------------------------------------------------------
   // Witnessing
   // -------------------------------------------------------------------------
 
@@ -240,8 +291,11 @@ export class Wormtongue implements Module {
       rv?.applyBelieve(wid, key, stim.what ?? true, 'saw', null, Math.max(c.sawStrength, strength));
       rv?.applyRemember(wid, { k: 'saw:' + stim.kind, about: recognized ? stim.actor : undefined, place: stim.place ?? undefined, imp: crime ? c.crimeMemory + severity * c.severityMemory : c.plainMemory, text: `saw ${actor} ${stim.kind}${stim.what ? ' ' + stim.what : ''}` });
       if (crime && rv) rv.applyFeel(wid, crime.feeling ?? 'witnessed', key);
-      w.log('witnessed', wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized });
-      w.emit('witnessed', { id: wid, actor, kind: stim.kind, recognized });
+      // (seen it before, lately? one more time: repeatDays. Whether or not
+      // they could say who it was, they know it's the same one again)
+      const times = this.counted(wid, stim.actor, stim.kind);
+      w.log('witnessed', wid, { actor, kind: stim.kind, what: stim.what ?? null, recognized, ...(times > 1 ? { times } : {}) });
+      w.emit('witnessed', { id: wid, actor, kind: stim.kind, recognized, times });
       if (crime && recognized) {
         const mid = w.cfg.traitDefault;
         const lawful = p.def.traits?.lawful ?? p.def.values?.law ?? mid;
@@ -250,7 +304,9 @@ export class Wormtongue implements Module {
         // someone who knows the actor (they've talked, they've learned things: Voice) is slower to report them
         const known = c.familiarReport && w.voice ? clamp(w.voice.familiarity(wid, stim.actor) * c.familiarReport, 0, c.familiarReportMax) : 0;
         // the headline knob scales the chance, for the witness
-        const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * (1 - known) * this.knob('reporting', wid));
+        // and each time before that they saw it makes it likelier (repeatReport)
+        const again = 1 + c.repeatReport * (times - 1);
+        const pReport = clamp((crime.report ?? c.reportChance) * (0.5 + lawful) * (1 - fear * c.fearWeight) * (1 - Math.max(0, regard) * c.loyalty) * (1 - known) * again * this.knob('reporting', wid));
         if (r.chance(pReport)) {
           const [a, b] = c.reportDelay;
           w.clock.schedule({ t: w.s.now + r.range(a, b), k: 'module', ref: this.name, who: wid, data: { actor: stim.actor, kind: stim.kind, what: stim.what ?? null, ...(stim.severity !== undefined ? { sev: severity } : {}) } });
@@ -471,6 +527,12 @@ export class Wormtongue implements Module {
     }
     const cutoff = this.w.s.now - 14 * DAY;
     this.st.reports = this.st.reports.filter((r) => r.t >= cutoff);
+    // counts lapsed (repeatDays) are let go
+    const seen = this.st.seen;
+    if (seen) for (const wid of Object.keys(seen)) {
+      for (const k of Object.keys(seen[wid])) if (this.w.s.now - seen[wid][k].t > c.repeatDays * DAY) delete seen[wid][k];
+      if (!Object.keys(seen[wid]).length) delete seen[wid];
+    }
   }
 }
 

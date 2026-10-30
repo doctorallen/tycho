@@ -5402,12 +5402,37 @@ function mind(w, id, o = {}) {
   }
   const ra = w.mind.routineAt(p), plan = (w.mind.routineFor(p, w.now) || []).slice().sort((a, b) => a[0] - b[0]), cur = ra && ra.entry;
   if (plan.length) h += `<h3>Today</h3><div class="${P}day">` + plan.map((e) => `<div class="${e === cur ? "cur" : ""}"><span>${String(Math.floor(e[0])).padStart(2, "0")}:${String(Math.round(e[0] % 1 * 60)).padStart(2, "0")}</span> ${e[2] === "*" ? "free" : e[2]} <small>${e[1] === null ? "" : esc(e[1] === "home" ? "home" : at(e[1]))}${e[3] && e[3].rank ? " · holds" : ""}</small></div>`).join("") + "</div>";
-  const lines = w.westmarch.chronicle(id, w.now - (o.lately ?? 12 * 60)).slice(-(o.lines ?? 10));
-  if (lines.length) h += `<h3>Lately</h3><div class="${P}log">` + lines.map((l) => `<div>${esc(l)}</div>`).join("") + "</div>";
-  const fs = w.fellowship ? w.fellowship.relations(id).slice(0, o.known ?? 4) : [];
   const can = (x) => o.selectable ? o.selectable(x) : !!w.get(x);
+  if (o.story && w.irulan) h += story(P, w, w.irulan, id, o, o.story === true ? {} : o.story, can);
+  else {
+    const lines = w.westmarch.chronicle(id, w.now - (o.lately ?? 12 * 60)).slice(-(o.lines ?? 10));
+    if (lines.length) h += `<h3>Lately</h3><div class="${P}log">` + lines.map((l) => `<div>${esc(l)}</div>`).join("") + "</div>";
+  }
+  const fs = w.fellowship ? w.fellowship.relations(id).slice(0, o.known ?? 4) : [];
   if (fs.length) h += `<h3>People</h3><div class="${P}list">` + fs.map((f) => can(f.id) ? `<button data-${P}sel="${f.id}">${esc(name(f.id))} <small>regard ${f.regard.toFixed(2)}</small></button>` : `<span class="dim">${esc(f.id)} · ${f.regard.toFixed(2)}</span>`).join("") + "</div>";
   h += `<div class="buttons">${o.buttons ? o.buttons(id) : ""}<button data-${P}do="close">Close</button></div>`;
+  return h;
+}
+function story(P, w, I, id, o, S, can) {
+  const told = (parts) => parts.map((q) => q.person && q.person !== id && can(q.person) ? `<a data-${P}sel="${q.person}">${esc(q.text)}</a>` : q.person ? `<b>${esc(q.text)}</b>` : q.place ? `<i>${esc(q.text)}</i>` : esc(q.text)).join("");
+  const day = (t) => Math.floor(t / 1440);
+  const lines = (beats2, span) => {
+    let d = day(w.now), out = "";
+    for (const b of beats2) {
+      if (day(b.t) !== d) {
+        d = day(b.t);
+        out += `<div class="${P}when">Day ${d}</div>`;
+      }
+      out += `<div><span>${hhmm(b.t)}${span && b.end !== void 0 && b.end - b.t >= 30 ? "–" + hhmm(b.end) : ""}</span> ${told(b.parts)}</div>`;
+    }
+    return out;
+  };
+  let h = "";
+  const theirs = (b) => S.around || (b.who || []).includes(id) || (b.with || []).includes(id);
+  const beats = I.beats(w.now - (o.lately ?? 12 * 60), { who: id, min: S.min ?? 0.1, weights: S.weights }).filter(theirs).slice(-(o.lines ?? 10));
+  if (beats.length) h += `<h3>Lately</h3><div class="${P}story">` + lines(beats, true) + "</div>";
+  const n = S.threads ?? 3, threads = n > 0 ? I.threads(void 0, { who: id, weights: S.weights }).threads.slice(0, n) : [];
+  if (threads.length) h += `<h3>Storylines</h3><div class="${P}threads">` + threads.map((t) => `<details${t.active ? " open" : ""}><summary>${told(t.parts)}${t.active ? " <small>going on</small>" : ""}</summary>` + lines(t.beats, false) + "</details>").join("") + "</div>";
   return h;
 }
 var STEP_LABEL = (m) => (m < 0 ? "−" : "+") + (Math.abs(m) % 60 ? Math.abs(m) + "m" : Math.abs(m) / 60 + "h");
@@ -6542,6 +6567,12 @@ ${D} div.${P}why>div.pick{background:#12302e;box-shadow:inset 2px 0 0 var(--dv-a
 ${D} div.${P}why>div.no{opacity:.6}
 ${D} .${P}day>div{padding:1px 4px}${D} .${P}day>div.cur{background:rgba(255,225,74,.12);color:var(--dv-hi)}${D} .${P}day span{color:var(--dv-dim);margin-right:4px}
 ${D} .${P}log>div{padding:1px 0}
+${D} .${P}story>div,${D} .${P}threads details>div{padding:1px 0 1px 1.5em;text-indent:-1.5em}
+${D} .${P}story span,${D} .${P}threads details>div span{color:var(--dv-dim);margin-right:4px;font-variant-numeric:tabular-nums}
+${D} .${P}story a,${D} .${P}threads a{color:var(--dv-acc);cursor:pointer}
+${D} .${P}story i,${D} .${P}threads i{font-style:normal;color:var(--dv-hi)}
+${D} div.${P}when{color:var(--dv-dim);text-indent:0;padding:0;margin:5px 0 1px;border-bottom:1px solid var(--dv-line)}
+${D} .${P}threads details{margin:2px 0 6px}${D} .${P}threads summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
 ${D} .${P}list{display:flex;flex-wrap:wrap;gap:3px}
 ${D} .${P}list i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 ${D} .${P}out>div{margin:1px 0;overflow-wrap:anywhere}

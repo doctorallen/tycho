@@ -98,6 +98,41 @@ test('without the game\'s words a mind still reads, from the world alone', () =>
   assert.equal(inspect.esc('a<b>&c'), 'a&lt;b&gt;&amp;c');
 });
 
+test('lately told as a story: Irulan\'s beats with their times, the people in them to pick, and the storylines', () => {
+  const w = buildRocinante(Tyrell, { seed: 'story', start: 7 * 60 });
+  w.advance(3 * 1440);
+  const plain = inspect.mind(w, 'sam', {}), told = inspect.mind(w, 'sam', { story: true });
+  // the same mind, with only lately told differently
+  assert.equal(told.split('<h3>Lately</h3>')[0], plain.split('<h3>Lately</h3>')[0]);
+  assert.equal(told.slice(told.indexOf('<h3>People</h3>')), plain.slice(plain.indexOf('<h3>People</h3>')));
+  // its beats, a line each with its time, in Irulan's words
+  // (theirs, or ones they took part in; not those they were only about for)
+  const mine = (b) => b.who.includes('sam') || b.with.includes('sam');
+  const all = w.irulan.beats(w.now - 12 * 60, { who: 'sam', min: 0.1 }), beats = all.filter(mine).slice(-10);
+  const about = all.filter((b) => !mine(b));
+  assert.ok(about.length, 'beats they were only about for');
+  for (const b of about) assert.ok(!told.replace(/<[^>]+>/g, '').includes(b.text), 'only about: ' + b.text);
+  const around = inspect.mind(w, 'sam', { story: { around: true } }).replace(/<[^>]+>/g, '');
+  for (const b of about.slice(-3)) assert.ok(around.includes(b.text), 'around: ' + b.text);
+  assert.ok(beats.length > 2, 'beats: ' + beats.length);
+  assert.ok(told.includes('class="inspstory"'));
+  for (const b of beats) assert.ok(told.includes('<span>' + inspect.hhmm(b.t)), 'the time of ' + b.text);
+  const text = told.replace(/<[^>]+>/g, '');
+  for (const b of beats) assert.ok(text.includes(b.text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])), b.text);
+  // others in them are picked by a tap; they themselves are only named
+  const others = beats.flatMap((b) => b.parts.filter((q) => q.person && q.person !== 'sam').map((q) => q.person));
+  for (const o of others) assert.ok(told.includes(`data-inspsel="${o}"`), o);
+  assert.ok(!told.includes('data-inspsel="sam"'));
+  // the storylines they're in, as many as asked for, none when asked for none
+  const threads = w.irulan.threads(undefined, { who: 'sam' }).threads;
+  if (threads.length) assert.ok(told.includes('<h3>Storylines</h3>'));
+  assert.ok(!inspect.mind(w, 'sam', { story: { threads: 0 } }).includes('<h3>Storylines</h3>'));
+  // a world without Irulan reads as before
+  const bare = Object.assign(Object.create(Object.getPrototypeOf(w)), w);
+  Object.defineProperty(bare, 'irulan', { value: null });
+  assert.equal(inspect.mind(bare, 'sam', { story: true }), plain);
+});
+
 test('the panel steps the clock no further back than Esper remembers, lists and counts', () => {
   const w = buildRocinante(Tyrell, { seed: 'panel', start: 6 * 60 });
   w.advance(120);

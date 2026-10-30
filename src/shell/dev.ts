@@ -807,6 +807,12 @@ ${D} div.${P}why>div.pick{background:#12302e;box-shadow:inset 2px 0 0 var(--dv-a
 ${D} div.${P}why>div.no{opacity:.6}
 ${D} .${P}day>div{padding:1px 4px}${D} .${P}day>div.cur{background:rgba(255,225,74,.12);color:var(--dv-hi)}${D} .${P}day span{color:var(--dv-dim);margin-right:4px}
 ${D} .${P}log>div{padding:1px 0}
+${D} .${P}story>div,${D} .${P}threads details>div{padding:1px 0 1px 1.5em;text-indent:-1.5em}
+${D} .${P}story span,${D} .${P}threads details>div span{color:var(--dv-dim);margin-right:4px;font-variant-numeric:tabular-nums}
+${D} .${P}story a,${D} .${P}threads a{color:var(--dv-acc);cursor:pointer}
+${D} .${P}story i,${D} .${P}threads i{font-style:normal;color:var(--dv-hi)}
+${D} div.${P}when{color:var(--dv-dim);text-indent:0;padding:0;margin:5px 0 1px;border-bottom:1px solid var(--dv-line)}
+${D} .${P}threads details{margin:2px 0 6px}${D} .${P}threads summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
 ${D} .${P}list{display:flex;flex-wrap:wrap;gap:3px}
 ${D} .${P}list i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 ${D} .${P}out>div{margin:1px 0;overflow-wrap:anywhere}

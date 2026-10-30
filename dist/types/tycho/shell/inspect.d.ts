@@ -81,6 +81,41 @@ export interface MindsWorld {
     };
     /** Runs fn changing nothing (for the options weighed now). */
     peek?<T>(fn: () => T): T;
+    /** Irulan, the narrator (for `story`): the log told as beats, and the
+     * storylines running through it. */
+    readonly irulan?: MindsNarrator | null;
+}
+/** A piece of a told sentence: its words, and the person or place it names. */
+export interface MindsPart {
+    text: string;
+    person?: string;
+    place?: string;
+}
+/** A beat Irulan tells: when, how much it matters, and its sentence in parts. */
+export interface MindsBeat {
+    t: number;
+    end?: number;
+    who?: string[];
+    with?: string[];
+    score: number;
+    text: string;
+    parts: MindsPart[];
+}
+/** A storyline: its title, its beats, and whether it's still going. */
+export interface MindsThread {
+    id: string;
+    title: string;
+    parts: MindsPart[];
+    beats: MindsBeat[];
+    active: boolean;
+    score: number;
+}
+/** What the inspector reads of Irulan (Tyrell's world.irulan has all of it). */
+export interface MindsNarrator {
+    beats(entries?: number | unknown[], opts?: Record<string, unknown>): MindsBeat[];
+    threads(entries?: number | unknown[], opts?: Record<string, unknown>): {
+        threads: MindsThread[];
+    };
 }
 /** HH:MM of a time in minutes (the time of day). */
 export declare function hhmm(m: number): string;
@@ -122,6 +157,21 @@ export interface MindOptions {
     chances?: boolean;
     table?: boolean;
     now?: boolean;
+    /** Lately told as a story by Irulan, when the world has it: their beats
+     * since `lately`, a sentence each with its time, the people in them
+     * buttons to their own minds; then the storylines they're in (Irulan's
+     * threads, from the story kept or the whole log). Only the beats that are
+     * theirs or that they took part in, unless `around` (those they were only
+     * about for too); `min` leaves out the beats that score under it (0.1:
+     * what's routine), `threads` how many storylines (3, 0 for none), and
+     * `weights` is Irulan's, by kind of entry. Without it, or without Irulan,
+     * Westmarch's chronicle as it was. */
+    story?: boolean | {
+        min?: number;
+        threads?: number;
+        around?: boolean;
+        weights?: Record<string, number>;
+    };
 }
 /** The chance each option had of being picked: Tyrell's pick, worked out
  * (the top rank only, the weak cut, a draw from the best few by weight to

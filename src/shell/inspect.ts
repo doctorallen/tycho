@@ -109,9 +109,10 @@ export interface MindOptions {
    * theirs or that they took part in, unless `around` (those they were only
    * about for too); `min` leaves out the beats that score under it (0.1:
    * what's routine), `threads` how many storylines (3, 0 for none), and
-   * `weights` is Irulan's, by kind of entry. Without it, or without Irulan,
-   * Westmarch's chronicle as it was. */
-  story?: boolean | { min?: number; threads?: number; around?: boolean; weights?: Record<string, number> };
+   * `weights` is Irulan's, by kind of entry. A list of more than `names`
+   * people (3) folds after that many: "…+4", to open. Without it, or without
+   * Irulan, Westmarch's chronicle as it was. */
+  story?: boolean | { min?: number; threads?: number; around?: boolean; weights?: Record<string, number>; names?: number };
 }
 
 /** The chance each option had of being picked: Tyrell's pick, worked out
@@ -215,17 +216,33 @@ export function mind(w: MindsWorld, id: string, o: MindOptions = {}): string {
 
 /** Lately, told by Irulan: their beats since `lately` with their times, and
  * the storylines they're in, each folded under its title. */
-function story(P: string, w: MindsWorld, I: MindsNarrator, id: string, o: MindOptions, S: { min?: number; threads?: number; around?: boolean; weights?: Record<string, number> }, can: (x: string) => boolean): string {
+function story(P: string, w: MindsWorld, I: MindsNarrator, id: string, o: MindOptions, S: { min?: number; threads?: number; around?: boolean; weights?: Record<string, number>; names?: number }, can: (x: string) => boolean): string {
   // (a sentence's people are buttons to their minds, themselves and those
-  // who can't be picked only named; places as they're said)
-  const told = (parts: MindsPart[]) => parts.map((q) => (q.person && q.person !== id && can(q.person) ? `<a data-${P}sel="${q.person}">${esc(q.text)}</a>` : q.person ? `<b>${esc(q.text)}</b>` : q.place ? `<i>${esc(q.text)}</i>` : esc(q.text))).join('');
+  // who can't be picked only named; places as they're said; and a list of
+  // more than `names` people folds after that many, "…+4", kept open or
+  // shut by its key through a redraw)
+  const one = (q: MindsPart) => (q.person && q.person !== id && can(q.person) ? `<a data-${P}sel="${q.person}">${esc(q.text)}</a>` : q.person ? `<b>${esc(q.text)}</b>` : q.place ? `<i>${esc(q.text)}</i>` : esc(q.text));
+  const N = Math.max(1, S.names ?? 3), sep = (q: MindsPart | undefined) => !!q && !q.person && !q.place && /^(, | and |, and )$/.test(q.text);
+  const told = (parts: MindsPart[], key?: string) => {
+    let h = '', run = 0;
+    for (let i = 0; i < parts.length;) {
+      if (!parts[i].person || !key) { h += one(parts[i]); i++; continue; }
+      const at = [i];
+      while (sep(parts[at[at.length - 1] + 1]) && parts[at[at.length - 1] + 2] && parts[at[at.length - 1] + 2].person) at.push(at[at.length - 1] + 2);
+      const end = at[at.length - 1] + 1;
+      if (at.length > N + 1) h += parts.slice(i, at[N - 1] + 1).map(one).join('') + `<details class="${P}more" data-keep="${key}:${run}"><summary>…+${at.length - N}</summary>${parts.slice(at[N - 1] + 1, end).map(one).join('')}</details>`;
+      else h += parts.slice(i, end).map(one).join('');
+      run++; i = end;
+    }
+    return h;
+  };
   // (a line a beat with its time, and the day named where it changes: Day 3)
   const day = (t: number) => Math.floor(t / 1440);
   const lines = (beats: MindsBeat[], span: boolean) => {
     let d = day(w.now), out = '';
     for (const b of beats) {
       if (day(b.t) !== d) { d = day(b.t); out += `<div class="${P}when">Day ${d}</div>`; }
-      out += `<div><span>${hhmm(b.t)}${span && b.end !== undefined && b.end - b.t >= 30 ? '–' + hhmm(b.end) : ''}</span> ${told(b.parts)}</div>`;
+      out += `<div><span>${hhmm(b.t)}${span && b.end !== undefined && b.end - b.t >= 30 ? '–' + hhmm(b.end) : ''}</span> ${told(b.parts, `${P}more:${id}:${b.t}:${(b.who || []).join(',')}`)}</div>`;
     }
     return out;
   };
@@ -234,7 +251,7 @@ function story(P: string, w: MindsWorld, I: MindsNarrator, id: string, o: MindOp
   const beats = I.beats(w.now - (o.lately ?? 12 * 60), { who: id, min: S.min ?? 0.1, weights: S.weights }).filter(theirs).slice(-(o.lines ?? 10));
   if (beats.length) h += `<h3>Lately</h3><div class="${P}story">` + lines(beats, true) + '</div>';
   const n = S.threads ?? 3, threads = n > 0 ? I.threads(undefined, { who: id, weights: S.weights }).threads.slice(0, n) : [];
-  if (threads.length) h += `<h3>Storylines</h3><div class="${P}threads">` + threads.map((t) => `<details${t.active ? ' open' : ''}><summary>${told(t.parts)}${t.active ? ' <small>going on</small>' : ''}</summary>` + lines(t.beats, false) + '</details>').join('') + '</div>';
+  if (threads.length) h += `<h3>Storylines</h3><div class="${P}threads">` + threads.map((t) => `<details data-keep="${P}thread:${id}:${esc(t.id)}"${t.active ? ' open' : ''}><summary>${told(t.parts)}${t.active ? ' <small>going on</small>' : ''}</summary>` + lines(t.beats, false) + '</details>').join('') + '</div>';
   return h;
 }
 

@@ -5369,7 +5369,26 @@ function mind(w, id, o = {}) {
   return h;
 }
 function story(P, w, I, id, o, S, can) {
-  const told = (parts) => parts.map((q) => q.person && q.person !== id && can(q.person) ? `<a data-${P}sel="${q.person}">${esc(q.text)}</a>` : q.person ? `<b>${esc(q.text)}</b>` : q.place ? `<i>${esc(q.text)}</i>` : esc(q.text)).join("");
+  const one = (q) => q.person && q.person !== id && can(q.person) ? `<a data-${P}sel="${q.person}">${esc(q.text)}</a>` : q.person ? `<b>${esc(q.text)}</b>` : q.place ? `<i>${esc(q.text)}</i>` : esc(q.text);
+  const N = Math.max(1, S.names ?? 3), sep = (q) => !!q && !q.person && !q.place && /^(, | and |, and )$/.test(q.text);
+  const told = (parts, key) => {
+    let h2 = "", run = 0;
+    for (let i = 0; i < parts.length; ) {
+      if (!parts[i].person || !key) {
+        h2 += one(parts[i]);
+        i++;
+        continue;
+      }
+      const at = [i];
+      while (sep(parts[at[at.length - 1] + 1]) && parts[at[at.length - 1] + 2] && parts[at[at.length - 1] + 2].person) at.push(at[at.length - 1] + 2);
+      const end = at[at.length - 1] + 1;
+      if (at.length > N + 1) h2 += parts.slice(i, at[N - 1] + 1).map(one).join("") + `<details class="${P}more" data-keep="${key}:${run}"><summary>…+${at.length - N}</summary>${parts.slice(at[N - 1] + 1, end).map(one).join("")}</details>`;
+      else h2 += parts.slice(i, end).map(one).join("");
+      run++;
+      i = end;
+    }
+    return h2;
+  };
   const day = (t) => Math.floor(t / 1440);
   const lines = (beats2, span) => {
     let d = day(w.now), out = "";
@@ -5378,7 +5397,7 @@ function story(P, w, I, id, o, S, can) {
         d = day(b.t);
         out += `<div class="${P}when">Day ${d}</div>`;
       }
-      out += `<div><span>${hhmm(b.t)}${span && b.end !== void 0 && b.end - b.t >= 30 ? "–" + hhmm(b.end) : ""}</span> ${told(b.parts)}</div>`;
+      out += `<div><span>${hhmm(b.t)}${span && b.end !== void 0 && b.end - b.t >= 30 ? "–" + hhmm(b.end) : ""}</span> ${told(b.parts, `${P}more:${id}:${b.t}:${(b.who || []).join(",")}`)}</div>`;
     }
     return out;
   };
@@ -5387,7 +5406,7 @@ function story(P, w, I, id, o, S, can) {
   const beats = I.beats(w.now - (o.lately ?? 12 * 60), { who: id, min: S.min ?? 0.1, weights: S.weights }).filter(theirs).slice(-(o.lines ?? 10));
   if (beats.length) h += `<h3>Lately</h3><div class="${P}story">` + lines(beats, true) + "</div>";
   const n = S.threads ?? 3, threads = n > 0 ? I.threads(void 0, { who: id, weights: S.weights }).threads.slice(0, n) : [];
-  if (threads.length) h += `<h3>Storylines</h3><div class="${P}threads">` + threads.map((t) => `<details${t.active ? " open" : ""}><summary>${told(t.parts)}${t.active ? " <small>going on</small>" : ""}</summary>` + lines(t.beats, false) + "</details>").join("") + "</div>";
+  if (threads.length) h += `<h3>Storylines</h3><div class="${P}threads">` + threads.map((t) => `<details data-keep="${P}thread:${id}:${esc(t.id)}"${t.active ? " open" : ""}><summary>${told(t.parts)}${t.active ? " <small>going on</small>" : ""}</summary>` + lines(t.beats, false) + "</details>").join("") + "</div>";
   return h;
 }
 var STEP_LABEL = (m) => (m < 0 ? "−" : "+") + (Math.abs(m) % 60 ? Math.abs(m) + "m" : Math.abs(m) / 60 + "h");
@@ -6527,7 +6546,8 @@ ${D} .${P}story span,${D} .${P}threads details>div span{color:var(--dv-dim);marg
 ${D} .${P}story a,${D} .${P}threads a{color:var(--dv-acc);cursor:pointer}
 ${D} .${P}story i,${D} .${P}threads i{font-style:normal;color:var(--dv-hi)}
 ${D} div.${P}when{color:var(--dv-dim);text-indent:0;padding:0;margin:5px 0 1px;border-bottom:1px solid var(--dv-line)}
-${D} .${P}threads details{margin:2px 0 6px}${D} .${P}threads summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
+${D} details.${P}more,${D} details.${P}more::details-content{display:inline}${D} details.${P}more:not([open])::details-content{display:none}${D} details.${P}more>summary{display:inline;cursor:pointer;color:var(--dv-acc);list-style:none}${D} details.${P}more>summary::-webkit-details-marker{display:none}${D} details.${P}more[open]>summary{display:none}
+${D} .${P}threads>details{margin:2px 0 6px}${D} .${P}threads>details>summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
 ${D} .${P}list{display:flex;flex-wrap:wrap;gap:3px}
 ${D} .${P}list i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 ${D} .${P}out>div{margin:1px 0;overflow-wrap:anywhere}

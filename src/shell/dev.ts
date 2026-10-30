@@ -812,7 +812,8 @@ ${D} .${P}story span,${D} .${P}threads details>div span{color:var(--dv-dim);marg
 ${D} .${P}story a,${D} .${P}threads a{color:var(--dv-acc);cursor:pointer}
 ${D} .${P}story i,${D} .${P}threads i{font-style:normal;color:var(--dv-hi)}
 ${D} div.${P}when{color:var(--dv-dim);text-indent:0;padding:0;margin:5px 0 1px;border-bottom:1px solid var(--dv-line)}
-${D} .${P}threads details{margin:2px 0 6px}${D} .${P}threads summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
+${D} details.${P}more,${D} details.${P}more::details-content{display:inline}${D} details.${P}more:not([open])::details-content{display:none}${D} details.${P}more>summary{display:inline;cursor:pointer;color:var(--dv-acc);list-style:none}${D} details.${P}more>summary::-webkit-details-marker{display:none}${D} details.${P}more[open]>summary{display:none}
+${D} .${P}threads>details{margin:2px 0 6px}${D} .${P}threads>details>summary{cursor:pointer;color:var(--dv-hi)}${D} .${P}threads summary small{color:var(--dv-acc)}
 ${D} .${P}list{display:flex;flex-wrap:wrap;gap:3px}
 ${D} .${P}list i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 ${D} .${P}out>div{margin:1px 0;overflow-wrap:anywhere}

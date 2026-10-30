@@ -164,13 +164,15 @@ export interface MindOptions {
      * theirs or that they took part in, unless `around` (those they were only
      * about for too); `min` leaves out the beats that score under it (0.1:
      * what's routine), `threads` how many storylines (3, 0 for none), and
-     * `weights` is Irulan's, by kind of entry. Without it, or without Irulan,
-     * Westmarch's chronicle as it was. */
+     * `weights` is Irulan's, by kind of entry. A list of more than `names`
+     * people (3) folds after that many: "…+4", to open. Without it, or without
+     * Irulan, Westmarch's chronicle as it was. */
     story?: boolean | {
         min?: number;
         threads?: number;
         around?: boolean;
         weights?: Record<string, number>;
+        names?: number;
     };
 }
 /** The chance each option had of being picked: Tyrell's pick, worked out

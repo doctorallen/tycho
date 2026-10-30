@@ -133,6 +133,30 @@ test('lately told as a story: Irulan\'s beats with their times, the people in th
   assert.equal(inspect.mind(bare, 'sam', { story: true }), plain);
 });
 
+test('a long list of people in a beat folds after a few names, to open', () => {
+  const w = buildRocinante(Tyrell, { seed: 'story', start: 7 * 60 });
+  w.advance(60);
+  const ppl = ['dev', 'kofi', 'lena', 'mara', 'pip', 'tomas'], parts = [{ text: 'Sam', person: 'sam' }, { text: ' slept at ' }, { text: 'home', place: 'h' }, { text: ', with ' }];
+  ppl.forEach((p, i) => { parts.push({ text: w.get(p).name, person: p }); if (i < ppl.length - 1) parts.push({ text: i === ppl.length - 2 ? ' and ' : ', ' }); });
+  parts.push({ text: ' home too.' });
+  const beat = { t: w.now - 30, who: ['sam'], with: [], score: 0.5, text: parts.map((q) => q.text).join(''), parts };
+  const told = Object.assign(Object.create(Object.getPrototypeOf(w)), w);
+  Object.defineProperty(told, 'irulan', { value: { beats: () => [beat], threads: () => ({ threads: [] }) } });
+  const h = inspect.mind(told, 'sam', { story: true });
+  // three names, then the rest folded behind "…+3", keyed so a redraw keeps it as it was
+  const line = h.slice(h.indexOf('class="inspstory"'), h.indexOf('<h3>People'));
+  const fold = line.match(/<details class="inspmore" data-keep="([^"]+)"><summary>…\+3<\/summary>(.*?)<\/details>/);
+  assert.ok(fold, line);
+  assert.ok(fold[1].includes('sam'), fold[1]);
+  for (const p of ppl.slice(0, 3)) assert.ok(line.indexOf(`data-inspsel="${p}"`) < line.indexOf('<details'), p + ' before the fold');
+  for (const p of ppl.slice(3)) assert.ok(fold[2].includes(`data-inspsel="${p}"`), p + ' in the fold');
+  assert.ok(line.includes('</details> home too.'));
+  assert.equal(line.replace(/<summary>.*?<\/summary>/, '').replace(/<[^>]+>/g, '').replace(/^.*?\d\d:\d\d /, ''), beat.text);
+  // as many as asked for; a list no longer than that one more doesn't fold
+  assert.ok(!inspect.mind(told, 'sam', { story: { names: 5 } }).includes('inspmore'));
+  assert.ok(inspect.mind(told, 'sam', { story: { names: 4 } }).includes('<summary>…+2</summary>'));
+});
+
 test('the panel steps the clock no further back than Esper remembers, lists and counts', () => {
   const w = buildRocinante(Tyrell, { seed: 'panel', start: 6 * 60 });
   w.advance(120);

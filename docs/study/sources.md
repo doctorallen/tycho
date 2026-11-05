@@ -6,6 +6,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Plants](#plants)
 - [Worlds and levels](#worlds-and-levels)
 - [Real geography](#real-geography)
+- [People and histories](#people-and-histories)
 - [Zoom and chunks](#zoom-and-chunks)
 - [Palette and resolution](#palette-and-resolution)
 - [Text and interface](#text-and-interface)
@@ -219,6 +220,19 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [SNESLab, BG3 High Priority](https://sneslab.net/wiki/BG3_High_Prio): per-tile priority bits, for walk-under layers.
 - [SNESdev wiki, Mode 5](https://snes.nesdev.org/wiki/Mode_5): SNES background modes.
 - [Slynyrd, Pixelblog 20: top-down tiles](https://slynyrd.com/blog/2019/8/27/pixelblog-20-top-down-tiles): 16×16 as the common tile size.
+
+## People and histories
+
+[The page](people.md), which lists all its sources.
+
+- [Martin O'Leary, naming-language](https://github.com/mewo2/naming-language): seeded naming languages from phoneme sets and syllable shapes.
+- [Mark R. Johnson, procedural generation of linguistics, dialects, naming conventions and spoken sentences (2016)](https://pcgworkshop.com/archive/johnson2016procedural.pdf): Ultima Ratio Regum's languages.
+- [Tarn Adams, simulation principles from Dwarf Fortress, Game AI Pro 2 ch. 41](http://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter41_Simulation_Principles_from_Dwarf_Fortress.pdf): simulating a world's history.
+- [Grinblat and Bucklew, generation of mythic biographies in Caves of Qud (FDG 2017)](https://www.freeholdgames.com/papers/Generation_of_mythic_biographies_in_Cavesofqud.pdf): a history written backward from its artifacts.
+- [Ryan and Mateas, Talk of the Town, Game AI Pro 3 ch. 37](http://www.gameaipro.com/GameAIPro3/GameAIPro3_Chapter37_Simulating_Character_Knowledge_Phenomena_in_Talk_of_the_Town.pdf): a town's people who know and misremember its past.
+- [Azgaar's Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator): names, cultures and religions placed on a map.
+- [Ultima Codex, Ultima VII SCHEDULE.DAT](https://www.wiki.ultimacodex.com/wiki/Ultima_VII_internal_formats_%E2%80%93_SCHEDULE.DAT): the classic daily schedule as data.
+- [Paavo, what was Radiant AI, anyway?](https://blog.paavo.me/radiant-ai): Oblivion's schedules and packages, and what was cut.
 
 ## Zoom and chunks
 

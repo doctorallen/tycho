@@ -70,6 +70,7 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Worlds and levels](worlds.md) | Noise and climate terrain, graph-first levels, small-region WFC, dual-grid autotiles, villages, and generate-and-test |
 | [Real geography](geography.md) | How real landforms, water, climate and caves are made, with a world you can watch form and visit in 3/4 view |
 | [Settlements, paths and trees](settling.md) | Where villages go, how paths and trails form, where each plant grows, and how height is drawn in 3/4 view |
+| [People and histories](people.md) | Naming languages, cultures, generated histories that leave marks on a place, and daily routines, all feeding Tyrell |
 | [Zoom and chunks](zoom.md) | An endless world zoomed from region map to single flower through a pyramid of indexed chunks |
 | [Palette and resolution](looks.md) | Hardware and modern styles as rules, OKLab ramps, world-anchored dither, detail tiers, integer scaling and palettes colorblind players can read |
 | [Text and interface](text.md) | Pixel fonts and talk boxes at 320×180, integer scaling and touch targets on phones |

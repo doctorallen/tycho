@@ -15,6 +15,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Motion](#motion)
 - [Effects and simulations](#effects-and-simulations)
 - [Sound and music](#sound-and-music)
+- [Phones and budgets](#phones-and-budgets)
 - [Reaching a style](#reaching-a-style)
 - [The five games](#the-five-games)
 
@@ -375,6 +376,19 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [A Sound Effect, Paul Weir on No Man's Sky](https://www.asoundeffect.com/no-mans-sky-sound-procedural-audio/): procedural audio and generated music in a shipped game.
 - [Chris Wilson, a tale of two clocks](https://web.dev/articles/audio-scheduling): the look-ahead scheduler.
 - [MDN, AudioSession.type](https://developer.mozilla.org/en-US/docs/Web/API/AudioSession/type): Safari's switch between ambient and playback audio.
+
+## Phones and budgets
+
+[The page](phones.md).
+
+- [WebKit, updates to storage policy](https://webkit.org/blog/14403/updates-to-storage-policy/): Safari's storage quotas and eviction.
+- [WebKit, full third-party cookie blocking and more](https://webkit.org/blog/10218/full-third-party-cookie-blocking-and-more/): the seven-day cap on script-written storage.
+- [WebKit bug 277848](https://bugs.webkit.org/show_bug.cgi?id=277848): the 1.5 GB soft memory limit for a tab.
+- [WebKit bug 215745](https://bugs.webkit.org/show_bug.cgi?id=215745): requestAnimationFrame held to 30 fps in Low Power Mode.
+- [Notebookcheck, iPhone 17 Pro review](https://www.notebookcheck.net/Apple-iPhone-17-Pro-review-Faster-longer-further-Is-that-enough.1140998.0.html): browser benchmark scores and throttling for a current phone.
+- [Yan et al., HotPower 2015](https://engineering.purdue.edu/~hotpower/HotPower_2015_paper_6.pdf): what frame rate costs in battery.
+- [Surma, is postMessage slow?](https://surma.dev/things/is-postmessage-slow/): the cost of sending data to a worker.
+- [Chrome, the Page Lifecycle API](https://developer.chrome.com/docs/web-platform/page-lifecycle-api): when a hidden page is frozen or discarded, and when to save.
 
 ## Reaching a style
 

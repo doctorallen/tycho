@@ -25,6 +25,7 @@ What would move into Tycho from this study, in five waves: an indexed foundation
 | 1 | `seed` additions (fBm builder, ridged, warp, Worley, clump, gradient noise) | core | Lodestar `artNoise`/`artClump`, Merryfolk warp and ridges | Merryfolk, Elsewhere | S–M | [Worlds and levels](worlds.md) |
 | 1 | `check` (ink counts, orphans, clusters, reachability, seed sweeps, retry) | core, with test-kit glue | none; extends `testkit` | Elsewhere | S–M | [Worlds and levels](worlds.md) |
 | 1 | `check.style` (ramps and hue steps, colors per 4×4 cell, cluster histogram and orphan ratio, outline share, light vector, line weight, proportions, detail density, 3×3 pattern overlap) | core, with test-kit glue | none | Elsewhere | S–M | [Reaching a style](style.md) |
+| 1 | `work` (a reused Blob-URL worker, frame slicing under a millisecond budget, transferred typed arrays), a byte budget for `Chunks`, a compressed IndexedDB chunk store, save on hide, an idle 30 Hz mode | core, shell | none | Elsewhere | S–M | [Phones and budgets](phones.md) |
 | 2 | `finish` (outline modes, form shading, cleanup, silhouettes, see-through) | pixels | Lodestar `buildArtSprite` shader and `outlineBuf`; Merryfolk `gridCanvas` rings; Neo `spr_outline` | Lodestar, then Elsewhere | M–L | [Sprites](sprites.md) |
 | 2 | `iso` (projection, faces, diamonds, depth order) | pixels | Elsewhere `Ink.Iso`, frogs `iso`/`unIso` | Elsewhere | S–M | [Perspectives](views.md) |
 | 2 | `kit` (parts with sockets and material slots) | pixels | frogs `hat()`; White Dragon `person(o)` options | Elsewhere, White Dragon | M | [Sprites](sprites.md) |
@@ -141,6 +142,8 @@ const m = Tycho.check.style(sheet, pal, { ramps, mask }) → {
 Tycho.check.overlap(sheet, anchors, { n = 3, classes: 'ramp' }) → 0..1   // WFC's C1 condition as a score
 Tycho.check.compare(m, target, accept) → { pass, misses: [metric, value, limit][] }
 ```
+
+**`work`** ([Phones and budgets](phones.md)). Every generator in the later waves has to fit a phone, which takes up to about four times as long as the 2019 laptop the study's timings come from. A job runner keeps one worker made from a Blob URL (so a game ships no extra file), transfers typed arrays rather than copying them, and falls back to slicing a job across frames under a millisecond budget. Beside it: a byte budget on `Chunks`, a compressed IndexedDB store for chunks where a miss just means generating again, saving when the page is hidden, an idle 30 Hz drawing mode, and the study's bench in the dev drawer so a phone's numbers are one tap away.
 
 ## Wave 2: looks, places in projection, and people
 

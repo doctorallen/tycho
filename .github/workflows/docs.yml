@@ -15,10 +15,12 @@ name: Docs
 #
 # A push to main that touches the docs builds and publishes; a pull request
 # builds the same site and stops there, so a page that breaks the build is
-# caught before anything goes public.
+# caught before anything goes public. While the study (docs/study) is worked
+# on in its branch, a push to study publishes too, so its demos can be seen
+# on a phone; the github-pages environment allows both branches.
 on:
   push:
-    branches: [main]
+    branches: [main, study]
     paths:
       - README.md
       - docs/**
@@ -62,8 +64,9 @@ jobs:
 
   deploy:
     needs: build
-    # Only main publishes; one deployment at a time, never cancelled.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Only main (and the study's branch, while it's worked on) publishes; one
+    # deployment at a time, never cancelled.
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/study') && github.event_name != 'pull_request'
     concurrency:
       group: pages
       cancel-in-progress: false

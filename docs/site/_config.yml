@@ -40,6 +40,25 @@ nav:
       - { title: Eros, the sandbox, url: /docs/eros.html }
       - { title: The move onto Tycho, url: /docs/move.html }
       - { title: The logo, url: /docs/brand/ }
+  - title: The study
+    pages:
+      - { title: Overview, url: /docs/study/ }
+      - { title: Sprites and items, url: /docs/study/sprites.html }
+      - { title: Plants, url: /docs/study/plants.html }
+      - { title: Worlds and levels, url: /docs/study/worlds.html }
+      - { title: Real geography, url: /docs/study/geography.html }
+      - { title: Zoom and chunks, url: /docs/study/zoom.html }
+      - { title: Palette and resolution, url: /docs/study/looks.html }
+      - { title: Perspectives, url: /docs/study/views.html }
+      - { title: The sun, url: /docs/study/sun.html }
+      - { title: Light, url: /docs/study/light.html }
+      - { title: Motion, url: /docs/study/motion.html }
+      - { title: Effects and simulations, url: /docs/study/effects.html }
+      - { title: Reaching a style, url: /docs/study/style.html }
+      - { title: The five games, url: /docs/study/games.html }
+      - { title: The roadmap, url: /docs/study/roadmap.html }
+      - { title: Sources, url: /docs/study/sources.html }
+      - { title: Research notes, url: /docs/study/notes/ }
   - title: Tyrell
     pages:
       - { title: Overview, url: /tyrell/ }

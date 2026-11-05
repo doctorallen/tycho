@@ -4,7 +4,8 @@
 // `.md` link into a link to its page. A link that leaves the docs (to the
 // source, an example, the license) is pointed at GitHub instead. Then the
 // site's layout (docs/site) goes beside them. The docs stay plain Markdown
-// that reads on GitHub.
+// that reads on GitHub. The study's pages (docs/study) also carry live demos:
+// their scripts are copied as they are, and run only on the site.
 //
 //   node scripts/stage-docs.mjs <out> [https://github.com/owner/repo/blob/main]
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -24,6 +25,8 @@ const walk = (p) => {
   if (statSync(abs).isDirectory()) { for (const f of readdirSync(abs).sort()) if (f !== 'site') walk(posix.join(p, f)); }
   else if (p.endsWith('.md')) pages.push(p);
   else if (/\.(svg|png|jpe?g|gif|webp)$/i.test(p)) pictures.push(p);
+  // (the study's live demos: their scripts and bench, copied as they are and run on the site)
+  else if (p.startsWith('docs/study/') && /\.(js|html)$/i.test(p)) pictures.push(p);
 };
 const pictures = [];
 for (const s of SOURCES) walk(s);
@@ -67,4 +70,4 @@ for (const p of pages) {
 for (const p of pictures) { mkdirSync(dirname(join(out, p)), { recursive: true }); cpSync(join(root, p), join(out, p)); }
 // the layout, the stylesheet and the config
 cpSync(join(root, 'docs/site'), out, { recursive: true });
-console.log(`staged ${pages.length} pages and ${pictures.length} pictures into ${relative(root, normalize(out)) || out}, ${changed} links pointed at GitHub`);
+console.log(`staged ${pages.length} pages and ${pictures.length} pictures and demo files into ${relative(root, normalize(out)) || out}, ${changed} links pointed at GitHub`);

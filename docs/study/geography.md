@@ -7,21 +7,22 @@ How real land is made, and how a game can make it the same way, in the same orde
 Text marked *(inference)* is reasoning from the sources, not a sourced fact. Times marked "bench" were measured for the notes with [world_generation_bench.js](notes/world_generation_bench.js): Node v26.8.1 on a 2019 Intel i9-9880H laptop at 2.3 GHz, one thread, typed arrays, 8-neighbor grids. No phone was measured.
 
 <figure class="demo"><div class="stage" data-demo="geo-world"></div>
-<figcaption><b>A world made the way the land is.</b> Plates collide and raise ranges, rivers carve them down, and the wind leaves deserts behind the mountains, built in stages you watch: the tabs show the height before erosion, the plates, erosion, water, temperature, rain, biomes, soil and the final map. Villages settle by water on sunny, sheltered flats, and roads join them along the easiest ground. Tap anywhere to walk into that place in 3/4 view: terraced cliffs with rock strata, waterfalls, fields round a green, trees by habitat, and caves under <i>Underground</i>. <i>Show scores</i> heats the village sites. Drag and pinch to move round a region; New seed makes another world.</figcaption></figure>
+<figcaption><b>A world made the way the land is.</b> Plates collide and raise ranges, rivers carve them down, and the wind leaves deserts behind the mountains, built in stages you watch: the tabs show the height before erosion, the plates, erosion, water, temperature, rain, biomes, soil and the final map. Villages settle by water on sunny, sheltered flats, and roads join them along the easiest ground. The <i>Rock</i> tab shows the rock the plates left: basalt, granite, and a folded layer cake of limestone, sandstone and shale. Tap anywhere to walk into that place in 3/4 view: cliffs banded with the beds they cut, waterfalls, a village shaped by its site, trees by habitat with blended edges, and under <i>Underground</i> the caves that rock makes: karst passages draining to springs, lava tubes, sea caves. <i>Show scores</i> heats the village sites. Drag and pinch to move round a region; New seed makes another world.</figcaption></figure>
 
 The demo's limits, plainly:
-- **Timing:** the world takes about 0.7 s of work (1.25 s on the clock) on a desktop: plates about 230 ms, 16 erosion steps about 310 ms, the rest about 180 ms. A region takes 0.2 to 0.5 s. No phone was measured.
+- **Timing:** the world takes about 0.77 s of work (1.3 s on the clock) on a desktop: plates about 260 ms, 16 erosion steps about 325 ms, the rest about 190 ms. A region takes 0.09 to 0.42 s, 0.2 s typically; the first one also paints the plant sprites. No phone was measured.
 - **Height:** a region's terrace height adapts to it (20 to 300 m a step), so neighboring regions don't share one scale.
 - **Rain:** it is scaled to a percentile, so every world has both wet and dry land.
-- **Villages:** they form only round a green, never along a street.
-- **Caves:** they come from noise, not from rock dissolving along a water table.
-- **Regions:** biome edges sometimes run straight along world cells, and forests carry too many bushes.
+- **Caves:** they're two levels of one-tile passages, drawn as a cutaway: no spongework or ramiform caves, no shafts below the sinkholes, no talus or glacier caves ([caves](#caves-made-by-the-rock)).
+- **Rock:** the layer cake is the same everywhere a bed's height is the same; there's no metamorphic rock, and basalt runs all the way down.
+- (Fixed: villages now take a form from their site, caves come from the rock and the water table, and biome edges follow the climate instead of the world grid; see [the settlements page](settling.md) and the note [caves_villages_edges.md](notes/caves_villages_edges.md).)
 
 - [Landmass and plates](#landmass-and-plates)
 - [Uplift and erosion](#uplift-and-erosion)
 - [Water: rivers, lakes and oceans](#water-rivers-lakes-and-oceans)
 - [Climate and biomes](#climate-and-biomes)
 - [Caves and rock](#caves-and-rock)
+- [Caves made by the rock](#caves-made-by-the-rock)
 - [What fits on a phone, and what to precompute](#what-fits-on-a-phone-and-what-to-precompute)
 - [What Tycho would need](#what-tycho-would-need)
 - [Sources](#sources)
@@ -278,7 +279,7 @@ High drainage is "important for forming hills"; low drainage makes lakes, rivers
 
 Minecraft's aquifers decide what fills every empty block. The world is cut into cells of 16×12×16 blocks, each with one jittered center that has a fluid level and type, and a block takes the nearest center's status, a 3D Voronoi, so levels step at cell boundaries, with stone barriers between differing neighbors. Partly flooded levels cluster near Y = 40·floor(Y/40) + 20 ± 10. Lava appears where the level is at or below Y = −10 and |lava noise| > 0.3, sampled per 64×40×64 blocks. Under the sea floor, cells are almost always flooded to sea level; inland, mostly dry. There are no aquifers where erosion < −0.225 and depth > 0.9, the deep dark ([Minecraft Wiki, Cave](https://minecraft.wiki/w/Cave)).
 
-Karst and lava tubes have no cheap game-ready algorithm in the sources; the PLUME framework (arXiv 2508.20926) targets planetary shelters, not games. For a 2D or isometric pixel game, the realistic budget answer is CA caves or a noise-band "spaghetti" in a 2D slice, gated by rock type: limestone strata for karst, basalt near volcanism for tubes *(inference)*.
+Karst and lava tubes have no game-ready algorithm in the sources; the PLUME framework (arXiv 2508.20926) targets planetary shelters, not games. The hydrogeology tools above do have one at their core, a shortest-path tree from springs to sinkholes, and it turns out cheap enough to run per region: [Caves made by the rock](#caves-made-by-the-rock) below.
 
 ### Rock
 
@@ -287,6 +288,27 @@ Karst and lava tubes have no cheap game-ready algorithm in the sources; the PLUM
 - **Dwarf Fortress** sets `MINERAL_SCARCITY:2500` (100–100,000; the menu presets are 50000, 10000, 2500, 500 and 100).
 
 Province-driven strata or chained layer tables cost nothing at generation time, a lookup per column. They matter only if a world shows cliffs, mines or caves *(inference)*.
+
+The demo's rock is a lookup of that kind, driven by the plates. During the plates stage a volcanic field gathers island arcs, continental arcs (at 45%), rift floors (four times, as flood basalt), mid-ocean ridges and hotspot shields, plus any land on an oceanic plate far from a continent; above 0.45 it's basalt. Granite goes where uplift was fast enough to strip a range to its core, or where old ranges are worn to their roots. Everywhere else is a layer cake of sedimentary beds 150 m thick, each bed's rock drawn from a hash of its index (42% limestone, 30% sandstone, 28% shale), folded by a slow noise of ±0.45 km. So the rock at a point depends on its height, and a valley cut deep enough reaches the next bed down. A region's cliffs are banded with the beds they cut, and the <i>Rock</i> tab marks karst where limestone gets over 45 cm of rain. It costs about 3 ms for the world map *(measured)*.
+
+## Caves made by the rock
+
+Real caves come from rock and water, not from noise. Most are dissolved in limestone along joints and bedding planes, at and just below the water table, and the recharge decides the pattern (Palmer 1991, abstract). Sinkholes feeding water to points make **branchwork**, tributaries joining downstream into fewer, larger passages: about 57% of Palmer's roughly 500 caves, and 72 to 84% of 633 Missouri caves. Diffuse recharge, as through a permeable caprock, opens every fracture at once into a **network maze** (17%); floodwater backing up from a river braids **anastomotic** loops (3%) ([Palmer 1991](https://digitalcommons.usf.edu/kip_articles/4015); [Palmer 1975](https://digitalcommons.usf.edu/kip_articles/4197); [Dom and Wicks 2003](https://repository.lsu.edu/geo_pubs/1093), the shares via search summary). Cave levels record old stands of the base-level river: as the valley deepens, the old level drains and dries, and only then can speleothems grow, since calcite comes out of water losing CO₂ to the air ([NPS](https://www.nps.gov/grba/learn/nature/speleothems-cave-formations.htm)). Lava tubes are rivers of lava under their own crust, 1 to 15 m down, following the flow downslope, open through skylights where the roof fell in ([USGS](https://www.usgs.gov/news/truth-about-terrifying-lava-skylight-where-only-trained-should-lurk); [Wikipedia](https://en.wikipedia.org/wiki/Lava_tube)). Sea caves are cut by waves along weak zones in cliffs at sea level ([Wikipedia](https://en.wikipedia.org/wiki/Sea_cave)). The full sourcing is in [caves_villages_edges.md](notes/caves_villages_edges.md).
+
+Games don't do any of this. Dwarf Fortress's cavern layers are world-wide horizontal bands with openness and passage-density sliders; Minecraft's cheese, spaghetti and noodle caves are thresholds and zero-crossings of 3D noise, its carver caves Perlin worms; Terraria runs random-walk "TileRunner" passes; Noita fills its biomes with herringbone Wang tiles and rejects layouts a pathfinder can't cross; Spelunky lays a guaranteed path through a 4×4 grid of room templates ([DF wiki](https://dwarffortresswiki.org/index.php/DF2014:Advanced_world_generation); [Minecraft Wiki](https://minecraft.wiki/w/Cave); [Terraria wiki](https://terraria.wiki.gg/wiki/World_generation); [Noita wiki](https://noita.wiki.gg/wiki/User:NoitaArena/Staging/World_generation); [Kazemi](https://tinysubversions.com/spelunkyGen/)). Only the hydrogeology tools grow passages from inlets to outlets, Paris et al. by an anisotropic shortest path steered by fractures and inception horizons, KarstNSim and pyKasso by fast marching ([Paris et al. 2021](https://perso.liris.cnrs.fr/aparis/public_html/projects/paris2021_Karsts.html); [HAL](https://hal.univ-lorraine.fr/hal-04468018), via search summary).
+
+That core is a single Dijkstra, and on a 64×48 region it's nearly free. The demo:
+
+| Cave | Where | How |
+|---|---|---|
+| Karst, active level | Limestone at the water's own level within two tiles of a river, lake or the sea, under at least a terrace of ground: up to six springs, 7 tiles apart | Joints in two sets at right angles, square to the plate's drift, 4 or 5 tiles apart and wavering. A multi-source Dijkstra grows from the springs through limestone at each spring's level, 1 along a joint and 2.8 through solid rock. Up to nine sinkholes (limestone at the surface, dry, open, 6 tiles apart, wetter and flatter first) trace back to their springs, so the passages join downstream: branchwork. A passage carrying three or more sinkholes' water is two tiles wide. Streams run along them to the springs, which issue at the foot of a cliff or well up on the bank |
+| Karst patterns | Under a sandstone bed just above the passage level; near a spring on a big river or a lake | Every joint within 3 tiles of a capped passage opens (a network maze, from diffuse recharge). Near a flooding river, side passages braid off the last tiles before the spring and rejoin (anastomotic): a fresh Dijkstra between two points of the trunk with a random cost that avoids the trunk |
+| Karst, old level | Two to four terraces above the springs (about 70 m), or without springs the limestone level most cut by valley walls | The same growth, from entrances where a valley wall cuts the level; dry, with speleothems; mouths open in the cliff face at the level's own height when the wall faces the viewer |
+| Lava tubes | Regions over a fifth basalt | From the highest basalt (and a second vent 18 tiles off), a tube runs down the smooth world slope with momentum and a little wander, a terrace under the surface, never climbing; a skylight every nine tiles |
+| Sea caves | Where the sea meets a cliff two or more terraces high in rock other than shale | Two to four tiles inland at sea level, up to four, the mouth at the waterline |
+| Rock shelters | The foot of a sandstone cliff three or more terraces high | A one-tile alcove, up to two |
+
+Limestone dissolves only where there's water to do it, so a region averaging under 25 cm of rain gets no karst. Each passage tile keeps its level, so the underground cutaway draws it at its own depth, its back wall in the rock of the bed above. A region with none says so ("no caves in its granite"). How common caves are depends on the world: in seed 4242, whose interior is mostly limestone, every village's region had karst; in seed 777, mostly shale and sandstone, five of sixteen did, one had a lava tube, two sea caves, and one no cave at all. With the caves, a region still builds in 0.09 to 0.42 s, against 0.16 to 0.35 s before *(measured)*. Not done: spongework and ramiform caves, shafts below the sinkholes, flooded passages below the spring level, talus and glacier caves. A cave level crossing a region edge doesn't continue into the next region, which would need the springs and sinkholes chosen per world cell instead of per region *(inference)*.
 
 ## What fits on a phone, and what to precompute
 
@@ -356,6 +378,7 @@ No phone measurements were made, and no reliable mid-range-phone JS benchmark wa
 - **`gen.flow`:** priority-flood recording receivers and order, accumulation in reverse order, an implicit stream-power step and a wind sweep, all on typed arrays and safe to run in a worker.
 - **A habitat module:** Merryfolk's land analysis (slope, aspect and sun, distance to water, flow, wetness index, soil class) as reusable maps, with the species tables left to each game or quest.
 - **Paths:** least-cost A* with Galin's k-masks and Tobler or capped-slope costs, and a wear grid for desire paths.
+- **Rock and caves:** a `rockAt(x, y, z)` lookup from a few world fields (volcanism, crystalline core, fold) and a multi-source Dijkstra with per-source levels for karst from springs to sinkholes. Both are small and game-agnostic, and a mine, a quarry or a cave quest could use them.
 - **GPU erosion** only if `Tycho.gpu` gains render-to-texture with float targets, which is outside these notes.
 
 ## Sources
@@ -393,7 +416,9 @@ No phone measurements were made, and no reliable mid-range-phone JS benchmark wa
 - Sea of Stars: [PlayStation Blog](https://blog.playstation.com/?p=382678), [MobileSyrup interview with Thierry Boulanger](https://mobilesyrup.com/2023/09/11/sea-of-stars-level-design-sabotage-studio-thierry-boulanger-interview/), [Nintendo Life hands-on](https://www.nintendolife.com/news/2020/03/hands_on_first_impressions_of_sea_of_stars_the_next_project_from_the_messenger_dev_sabotage)
 - Merryfolk: [README](https://github.com/doctorallen/merryfolk/blob/main/README.md), [terrain.js](https://github.com/doctorallen/merryfolk/blob/main/js/terrain.js), [layout.js](https://github.com/doctorallen/merryfolk/blob/main/js/layout.js), [nature.js](https://github.com/doctorallen/merryfolk/blob/main/js/nature.js), [world.js](https://github.com/doctorallen/merryfolk/blob/main/js/world.js), [cliffs.js](https://github.com/doctorallen/merryfolk/blob/main/js/cliffs.js)
 
-The full research is in the notes on [realistic world generation](notes/realistic_world_generation.md), with its benchmark [world_generation_bench.js](notes/world_generation_bench.js), and on [settlements, paths and vegetation](notes/settlements_paths_vegetation.md).
+- Caves: [Palmer 1991, abstract](https://digitalcommons.usf.edu/kip_articles/4015), [Palmer 1975, maze caves](https://digitalcommons.usf.edu/kip_articles/4197), [Dom and Wicks 2003](https://repository.lsu.edu/geo_pubs/1093), [NPS speleothems](https://www.nps.gov/grba/learn/nature/speleothems-cave-formations.htm), [USGS lava skylights](https://www.usgs.gov/news/truth-about-terrifying-lava-skylight-where-only-trained-should-lurk), [Paris et al. 2021](https://perso.liris.cnrs.fr/aparis/public_html/projects/paris2021_Karsts.html), [Noita world generation](https://noita.wiki.gg/wiki/User:NoitaArena/Staging/World_generation), [Kazemi, Spelunky generator](https://tinysubversions.com/spelunkyGen/)
+
+The full research is in the notes on [realistic world generation](notes/realistic_world_generation.md), with its benchmark [world_generation_bench.js](notes/world_generation_bench.js), on [settlements, paths and vegetation](notes/settlements_paths_vegetation.md), and on [caves, village forms and biome edges](notes/caves_villages_edges.md).
 
 <script src="demos/kit.js"></script>
 <script src="demos/flora.js"></script>

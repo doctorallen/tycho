@@ -4,9 +4,15 @@
 // slumps; water gathers into rivers, lakes and salt flats; westerlies and trade winds carry rain inland and drop it on
 // windward slopes; Whittaker biomes and soils follow; villages settle where people did (water, flat arable land,
 // shelter, sun, fords) and least-cost roads (Tobler's hiking function, 16 directions) join them, reusing each other.
-// Tap the map to embark: that cell's region in 3/4 oblique pixel art, terraced with strata, with waterfalls, a village,
-// trails, plants from window.Flora (simple shapes without it) and caves underneath.
-// Built on Merryfolk's valley (js/terrain.js, js/layout.js) and the notes in settlements_paths_vegetation.md.
+// The rock follows the plates too: basalt where they part, arc and hotspot volcanoes, granite where ranges were
+// stripped to their roots, and elsewhere a gently folded layer cake of limestone, sandstone and shale.
+// Tap the map to embark: that cell's region in 3/4 oblique pixel art, terraced with the strata of its own rock, with
+// waterfalls, a village whose form comes from its site (a street village along a valley road, a forest strip village,
+// a green, an Anger on the road, a hill village, a fishing hamlet), trails, plants from window.Flora (simple shapes
+// without it) whose biomes blend at their edges, and caves made by the rock: karst passages dissolved along joints at
+// the water table and drained to springs, lava tubes down basalt slopes, sea caves and sandstone shelters.
+// Built on Merryfolk's valley (js/terrain.js, js/layout.js) and the notes in settlements_paths_vegetation.md and
+// caves_villages_edges.md.
 'use strict';
 (() => {
   const hash2 = Kit.hash2;
@@ -232,6 +238,22 @@
   const SOIL_COL = ['#6b4a2a', '#8f6a3a', '#a07a8a', '#b8b0a0', '#e8d49a', '#3a3428', '#6e6a70'].map(P);
   const OCEAN_DEEP = P('#14305e'), OCEAN = P('#1d4a86'), SHELF = P('#2f72ae'), SHALLOW = P('#4f9ccc'), LAKE = P('#3d8cc4'), SALT = P('#efe6d0'), SALT_LAKE = P('#5fb0b8'), RIVER = P('#2f7fc0'), RIVER_BIG = P('#2a6fb0');
   const ROAD = P('#5a3a20'), TRAIL = P('#b49a6a');
+  // Whittaker's climate classes, shared by the world and the regions (cold desert, steppe or tundra where it's dry)
+  const whittaker = (t, p) => t < -3 ? TUNDRA : t < 4 ? (p < 10 ? DESERT : p < 22 ? (t > 0 ? GRASS : TUNDRA) : TAIGA)
+    : t < 18 ? (p < 22 ? DESERT : p < 55 ? GRASS : FOREST) : (p < 28 ? DESERT : p < 115 ? SAVANNA : JUNGLE);
+
+  // ---- rock: volcanic where the plates say so, crystalline where ranges were stripped to their roots, and elsewhere
+  // a layer cake of sedimentary beds 150 m thick, gently folded, so a valley cut deep enough reaches another bed ----
+  const R_SHALE = 0, R_SAND = 1, R_LIME = 2, R_GRAN = 3, R_BAS = 4;
+  const ROCK_NAME = ['shale', 'sandstone', 'limestone', 'granite', 'basalt'];
+  const ROCK_COL = ['#8c7c6c', '#c47a4c', '#d6cdb0', '#a8828e', '#46424e'].map(P);
+  const foldAt = (x, y, seed) => 0.45 * fbm(x / 40, y / 40, seed + 901, 2);
+  function rockOf(seed, volc, crys, fold, z) {
+    if (volc > 0.45) return R_BAS;
+    if (crys > 0.5) return R_GRAN;
+    const r = hash2(Math.floor((z + fold + 5) / 0.15), 0, seed + 907);
+    return r < 0.42 ? R_LIME : r < 0.72 ? R_SAND : R_SHALE;
+  }
 
   // ===================================================================================================
   // the world, in stages
@@ -255,7 +277,7 @@
     for (let k = 0; k < Math.round(nP * 0.42); k++) plates[ids[k]].cont = true;
     w.plates = plates;
     const pid = w.pid = new Uint8Array(NN), bd = w.bd = new Float32Array(NN), bconv = w.bconv = new Float32Array(NN);
-    const up = new Float32Array(NN), dn = new Float32Array(NN), contRaw = new Float32Array(NN);
+    const up = new Float32Array(NN), dn = new Float32Array(NN), contRaw = new Float32Array(NN), volRaw = new Float32Array(NN);
     const sw = seed + 11;
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
@@ -264,7 +286,7 @@
         let d1 = 1e9, j1 = 0;
         for (let j = 0; j < nP; j++) { const dx = wx - plates[j].x, dy = wy - plates[j].y, d = dx * dx + dy * dy - plates[j].wt; if (d < d1) { d1 = d; j1 = j; } }
         const a = plates[j1];
-        let near = 1e9, nconv = 0, u = 0, v = 0;
+        let near = 1e9, nconv = 0, u = 0, v = 0, vo = 0;
         for (let j = 0; j < nP; j++) {
           if (j === j1) continue;
           const b = plates[j], ex = b.x - a.x, ey = b.y - a.y, el = Math.hypot(ex, ey) || 1;
@@ -275,25 +297,26 @@
           // how fast the plates close along the line between them (negative: they part)
           const conv = ((a.vx - b.vx) * ex + (a.vy - b.vy) * ey) / el;
           if (d < near) { near = d; nconv = conv; }
+          // vo gathers volcanic rock: arcs over sinking plates, basalt where plates part
           if (conv > 0.05) {
             if (a.cont && b.cont) u += conv * (1.5 * Math.exp(-((d / 12) ** 2)) + 0.3 * Math.exp(-((d / 26) ** 2))); // collision range and plateau
-            else if (a.cont) u += conv * 1.5 * Math.exp(-(((d - 9) / 6.5) ** 2)); // the overriding plate: a coastal range
+            else if (a.cont) { const t = conv * 1.5 * Math.exp(-(((d - 9) / 6.5) ** 2)); u += t; vo += t * 0.45; } // the overriding plate: a coastal range of volcanoes
             else if (b.cont) v += conv * 2 * Math.exp(-((d / 3.5) ** 2)); // the sinking plate: a trench
-            else if (a.k < b.k) u += conv * 2.2 * Math.exp(-(((d - 6) / 3) ** 2)) * sstep(0.35, 0.65, ridged(x / 9, y / 9, seed + 5, 2)); // an island arc, in a chain
+            else if (a.k < b.k) { const t = conv * 2.2 * Math.exp(-(((d - 6) / 3) ** 2)) * sstep(0.35, 0.65, ridged(x / 9, y / 9, seed + 5, 2)); u += t; vo += t; } // an island arc, in a chain
             else v += conv * 1.8 * Math.exp(-((d / 3) ** 2));
           } else if (conv < -0.05) {
-            if (a.cont && b.cont) v += -conv * 0.32 * Math.exp(-((d / 3.5) ** 2)); // a rift valley
-            else if (!a.cont && !b.cont) u += -conv * 1.2 * Math.exp(-((d / 9) ** 2)); // a mid-ocean ridge
+            if (a.cont && b.cont) { const t = -conv * 0.32 * Math.exp(-((d / 3.5) ** 2)); v += t; vo += t * 4; } // a rift valley, floored with basalt
+            else if (!a.cont && !b.cont) { const t = -conv * 1.2 * Math.exp(-((d / 9) ** 2)); u += t; vo += t; } // a mid-ocean ridge
           }
         }
         const i = y * N + x;
-        pid[i] = j1; bd[i] = near; bconv[i] = nconv; up[i] = u; dn[i] = v; contRaw[i] = a.cont ? 1 : 0;
+        pid[i] = j1; bd[i] = near; bconv[i] = nconv; up[i] = u; dn[i] = v; contRaw[i] = a.cont ? 1 : 0; volRaw[i] = vo;
       }
       if ((y & 15) === 15) { w.progress = y / N * 0.8; yield; }
     }
     // continents: the continental plates, blurred into shelves and slopes, with coasts wandering by noise
     const cont = blur(contRaw, N, N, 9, 2);
-    const U = w.U = new Float32Array(NN);
+    const U = w.U = new Float32Array(NN), crys = w.crys = new Float32Array(NN);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const i = y * N + x, e = Math.min(x, y, N - 1 - x, N - 1 - y);
       const c = cont[i] + 0.44 * fbm(x / 52, y / 52, seed + 21, 5) - Math.max(0, (24 - e) / 24) * 0.8;
@@ -307,6 +330,10 @@
       h += (0.05 + 0.2 * land) * fbm(x / 15, y / 15, seed + 31, 4);
       H[i] = h;
       U[i] = h > -0.4 ? u * 0.03 + old * land * 0.012 : 0;
+      // crystalline rock where a range has been lifted fast enough to be stripped to its granite core, or where old
+      // ranges are worn to their roots; any land on an oceanic plate far from a continent is volcanic
+      crys[i] = Math.max(sstep(0.7, 1.3, u), sstep(0.3, 0.55, old));
+      volRaw[i] = volRaw[i] * 0.9 + 0.65 * (1 - contRaw[i]) * (1 - cont[i]);
     }
     // hotspots: a volcano over each, and older, sunken islands trailing behind along the plate's drift
     for (let k = 0; k < 3; k++) {
@@ -317,10 +344,12 @@
         for (let y = Math.max(0, (py - rad * 3) | 0); y < Math.min(N, py + rad * 3); y++) for (let x = Math.max(0, (px - rad * 3) | 0); x < Math.min(N, px + rad * 3); x++) {
           const g = Math.exp(-((x - px) ** 2 + (y - py) ** 2) / (rad * rad));
           H[y * N + x] += amp * g;
+          volRaw[y * N + x] += 1.6 * Math.exp(-((x - px) ** 2 + (y - py) ** 2) / (rad * rad * 2.2)); // a shield of basalt flows
           if (s === 0) U[y * N + x] += 0.04 * g;
         }
       }
     }
+    w.volc = blur(volRaw, N, N, 2, 1);
     w.H0 = Float32Array.from(H);
     w.progress = 1; w.done.Plates = true;
     yield;
@@ -528,7 +557,7 @@
 
     // ---- 5. biomes (Whittaker, from mean heat and rain) and soils (deep on the flat, thin on the steep) ----
     w.stage = 'Biomes';
-    const biome = w.biome = new Uint8Array(NN), soil = w.soil = new Uint8Array(NN), depth = w.depth = new Float32Array(NN);
+    const biome = w.biome = new Uint8Array(NN), soil = w.soil = new Uint8Array(NN), depth = w.depth = new Float32Array(NN), rock = w.rock = new Uint8Array(NN).fill(255);
     const nearRiver = distField(river, N, N);
     w.riverDist = nearRiver;
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
@@ -543,11 +572,9 @@
       else if (h > 1.4 && t < -1.5) b = ALPINE;
       else if (coast && h < 0.12 && s < 0.03 && t > -3) b = BEACH;
       else if (p > 95 && t > 2 && s < 0.008 && twi > 7.5) b = SWAMP;
-      else if (t < -3) b = TUNDRA;
-      else if (t < 4) b = p < 10 ? DESERT : p < 22 ? (t > 0 ? GRASS : TUNDRA) : TAIGA; // cold desert, steppe or tundra where it is dry
-      else if (t < 18) b = p < 22 ? DESERT : p < 55 ? GRASS : FOREST;
-      else b = p < 28 ? DESERT : p < 115 ? SAVANNA : JUNGLE;
+      else b = whittaker(t, p);
       biome[i] = b;
+      rock[i] = rockOf(seed, w.volc[i], w.crys[i], foldAt(x + 0.5, y + 0.5, seed), h);
       // Cordonnier et al.: humus depth e^(-s^2 / (3 ln 2)), half as deep on a 30 degree slope; a world cell hides
       // steeper ground inside it, so its slope counts four times
       const dep = Math.exp(-((s * 4) ** 2) / (3 * Math.LN2));
@@ -594,7 +621,7 @@
       const i = y * N + x, b = biome[i];
       if (ocean[i] || wtr[i] || river[i] || b === ICE || b === ALPINE || slope[i] > 0.1 || T[i] < -6) continue;
       const df = dFresh.d[i], dc = dCoast.d[i];
-      const water = Math.max(df < 1.5 ? 0.85 : df <= 3 ? 1 : clamp(1 - (df - 3) / 6, 0, 1), dc < 3 ? 0.6 : 0);
+      const water = Math.max(df < 1.5 ? 0.85 : df <= 3 ? 1 : clamp(1 - (df - 3) / 6, 0, 1), dc < 3 ? 0.95 : 0); // a river, a lake, or a shore to fish from
       // out of the floodplain: higher than the river it is near
       const src = dFresh.s[i], above = src >= 0 ? H[i] - H[src] : 1;
       const dry = df > 3.5 ? 1 : sstep(0.004, 0.04, above);
@@ -623,12 +650,16 @@
       const cand = [];
       for (let i = 0; i < NN; i++) if (score[i] > 0.4) cand.push(i);
       cand.sort((a, b) => score[b] - score[a]);
-      for (const i of cand) {
-        if (towns.length >= 16) break;
+      const take = (i, max) => {
+        if (towns.length >= max) return;
         const x = i % N, y = (i / N) | 0;
-        if (towns.some(t => Math.hypot(t.x - x, t.y - y) < 19)) continue;
+        if (towns.some(t => Math.hypot(t.x - x, t.y - y) < 19)) return;
         towns.push({ x, y, i, score: score[i], big: towns.length < 4 });
-      }
+      };
+      for (const i of cand) take(i, 13);
+      // fishing villages live by the sea, not the soil: the last three places go to the best sites on a shore
+      for (const i of cand) if (dCoast.d[i] < 2.5) take(i, 16);
+      for (const i of cand) take(i, 16);
     }
     w.progress = 1; w.done.Settlements = true;
     yield;
@@ -708,8 +739,8 @@
     [1.2, '#a8835a'], [1.9, '#8a7a72'], [2.6, '#b8b4b4'], [3.2, '#f4f4f6']], -4.5, 3.6, 512);
   const TEMP = ramp([[-24, '#3b2a6e'], [-12, '#4a63b8'], [-3, '#8fc4e8'], [3, '#d8eef0'], [9, '#bfe08a'], [15, '#f0dc6a'], [21, '#f0a050'], [27, '#d8583a'], [32, '#8e2034']], -24, 32, 256);
   const RAIN = ramp([[0, '#9c5a2e'], [20, '#d8a858'], [45, '#ecdc8a'], [80, '#9ccf6a'], [130, '#3f9a52'], [200, '#2a8a8a'], [300, '#1f4f9a']], 0, 300, 256);
-  const TABS = ['Height', 'Plates', 'Erosion', 'Water', 'Temp', 'Rain', 'Biomes', 'Soil', 'Final'];
-  const TAB_NEEDS = { Height: 'Plates', Plates: 'Plates', Erosion: 'Erosion', Water: 'Water', Temp: 'Climate', Rain: 'Climate', Biomes: 'Biomes', Soil: 'Biomes', Final: 'Biomes' };
+  const TABS = ['Height', 'Plates', 'Erosion', 'Water', 'Temp', 'Rain', 'Biomes', 'Soil', 'Rock', 'Final'];
+  const TAB_NEEDS = { Height: 'Plates', Plates: 'Plates', Erosion: 'Erosion', Water: 'Water', Temp: 'Climate', Rain: 'Climate', Biomes: 'Biomes', Soil: 'Biomes', Rock: 'Biomes', Final: 'Biomes' };
   // which tab shows each stage best while it runs
   const STAGE_TAB = { Plates: 'Plates', Erosion: 'Erosion', Water: 'Water', Climate: 'Rain', Biomes: 'Biomes', Settlements: 'Final', Paths: 'Final', Done: 'Final' };
 
@@ -722,6 +753,8 @@
   }
   function paintWorld(w, tab, px) {
     const H = w.H, ok = n => w.done[n];
+    // a tab whose stage hasn't made its fields yet shows the height instead
+    if (((tab === 'Soil' || tab === 'Rock') && !ok('Biomes')) || ((tab === 'Biomes' || tab === 'Final') && !w.biome) || (tab === 'Water' && !w.wtr) || ((tab === 'Temp' || tab === 'Rain') && !w.P)) tab = 'Height';
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const i = y * N + x;
       let c;
@@ -743,7 +776,17 @@
           c = shadeC(c, shadeAt(H, i, x, y, 3));
           if (w.A) { const a = Math.log(w.A[i]) / Math.log(4000); if (a > 0.45) c = mixC(c, P('#2f7fc0'), clamp((a - 0.45) * 2.2, 0, 1)); }
         }
-      } else if (tab === 'Water' || tab === 'Final' || tab === 'Biomes' || tab === 'Soil') {
+      } else if (tab === 'Rock' && ok('Biomes')) {
+        if (w.ocean[i]) c = mixC(HYPSO.at(H[i]), P('#1d3f74'), 0.4);
+        else {
+          const r = w.rock[i];
+          c = shadeC(ROCK_COL[r], shadeAt(H, i, x, y, 2.4));
+          // karst: limestone with rain enough to dissolve it, marked with the dots of its sinkholes
+          if (r === R_LIME && w.P[i] > 45 && hash2(x, y, w.seed + 911) < 0.16) c = P('#5a5040');
+          if (w.wtr[i]) c = w.wtr[i] === 1 ? LAKE : SALT;
+          else if (w.river[i]) c = RIVER;
+        }
+      } else if (tab === 'Water' || tab === 'Final' || tab === 'Biomes' || tab === 'Soil' || tab === 'Rock') {
         if (w.ocean[i]) {
           const d = H[i];
           c = d > -0.25 ? (d > -0.06 ? SHALLOW : SHELF) : d > -2 ? OCEAN : OCEAN_DEEP;
@@ -803,8 +846,12 @@
     limestone: ['#a39b86', '#bcb49c', '#8b8471', '#cfc7b0'], redrock: ['#9c5638', '#b86c45', '#84462e', '#cc8558'],
     basalt: ['#4a4650', '#5e5a66', '#3e3a44', '#726e7a'],
   };
+  const STRATA_R = [STRATA.sedimentary, STRATA.redrock, STRATA.limestone, STRATA.granite, STRATA.basalt].map(a => a.map(P)); // by rock
   const W_SEA = 1, W_LAKE = 2, W_RIVER = 3, W_POND = 4;
-  const F_PATH = 1, F_FIELD = 2, F_GREEN = 4, F_HOUSE = 8, F_CAVE = 16, F_MOUTH = 32, F_BRIDGE = 64;
+  // F_SINK: a sinkhole, or a lava tube's skylight; F_MOUTH: a cave mouth in the cliff face; F_SPRING: a karst spring
+  const F_PATH = 1, F_FIELD = 2, F_GREEN = 4, F_HOUSE = 8, F_SINK = 16, F_MOUTH = 32, F_BRIDGE = 64, F_SPRING = 128;
+  const K_WET = 1, K_DRY = 2, K_LAVA = 3, K_SEA = 4, K_SHELTER = 5; // kinds of cave passage
+  const FORM_NAME = { street: 'street village', strip: 'forest strip village', green: 'green village', anger: 'Anger village', hill: 'hill village', shore: 'fishing hamlet' };
   const INK = P('#1a1420'), FOAM = P('#d8f0f6');
   const WATER_C = { shallow: P('#5aaed6'), mid: P('#3a8cc6'), deep: P('#26679f'), river: P('#3c90cc'), riverLight: P('#6cc0e4'), salt: P('#6cb8bc') };
   const PATHC = [0, P('#a08a62'), P('#a47c4c'), P('#9a7246')], PATH_LIGHT = P('#c4a070'), PATH_DARK = P('#6e4e30');
@@ -814,6 +861,14 @@
   function bilin(Fd, x, y) {
     const u = clamp(x - 0.5, 0, N - 1.001), v = clamp(y - 0.5, 0, N - 1.001), i = Math.floor(u), j = Math.floor(v), fx = u - i, fy = v - j, k = j * N + i;
     return (Fd[k] * (1 - fx) + Fd[k + 1] * fx) * (1 - fy) + (Fd[k + N] * (1 - fx) + Fd[k + N + 1] * fx) * fy;
+  }
+  // bilinear over the cells a mask leaves out (the sea), renormalized
+  function bilinMask(Fd, mask, x, y) {
+    const u = clamp(x - 0.5, 0, N - 1.001), v = clamp(y - 0.5, 0, N - 1.001), i = Math.floor(u), j = Math.floor(v), fx = u - i, fy = v - j, k = j * N + i;
+    let s = 0, t = 0;
+    const add = (c, wgt) => { if (!mask[c]) { s += Fd[c] * wgt; t += wgt; } };
+    add(k, (1 - fx) * (1 - fy)); add(k + 1, fx * (1 - fy)); add(k + N, (1 - fx) * fy); add(k + N + 1, fx * fy);
+    return t > 1e-6 ? s / t : bilin(Fd, x, y);
   }
   const crw = (t, a) => { const t2 = t * t, t3 = t2 * t; return a === -1 ? (-t3 + 2 * t2 - t) / 2 : a === 0 ? (3 * t3 - 5 * t2 + 2) / 2 : a === 1 ? (-3 * t3 + 4 * t2 + t) / 2 : (t3 - t2) / 2; };
   function cubic(Fd, x, y) {
@@ -959,6 +1014,17 @@
     spriteCache.set('well', s);
     return s;
   }
+  // a rowing boat drawn up at the shore
+  function boatSprite() {
+    let s = spriteCache.get('boat');
+    if (s) return s;
+    s = blankSprite(12, 6, 6, 4);
+    for (let y = 1; y <= 4; y++) for (let x = y - 1; x <= 11 - y; x++) sset(s, x, y, y === 1 ? P('#c08a52') : y === 2 ? P('#8a5a32') : P('#6a4024'));
+    for (let x = 2; x <= 9; x += 3) sset(s, x, 1, P('#5a3a20'));
+    outline(s);
+    spriteCache.set('boat', s);
+    return s;
+  }
   function blit(buf, IW, IH, s, x, y) {
     const x0 = x - s.ax, y0 = y - s.ay;
     for (let j = 0; j < s.h; j++) {
@@ -993,9 +1059,10 @@
     reg.stage = 'shaping the land';
     // the rock under the region, for the strata in the cliffs, the escarpments, and whether it makes caves
     const ci = cy * N + cx, cb = w.biome[ci];
-    const fam = w.U[ci] > 0.03 || w.relief[ci] > 0.9 ? 'granite' : (cb === DESERT || cb === SAVANNA) ? 'redrock' : w.P[ci] > 80 && hash2(cx >> 3, cy >> 3, seed + 541) < 0.6 ? 'limestone' : w.plates[w.pid[ci]].cont === false ? 'basalt' : 'sedimentary';
+    const famR = rockOf(seed, w.volc[ci], w.crys[ci], foldAt(cx + 0.5, cy + 0.5, seed), Math.max(0, w.H[ci])), fam = ROCK_NAME[famR];
     // ---- height: the world's height, interpolated, plus detail where the world is rough ----
     const h = new Float64Array(RN), hW = new Float64Array(RN), T = new Float32Array(RN), Pc = new Float32Array(RN);
+    const foldT = new Float32Array(RN), volcT = new Float32Array(RN), crysT = new Float32Array(RN);
     for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
       const i = ty * RW + tx, x = X(tx), y = Y(ty);
       const base = cubic(w.H, x, y), r = bilin(w.relief, x, y);
@@ -1004,7 +1071,9 @@
       let d = amp * fbm(x * 1.5, y * 1.5, seed + 501, 3);
       if (r > 0.1) d += amp * 1.2 * (ridged(x * 1.2, y * 1.2, seed + 503, 3) - 0.5);
       h[i] = base + d;
-      T[i] = bilin(w.T, x, y); Pc[i] = bilin(w.P, x, y);
+      // rain from the land cells only, so a coast doesn't read the sea's dry air as a desert
+      T[i] = bilin(w.T, x, y); Pc[i] = bilinMask(w.P, w.ocean, x, y);
+      foldT[i] = foldAt(x, y, seed); volcT[i] = bilin(w.volc, x, y); crysT[i] = bilin(w.crys, x, y);
     }
     // ---- local erosion: a few rounds of stream power on the tiles, so the detail drains ----
     const F = new Float64Array(RN), rec = new Int32Array(RN), ord = new Int32Array(RN), A = new Float64Array(RN), out = new Uint8Array(RN), heap = new Heap(RN + 8), done = new Uint8Array(RN);
@@ -1091,7 +1160,7 @@
     // escarpments (as Merryfolk's cliffs): along contours of a slow noise field the land steps up two terraces at
     // once, in tiers, the way a hard bed of rock stands up as a cuesta or a mesa; rivers keep their level and cut
     // gorges through. Limestone and sandstone country has more of them.
-    const tiers = fam === 'limestone' || fam === 'redrock' ? 2 : 1;
+    const tiers = famR === R_LIME || famR === R_SAND ? 2 : 1;
     for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
       const i = ty * RW + tx;
       if (wt[i] === W_SEA || wt[i] === W_LAKE) continue;
@@ -1151,20 +1220,33 @@
     }
     yield;
 
-    // ---- ground: biome from the world (with a ragged edge), snow and rock by local height and steepness ----
+    // the rock at a terrace's height under a tile: the region's own layer cake, so cliffs show the beds they cut
+    const zOf = l => base + (l + 0.5) * step;
+    const rockAt = (i, l) => rockOf(seed, volcT[i], crysT[i], foldT[i], zOf(l));
+
+    // ---- ground: biome by climate per tile (the world's heat and rain, jittered), snow and rock by height and slope ----
     reg.stage = 'reading the ground';
-    const gt = new Uint8Array(RN), fl = new Uint8Array(RN), Tt = new Float32Array(RN), dep = new Float32Array(RN);
+    const gt = new Uint8Array(RN), fl = new Uint8Array(RN), Tt = new Float32Array(RN), dep = new Float32Array(RN), rockS = new Uint8Array(RN);
     const waterMask = new Uint8Array(RN), freshMask = new Uint8Array(RN), seaMask = new Uint8Array(RN);
     for (let i = 0; i < RN; i++) { waterMask[i] = wt[i] ? 1 : 0; freshMask[i] = wt[i] && wt[i] !== W_SEA ? 1 : 0; seaMask[i] = wt[i] === W_SEA || wt[i] === W_LAKE ? 1 : 0; }
     const dW = distField(waterMask, RW, RH), dF = distField(freshMask, RW, RH), dS = distField(seaMask, RW, RH);
     for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
       const i = ty * RW + tx, x = X(tx), y = Y(ty);
-      const jx = clamp(Math.floor(x + 0.6 * fbm(x * 2.1, y * 2.1, seed + 531, 3)), 0, N - 1), jy = clamp(Math.floor(y + 0.6 * fbm(x * 2.1 + 5.5, y * 2.1 + 1.7, seed + 533, 3)), 0, N - 1);
-      let b = w.biome[jy * N + jx];
-      if (b === 255 || b === BEACH) b = dS.d[i] <= 2.5 ? BEACH : GRASS; // the world's beach cells are mostly hinterland at this scale
+      // swamps and beaches still come from the world cell, looked up through a domain warp
+      const jx = clamp(Math.floor(x + 0.9 * fbm(x * 1.7, y * 1.7, seed + 531, 3)), 0, N - 1), jy = clamp(Math.floor(y + 0.9 * fbm(x * 1.7 + 5.5, y * 1.7 + 1.7, seed + 533, 3)), 0, N - 1);
+      const wb = w.biome[jy * N + jx];
       Tt[i] = T[i] - 6.5 * (h[i] - hW[i]);
-      if (Tt[i] < -9.5) b = ICE;
-      else if (Tt[i] < -4 && h[i] > 0.9 && b !== ICE) b = ALPINE;
+      // the rest from the climate itself, jittered by a slow noise, so edges follow its contours, not the world grid
+      // (read through a domain warp of about a cell, so a contour lying along a cell column wanders off it)
+      const qx = x + 1.1 * fbm(x * 0.8 + 3.1, y * 0.8, seed + 538, 3), qy = y + 1.1 * fbm(x * 0.8, y * 0.8 + 7.9, seed + 539, 3);
+      const t = Tt[i] + bilin(w.T, qx, qy) - T[i] + 2.4 * fbm(x * 1.4, y * 1.4, seed + 535, 3);
+      const p = bilinMask(w.P, w.ocean, qx, qy) * (1 + 0.32 * fbm(x * 1.4 + 9.1, y * 1.4 - 4.7, seed + 537, 3));
+      let b;
+      if (t < -10 || (h[i] > 2.1 && t < -6) || Tt[i] < -9.5) b = ICE;
+      else if ((h[i] > 1.4 && t < -1.5) || (Tt[i] < -4 && h[i] > 0.9)) b = ALPINE;
+      else if (wb === SWAMP) b = SWAMP;
+      else if ((wb === 255 || wb === BEACH) && dS.d[i] <= 2.5) b = BEACH;
+      else b = whittaker(t, p);
       const xa = Math.max(0, tx - 1), xb = Math.min(RW - 1, tx + 1), ya = Math.max(0, ty - 1), yb = Math.min(RH - 1, ty + 1);
       const sl = Math.hypot(h[ty * RW + xb] - h[ty * RW + xa], h[yb * RW + tx] - h[ya * RW + tx]) / (2 * TILE_KM); // tan of the slope
       dep[i] = Math.exp(-(sl * sl) / (3 * Math.LN2));
@@ -1173,148 +1255,24 @@
       if (!wt[i]) {
         if (drop >= 4 && b !== ICE) b = G_ROCK;
         else if (dS.d[i] <= 1.5 && L[i] <= L[dS.s[i]] + 1 && b !== ICE && b !== SWAMP && (w.ocean[jy * N + jx] || b === BEACH || b === DESERT || b === SAVANNA || b === GRASS || dS.d[i] <= 1)) b = BEACH;
-        // salt flats from the world
-        const c = jy * N + jx;
-        if (w.wtr[c] === 2) b = G_SALT;
+        if (w.wtr[jy * N + jx] === 2) b = G_SALT; // salt flats from the world
       }
       gt[i] = b;
+      rockS[i] = rockOf(seed, volcT[i], crysT[i], foldT[i], h[i]);
     }
-    const strata = STRATA[fam].map(P), karst = fam === 'limestone' ? 1 : 0.3;
-    // caves: worm-like tunnels where a noise field crosses zero, and chambers, thicker in limestone (karst)
-    let caves = 0, mouths = 0;
-    for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
-      const i = ty * RW + tx;
-      if (wt[i] === W_SEA || L[i] < 2) continue;
-      const x = X(tx), y = Y(ty), nz = Math.abs(fbm(x * 1.1, y * 1.1, seed + 551, 2)), ch = fbm(x * 1.4, y * 1.4, seed + 557, 2);
-      if (nz < 0.045 + 0.05 * karst || ch > 0.7 - 0.1 * karst) fl[i] |= F_CAVE;
-    }
-    // a cave tile with no cave beside it is a pocket, not a passage
+    // tiles beside another ground on the same terrace: their pixels blend across the seam when painted
+    const mixed = new Uint8Array(RN);
     for (let i = 0; i < RN; i++) {
-      if (!(fl[i] & F_CAVE)) continue;
+      if (wt[i]) continue;
       const x = i % RW;
-      let nb = 0;
-      for (const j of [i - 1, i + 1, i - RW, i + RW]) if (j >= 0 && j < RN && Math.abs(j % RW - x) <= 1 && fl[j] & F_CAVE) nb++;
-      if (!nb) fl[i] &= ~F_CAVE; else caves++;
+      for (const j of [i - 1, i + 1, i - RW, i + RW]) if (j >= 0 && j < RN && Math.abs(j % RW - x) <= 1 && !wt[j] && L[j] === L[i] && gt[j] !== gt[i]) { mixed[i] = 1; break; }
     }
-    // mouths: where a passage meets a cliff face tall enough to open in (two levels or more); a cliff with a
-    // passage just behind it gets a short adit through to it
-    const drops = [];
-    for (let ty = 1; ty < RH - 1; ty++) for (let tx = 1; tx < RW - 1; tx++) {
-      const i = ty * RW + tx;
-      if (wt[i] || wt[i + RW] || L[i] - L[i + RW] < 2) continue;
-      let near = -1;
-      for (let d = 0; d <= 2 && near < 0; d++) for (let y = ty - d; y <= ty && near < 0; y++) for (let x = tx - d; x <= tx + d; x++) if (y >= 0 && fl[y * RW + x] & F_CAVE) { near = y * RW + x; break; }
-      if (near >= 0) drops.push([i, L[i] - L[i + RW] + hash2(tx, ty, seed + 559)]);
-    }
-    drops.sort((a, b) => b[1] - a[1]);
-    for (const [i] of drops) {
-      if (mouths >= 7) break;
-      const tx = i % RW, ty = (i / RW) | 0;
-      let close = false;
-      for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) if (x >= 0 && y >= 0 && x < RW && y < RH && fl[y * RW + x] & F_MOUTH) close = true;
-      if (close) continue;
-      fl[i] |= F_CAVE | F_MOUTH; mouths++;
-      for (let y = ty - 2; y <= ty; y++) { const j = y * RW + tx; if (j >= 0 && !wt[j] && !(fl[j] & F_CAVE)) { if ([j - 1, j + 1, j - RW].some(q => q >= 0 && fl[q] & F_CAVE)) { fl[j] |= F_CAVE; break; } } }
-    }
+    let rockCount = new Int32Array(5);
+    for (let i = 0; i < RN; i++) if (!wt[i]) rockCount[rockS[i]]++;
     yield;
 
-    // ---- the village: sited by the same reasons as the world's, scored tile by tile ----
-    reg.stage = 'siting the village';
-    const score = new Float32Array(RN);
-    const latY = w.lat(cy), upx = latY > 30 ? -1 : 1;
-    const Lat = (x, y) => L[clamp(y, 0, RH - 1) * RW + clamp(x, 0, RW - 1)];
-    for (let ty = 3; ty < RH - 3; ty++) for (let tx = 3; tx < RW - 3; tx++) {
-      const i = ty * RW + tx, b = gt[i];
-      if (wt[i] || b === G_ROCK || b === ICE || b === G_SALT || b === ALPINE) continue;
-      let same = 0, nS = 0;
-      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 10) { nS++; if (Lat(tx + dx, ty + dy) === L[i]) same++; }
-      const flat = same / nS;
-      const df = dF.d[i];
-      const water = df < 2 ? 0.4 : df <= 7 ? 1 : clamp(1 - (df - 7) / 12, 0, 1);
-      const dry = dW.s[i] >= 0 ? sstep(0, 1.5, L[i] - L[dW.s[i]]) : 1;
-      let hiN = 0, nU = 0;
-      for (let a = -2; a <= 2; a++) for (const r of [3, 5, 7]) { const ang = a * 0.45; nU++; if (Lat(Math.round(tx + upx * Math.cos(ang) * r), Math.round(ty + Math.sin(ang) * r)) > L[i] + 1) hiN++; }
-      const shelter = hiN / nU;
-      const sun = sstep(-1, 3, Lat(tx, ty - 3) - Lat(tx, ty + 3));
-      const soilQ = dep[i] * (b === DESERT ? 0.3 : b === TUNDRA ? 0.3 : 1);
-      score[i] = (1.3 * flat + 1.2 * water + 1 * dry + 0.8 * shelter + 0.6 * sun + 0.6 * soilQ) / 5.5;
-    }
-    let village = null;
-    {
-      let town = null, bd2 = 1e9;
-      for (const t of w.towns) {
-        const [tx, ty] = toT(t.x + 0.5, t.y + 0.5), d = Math.hypot(tx - RW / 2, ty - RH / 2);
-        if (tx > 4 && ty > 4 && tx < RW - 4 && ty < RH - 4 && d < bd2) { bd2 = d; town = { t, tx, ty }; }
-      }
-      if (town) {
-        let best = -1, bs = 0;
-        for (let i = 0; i < RN; i++) {
-          const x = i % RW, y = (i / RW) | 0, d = Math.hypot(x - town.tx, y - town.ty);
-          if (d > 14 || x < 8 || y < 8 || x >= RW - 8 || y >= RH - 6) continue;
-          const s = score[i] - d * 0.004;
-          if (s > bs) { bs = s; best = i; }
-        }
-        if (best >= 0) village = { x: best % RW, y: (best / RW) | 0, big: town.t.big, houses: [], fields: [] };
-      }
-    }
-    const built = new Uint8Array(RN);
-    if (village) {
-      const { x: vx, y: vy } = village, Lc = L[vy * RW + vx];
-      village.L = Lc;
-      // built ground is leveled (as in Merryfolk): the green and the ring of houses sit on one terrace
-      for (let y = vy - 7; y <= vy + 7; y++) for (let x = vx - 8; x <= vx + 8; x++) {
-        if (x < 1 || y < 1 || x >= RW - 1 || y >= RH - 1) continue;
-        const i = y * RW + x, d = Math.hypot(x - vx, (y - vy) * 1.15);
-        if (wt[i] || d > 7.2 + gnoise(x * 0.4, y * 0.4, seed + 561) * 1.2) continue;
-        if (Math.abs(L[i] - Lc) <= 1) { L[i] = Lc; built[i] = 1; if (gt[i] === G_ROCK || gt[i] === BEACH) gt[i] = GRASS; }
-        if (d < 2.7 + 0.8 * gnoise(x * 0.7, y * 0.7, seed + 563)) fl[i] |= F_GREEN;
-      }
-      // houses round the green, facing it
-      const nH = village.big ? 11 : 7, a0 = R() * Math.PI * 2;
-      for (let k = 0; k < nH; k++) {
-        const ang = a0 + k * Math.PI * 2 / nH + R.range(-0.2, 0.2), rr = R.range(4.6, 6);
-        const hx = Math.round(vx + Math.cos(ang) * rr * 1.2) - 1, hy = Math.round(vy + Math.sin(ang) * rr * 0.9);
-        const i0 = hy * RW + hx, i1 = i0 + 1;
-        if (hx < 1 || hy < 1 || hx >= RW - 2 || hy >= RH - 1) continue;
-        if (wt[i0] || wt[i1] || (fl[i0] | fl[i1]) & (F_HOUSE | F_GREEN) || L[i0] !== L[i1] || gt[i0] === G_ROCK) continue;
-        if (village.houses.some(q => Math.abs(q.x - hx) < 3 && Math.abs(q.y - hy) < 2)) continue;
-        fl[i0] |= F_HOUSE; fl[i1] |= F_HOUSE; built[i0] = built[i1] = 1;
-        const dx = vx - (hx + 1), dy = vy - hy;
-        const face = Math.abs(dx) * 0.8 > Math.abs(dy) ? 2 : dy > 0 ? 0 : 1;
-        village.houses.push({ x: hx, y: hy, face, v: Math.floor(R() * 3) });
-      }
-      // fields on the flattest open land nearby, one terrace each
-      const dims = [[5, 3], [6, 3], [4, 4], [5, 4], [7, 3], [4, 3]];
-      for (let f = 0; f < (village.big ? 6 : 4); f++) {
-        let best = null, bs = -1e9;
-        for (let t = 0; t < 220; t++) {
-          const [fw, fh] = dims[(f + t) % dims.length], ang = R() * Math.PI * 2, rr = R.range(8, 19);
-          const x0 = Math.round(vx + Math.cos(ang) * rr * 1.2 - fw / 2), y0 = Math.round(vy + Math.sin(ang) * rr * 0.9 - fh / 2);
-          if (x0 < 1 || y0 < 1 || x0 + fw >= RW - 1 || y0 + fh >= RH - 1) continue;
-          const L0 = L[y0 * RW + x0];
-          let ok = true, soilS = 0;
-          for (let y = y0 - 1; y <= y0 + fh && ok; y++) for (let x = x0 - 1; x <= x0 + fw && ok; x++) {
-            const i = y * RW + x, inside = x >= x0 && y >= y0 && x < x0 + fw && y < y0 + fh;
-            if (fl[i] & (F_FIELD | F_HOUSE | F_GREEN)) ok = false;
-            if (!inside) continue;
-            const b = gt[i];
-            if (wt[i] || L[i] !== L0 || b === G_ROCK || b === ICE || b === BEACH || b === G_SALT || b === ALPINE) ok = false;
-            soilS += dep[i];
-          }
-          if (!ok) continue;
-          const s = soilS / (fw * fh) - rr * 0.02 + R() * 0.05;
-          if (s > bs) { bs = s; best = [x0, y0, fw, fh]; }
-        }
-        if (!best) continue;
-        const [x0, y0, fw, fh] = best, crop = f % CROPS.length, dir = (f + x0) & 1;
-        for (let y = y0; y < y0 + fh; y++) for (let x = x0; x < x0 + fw; x++) { fl[y * RW + x] |= F_FIELD; built[y * RW + x] = 1; }
-        village.fields.push({ x0, y0, fw, fh, crop, dir });
-      }
-    }
-    yield;
-
-    // ---- paths: the world's roads re-laid on the tiles by least cost, the village lane, then game trails ----
-    reg.stage = 'laying the paths';
+    // ---- the roads first: the world's roads re-laid on the tiles by least cost, since villages grew along them ----
+    reg.stage = 'laying the roads';
     const pathW = new Float32Array(RN), trailW = new Float32Array(RN), roadsR = [], trailsR = [];
     const astar = makeAStar(RW, RH);
     const tileCost = (wear, beta, offPath) => (i, j, k) => {
@@ -1343,10 +1301,7 @@
     for (const rd0 of w.roads) {
       // the part of the world road inside (or just around) the region, as tile waypoints
       const wp = [];
-      for (const c of rd0.path) {
-        const [tx, ty] = toT((c % N) + 0.5, ((c / N) | 0) + 0.5);
-        wp.push([tx, ty]);
-      }
+      for (const c of rd0.path) wp.push(toT((c % N) + 0.5, ((c / N) | 0) + 0.5));
       let run = [];
       const runs = [];
       for (let k = 0; k < wp.length; k++) {
@@ -1368,8 +1323,267 @@
         if (full.length > 1) roadsR.push({ path: full, kind: 3 });
       }
     }
+    yield;
+
+    // ---- the village: sited by the same reasons as the world's, then given the form its site asks for ----
+    reg.stage = 'siting the village';
+    const score = new Float32Array(RN);
+    const latY = w.lat(cy), upx = latY > 30 ? -1 : 1;
+    const Lat = (x, y) => L[clamp(y, 0, RH - 1) * RW + clamp(x, 0, RW - 1)];
+    const roadMask = new Uint8Array(RN);
+    for (let i = 0; i < RN; i++) roadMask[i] = pathW[i] > 0 ? 1 : 0;
+    const dRd = distField(roadMask, RW, RH);
+    // a village whose world cell is on the coast or a lakeshore lives by the water: its site score wants the shore
+    let coastal = false;
+    for (const t of w.towns) {
+      const [tx, ty] = toT(t.x + 0.5, t.y + 0.5);
+      if (tx < 0 || ty < 0 || tx >= RW || ty >= RH) continue;
+      for (let b = t.y - 2; b <= t.y + 2; b++) for (let a = t.x - 2; a <= t.x + 2; a++) if (a >= 0 && b >= 0 && a < N && b < N && (w.ocean[b * N + a] || w.wtr[b * N + a] === 1)) coastal = true;
+    }
+    for (let ty = 3; ty < RH - 3; ty++) for (let tx = 3; tx < RW - 3; tx++) {
+      const i = ty * RW + tx, b = gt[i];
+      if (wt[i] || pathW[i] > 0 || b === G_ROCK || b === ICE || b === G_SALT || b === ALPINE) continue;
+      let same = 0, nS = 0;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 10) { nS++; if (Lat(tx + dx, ty + dy) === L[i]) same++; }
+      const flat = same / nS;
+      const df = dF.d[i];
+      const water = df < 2 ? 0.4 : df <= 7 ? 1 : clamp(1 - (df - 7) / 12, 0, 1);
+      const dry = dW.s[i] >= 0 ? sstep(0, 1.5, L[i] - L[dW.s[i]]) : 1;
+      let hiN = 0, nU = 0;
+      for (let a = -2; a <= 2; a++) for (const r of [3, 5, 7]) { const ang = a * 0.45; nU++; if (Lat(Math.round(tx + upx * Math.cos(ang) * r), Math.round(ty + Math.sin(ang) * r)) > L[i] + 1) hiN++; }
+      const shelter = hiN / nU;
+      const sun = sstep(-1, 3, Lat(tx, ty - 3) - Lat(tx, ty + 3));
+      const soilQ = dep[i] * (b === DESERT ? 0.3 : b === TUNDRA ? 0.3 : 1);
+      const road = roadsR.length ? clamp(1 - dRd.d[i] / 5, 0, 1) : 0; // the road draws houses (Emilien's accessibility)
+      const shore = coastal ? clamp(1 - (dS.d[i] - 1.5) / 4, 0, 1) : 0;
+      score[i] = (1.3 * flat + 1.2 * water + 1 * dry + 0.8 * shelter + 0.6 * sun + 0.6 * soilQ + 0.7 * road + 1.2 * shore) / 6.2;
+    }
+    let village = null;
+    {
+      let town = null, bd2 = 1e9;
+      for (const t of w.towns) {
+        const [tx, ty] = toT(t.x + 0.5, t.y + 0.5), d = Math.hypot(tx - RW / 2, ty - RH / 2);
+        if (tx > 4 && ty > 4 && tx < RW - 4 && ty < RH - 4 && d < bd2) { bd2 = d; town = { t, tx, ty }; }
+      }
+      if (town) {
+        let best = -1, bs = 0;
+        for (let i = 0; i < RN; i++) {
+          const x = i % RW, y = (i / RW) | 0, d = Math.hypot(x - town.tx, y - town.ty);
+          if (d > 14 || x < 8 || y < 8 || x >= RW - 8 || y >= RH - 6) continue;
+          const s = score[i] - d * 0.004;
+          if (s > bs) { bs = s; best = i; }
+        }
+        if (best >= 0) village = { x: best % RW, y: (best / RW) | 0, big: town.t.big, houses: [], fields: [], boats: [], well: true };
+      }
+    }
+    const built = new Uint8Array(RN), fieldAt = new Int16Array(RN).fill(-1);
     if (village) {
-      // the lane: from the green to the nearest road (or out of the region toward the nearest other village)
+      const { x: vx, y: vy } = village, vi = vy * RW + vx, Lc = L[vi], houses = village.houses, fields = village.fields;
+      village.L = Lc;
+      const inR = (x, y) => x >= 1 && y >= 1 && x < RW - 1 && y < RH - 1;
+      const faceTo = (hx, hy, tx, ty) => { const dx = tx - (hx + 1), dy = ty - hy; return Math.abs(dx) * 0.8 > Math.abs(dy) ? 2 : dy > 0 ? 0 : 1; };
+      // a cottage on two tiles, facing (tx, ty); a step of one terrace between its tiles is leveled
+      const tryHouse = (hx, hy, tx, ty) => {
+        if (hx < 1 || hy < 1 || hx >= RW - 2 || hy >= RH - 1) return false;
+        const i0 = hy * RW + hx, i1 = i0 + 1;
+        if (wt[i0] || wt[i1] || (fl[i0] | fl[i1]) & (F_HOUSE | F_GREEN | F_FIELD) || pathW[i0] > 0 || pathW[i1] > 0) return false;
+        if (gt[i0] === G_ROCK || gt[i1] === G_ROCK || gt[i0] === ICE || Math.abs(L[i0] - L[i1]) > 1) return false;
+        if (houses.some(q => Math.abs(q.x - hx) < 3 && Math.abs(q.y - hy) < 2)) return false;
+        L[i0] = L[i1] = Math.max(L[i0], L[i1]);
+        fl[i0] |= F_HOUSE; fl[i1] |= F_HOUSE; built[i0] = built[i1] = 1;
+        houses.push({ x: hx, y: hy, face: faceTo(hx, hy, tx, ty), v: Math.floor(R() * 3) });
+        return true;
+      };
+      const fieldOk = (i, L0) => !wt[i] && !(fl[i] & (F_FIELD | F_HOUSE | F_GREEN)) && !(pathW[i] > 0) && L[i] === L0 && gt[i] !== G_ROCK && gt[i] !== ICE && gt[i] !== BEACH && gt[i] !== G_SALT && gt[i] !== ALPINE;
+      const addField = (tiles, crop, dir, strips, x0, y0) => {
+        const id = fields.length;
+        for (const i of tiles) { fieldAt[i] = id; fl[i] |= F_FIELD; built[i] = 1; }
+        fields.push({ crop, dir, strips, x0, y0, n: tiles.length });
+      };
+      // open-field furlongs: blocks of strips on the flattest open land nearby, one terrace each
+      const furlongs = (count, rMin, rMax) => {
+        const dims = [[5, 3], [6, 3], [4, 4], [5, 4], [7, 3], [4, 3]];
+        for (let f = 0; f < count; f++) {
+          let best = null, bs = -1e9;
+          for (let t = 0; t < 220; t++) {
+            const [fw, fh] = dims[(f + t) % dims.length], ang = R() * Math.PI * 2, rr = R.range(rMin, rMax);
+            const x0 = Math.round(vx + Math.cos(ang) * rr * 1.2 - fw / 2), y0 = Math.round(vy + Math.sin(ang) * rr * 0.9 - fh / 2);
+            if (x0 < 1 || y0 < 1 || x0 + fw >= RW - 1 || y0 + fh >= RH - 1) continue;
+            const L0 = L[y0 * RW + x0];
+            let ok = true, soilS = 0;
+            for (let y = y0 - 1; y <= y0 + fh && ok; y++) for (let x = x0 - 1; x <= x0 + fw && ok; x++) {
+              const i = y * RW + x, inside = x >= x0 && y >= y0 && x < x0 + fw && y < y0 + fh;
+              if (fl[i] & (F_FIELD | F_HOUSE | F_GREEN)) ok = false;
+              if (!inside) continue;
+              if (!fieldOk(i, L0)) ok = false;
+              soilS += dep[i];
+            }
+            if (!ok) continue;
+            const s = soilS / (fw * fh) - rr * 0.02 + R() * 0.05;
+            if (s > bs) { bs = s; best = [x0, y0, fw, fh]; }
+          }
+          if (!best) continue;
+          const [x0, y0, fw, fh] = best, tiles = [];
+          for (let y = y0; y < y0 + fh; y++) for (let x = x0; x < x0 + fw; x++) tiles.push(y * RW + x);
+          addField(tiles, f % CROPS.length, fw >= fh ? 0 : 1, true, x0, y0);
+        }
+      };
+      // a croft: one strip behind a house, running away from the road until the ground changes level
+      const stripBehind = (hs, nx, ny, len, wid, crop) => {
+        const hx = hs.x + 1, hy = hs.y + 0.5, L0 = L[hs.y * RW + hs.x], tiles = new Set();
+        for (let s = 1.6; s <= len; s += 0.5) {
+          let any = false;
+          for (let q = -wid / 2; q <= wid / 2 + 0.01; q += 0.5) {
+            const tx = Math.floor(hx + nx * s - ny * q), ty = Math.floor(hy + ny * s + nx * q);
+            if (!inR(tx, ty)) continue;
+            const i = ty * RW + tx;
+            if (tiles.has(i)) { any = true; continue; }
+            if (fieldOk(i, L0)) { tiles.add(i); any = true; }
+          }
+          if (!any) break;
+        }
+        if (tiles.size >= 3) addField([...tiles], crop, Math.abs(nx) > Math.abs(ny) ? 0 : 1, false, 0, 0);
+      };
+      // the road nearest the center, as an ordered run of tiles, and its heading
+      let rp = null, rk = -1;
+      if (dRd.s[vi] >= 0 && dRd.d[vi] <= 4) { const t = dRd.s[vi]; for (const r of roadsR) { const k = r.path.indexOf(t); if (k >= 0) { rp = r.path; rk = k; break; } } }
+      const tangent = k => { const a = rp[Math.max(0, k - 3)], b = rp[Math.min(rp.length - 1, k + 3)], dx = (b % RW) - (a % RW), dy = ((b / RW) | 0) - ((a / RW) | 0), l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+      // read the site: a hilltop (most of a ring lies lower), flat ground, woods, the shore, a valley along the road
+      let lower = 0, ring = 0, same = 0, nS = 0, wood = 0, nW = 0, along = 0, across = 0;
+      for (let a = 0; a < 24; a++) for (const r of [5, 7]) {
+        const x = Math.round(vx + Math.cos(a / 24 * Math.PI * 2) * r * 1.2), y = Math.round(vy + Math.sin(a / 24 * Math.PI * 2) * r * 0.9);
+        if (!inR(x, y)) continue;
+        ring++; if (L[y * RW + x] < Lc) lower++;
+      }
+      for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) {
+        const x = vx + dx, y = vy + dy;
+        if (!inR(x, y) || dx * dx + dy * dy > 100) continue;
+        const i = y * RW + x, b = gt[i];
+        nW++; if (b === FOREST || b === TAIGA || b === JUNGLE) wood++;
+        if (dx * dx + dy * dy * 1.3 <= 40) { nS++; if (Math.abs(L[i] - Lc) <= 1 && !wt[i]) same++; }
+      }
+      if (rp) {
+        const [ux, uy] = tangent(rk);
+        for (let s = -8; s <= 8; s++) {
+          if (!s) continue;
+          const ax = Math.round(vx + ux * s), ay = Math.round(vy + uy * s), bx = Math.round(vx - uy * s), by = Math.round(vy + ux * s);
+          if (inR(ax, ay) && L[ay * RW + ax] === Lc && !wt[ay * RW + ax]) along++;
+          if (inR(bx, by) && L[by * RW + bx] === Lc && !wt[by * RW + bx]) across++;
+        }
+      }
+      const hill = lower / Math.max(1, ring), flat = same / Math.max(1, nS), woods = wood / Math.max(1, nW);
+      const form = village.form = dS.d[vi] <= 7 ? 'shore' : hill > 0.6 || flat < 0.45 ? 'hill' : rp ? (woods > 0.3 ? 'strip' : along > across + 2 ? 'street' : 'anger') : 'green';
+      Object.assign(village, { hill, flat, woods, along, across, sea: dS.d[vi] });
+      if (form === 'street' || form === 'strip') {
+        // Straßendorf: houses on both sides of the road, each with its croft behind; a Waldhufendorf spaces its
+        // farms wider and runs each strip far back into the forest
+        village.well = false;
+        const gap = form === 'strip' ? 4 : 2.6, len = form === 'strip' ? 13 : 6, wid = form === 'strip' ? 2.6 : 1.6, reach = form === 'strip' ? 18 : 13;
+        const nH = village.big ? (form === 'strip' ? 10 : 14) : (form === 'strip' ? 7 : 10);
+        // level the street: ground a terrace off the road beside it takes the road's level
+        for (const t of rp) {
+          const tx = t % RW, ty = (t / RW) | 0;
+          if (Math.hypot(tx - vx, ty - vy) > reach + 2) continue;
+          for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) {
+            if (!inR(x, y)) continue;
+            const i = y * RW + x;
+            if (!wt[i] && !(pathW[i] > 0) && Math.abs(L[i] - L[t]) === 1) { L[i] = L[t]; if (gt[i] === G_ROCK) gt[i] = GRASS; }
+          }
+        }
+        // walk the road both ways from the center, a plot on each side every `gap` tiles
+        const order = [];
+        for (const dir of [1, -1]) {
+          let acc = dir > 0 ? gap : gap / 2;
+          for (let k = rk; k >= 0 && k < rp.length; k += dir) {
+            if (k !== rk) { const a = rp[k - dir], b = rp[k]; acc += Math.hypot((b % RW) - (a % RW), ((b / RW) | 0) - ((a / RW) | 0)); }
+            if (acc >= gap) { acc -= gap; order.push(k); }
+            if (Math.hypot(rp[k] % RW - vx, ((rp[k] / RW) | 0) - vy) > reach) break;
+          }
+        }
+        order.sort((a, b) => Math.abs(a - rk) - Math.abs(b - rk));
+        for (const k of order) {
+          if (houses.length >= nH) break;
+          const t = rp[k], tx = (t % RW) + 0.5, ty = ((t / RW) | 0) + 0.5, [ux, uy] = tangent(k);
+          for (const side of [1, -1]) {
+            const nx = -uy * side, ny = ux * side;
+            if (tryHouse(Math.round(tx + nx * 1.9 - 1), Math.floor(ty + ny * 1.9), tx, ty)) stripBehind(houses[houses.length - 1], nx, ny, len, wid, (houses.length + (side > 0 ? 0 : 2)) % CROPS.length);
+          }
+        }
+      } else if (form === 'green' || form === 'anger' || form === 'hill') {
+        // a green: a round one on open flats; an Anger, a lens of green along the road with a row of houses each
+        // side; a hill village packs its houses round a small square on the top terrace
+        let ax = 1, ay = 0, gl = 2.7, gw = 2.35, rad = 7.6;
+        if (form === 'anger') { [ax, ay] = tangent(rk); gl = 5.2; gw = 2; }
+        if (form === 'hill') { gl = gw = 1.4; rad = 5.6; }
+        for (let y = vy - 8; y <= vy + 8; y++) for (let x = vx - 9; x <= vx + 9; x++) {
+          if (!inR(x, y)) continue;
+          const i = y * RW + x, dx = x - vx, dy = y - vy, u = dx * ax + dy * ay, v = -dx * ay + dy * ax;
+          if (wt[i] || Math.hypot(dx, dy * 1.15) > rad + gnoise(x * 0.4, y * 0.4, seed + 561) * 1.2) continue;
+          if (Math.abs(L[i] - Lc) <= 1) { L[i] = Lc; built[i] = 1; if (gt[i] === G_ROCK || gt[i] === BEACH) gt[i] = GRASS; }
+          if (L[i] === Lc && !(pathW[i] > 0 && form !== 'anger') && (u / gl) ** 2 + (v / gw) ** 2 < 1 + 0.25 * gnoise(x * 0.7, y * 0.7, seed + 563)) fl[i] |= F_GREEN;
+        }
+        if (form === 'green') {
+          const nH = village.big ? 11 : 7, a0 = R() * Math.PI * 2;
+          for (let k = 0; k < nH; k++) {
+            const ang = a0 + k * Math.PI * 2 / nH + R.range(-0.2, 0.2), rr = R.range(4.6, 6);
+            tryHouse(Math.round(vx + Math.cos(ang) * rr * 1.2) - 1, Math.round(vy + Math.sin(ang) * rr * 0.9), vx, vy);
+          }
+          furlongs(village.big ? 6 : 4, 8, 19);
+        } else if (form === 'anger') {
+          const nH = village.big ? 12 : 8;
+          for (let u = -gl - 1; u <= gl + 1.01 && houses.length < nH; u += 2.6) for (const side of [1, -1]) {
+            const v = side * (gw + 2.3), px = vx + u * ax - v * ay, py = vy + u * ay + v * ax;
+            tryHouse(Math.round(px - 1), Math.round(py), vx + u * ax, vy + u * ay);
+          }
+          furlongs(village.big ? 6 : 4, 8, 19);
+        } else {
+          const nH = village.big ? 14 : 10, cand = [];
+          for (let y = vy - 6; y <= vy + 6; y++) for (let x = vx - 7; x <= vx + 6; x++) {
+            const d = Math.hypot((x + 1 - vx) / 1.2, (y - vy) / 0.9);
+            if (d >= 1.6 && d <= 6 && inR(x, y) && L[y * RW + x] >= Lc - 1) cand.push([x, y, d + R() * 1.6]);
+          }
+          cand.sort((a, b) => a[2] - b[2]);
+          for (const [x, y] of cand) { if (houses.length >= nH) break; tryHouse(x, y, vx, vy); }
+          furlongs(village.big ? 5 : 3, 7, 18);
+        }
+      } else {
+        // a fishing hamlet: one row along the shore, facing the water, a boat drawn up in front of each house
+        village.well = false;
+        const cand = [];
+        let mx = 0, my = 0;
+        for (let y = vy - 12; y <= vy + 12; y++) for (let x = vx - 14; x <= vx + 14; x++) {
+          if (!inR(x, y) || Math.hypot((x - vx) / 1.2, y - vy) > 12) continue;
+          const i = y * RW + x;
+          if (!wt[i] && dS.d[i] >= 1 && dS.d[i] <= 2.6 && dS.s[i] >= 0 && Math.abs(L[i] - L[dS.s[i]]) <= 1) { cand.push(i); mx += x; my += y; }
+        }
+        if (cand.length) {
+          mx /= cand.length; my /= cand.length;
+          let sxx = 0, syy = 0, sxy = 0;
+          for (const i of cand) { const dx = i % RW - mx, dy = ((i / RW) | 0) - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+          const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), ex = Math.cos(th), ey = Math.sin(th), proj = i => (i % RW) * ex + ((i / RW) | 0) * ey;
+          cand.sort((a, b) => proj(a) - proj(b));
+          const nH = village.big ? 10 : 7, cp = proj(vi);
+          // from the middle of the shore outward, so the row centers on the site
+          cand.sort((a, b) => Math.abs(proj(a) - cp) - Math.abs(proj(b) - cp));
+          for (const i of cand) {
+            if (houses.length >= nH) break;
+            const x = i % RW, y = (i / RW) | 0, s = dS.s[i];
+            if (houses.some(q => Math.abs(proj(q.y * RW + q.x) - proj(i)) < 2.6 && Math.hypot(q.x - x, q.y - y) < 4)) continue;
+            if (tryHouse(x - 1, y, s % RW, (s / RW) | 0) || tryHouse(x, y, s % RW, (s / RW) | 0)) {
+              const hs = houses[houses.length - 1], wtile = dS.s[hs.y * RW + hs.x + 1];
+              if (wtile >= 0 && (wt[wtile] === W_SEA || wt[wtile] === W_LAKE)) village.boats.push(wtile);
+            }
+          }
+        }
+        furlongs(2, 4, 12);
+      }
+    }
+    yield;
+
+    // ---- lanes and trails: the village's lanes, then game trails ----
+    reg.stage = 'laying the lanes';
+    if (village) {
+      // the lane: from the center to the nearest road (or out of the region toward the nearest other village)
       const vi = village.y * RW + village.x;
       let goal = -1, bd = 1e9;
       for (let i = 0; i < RN; i++) if (pathW[i] > 0 && !built[i]) { const d = Math.hypot(i % RW - village.x, ((i / RW) | 0) - village.y); if (d < bd) { bd = d; goal = i; } }
@@ -1381,15 +1595,21 @@
           goal = landNear(ex, ey);
         }
       }
-      if (goal >= 0) {
+      if (goal >= 0 && bd > 1.5) {
         const p = astar(vi, goal, tileCost(pathW, 0.7, 1.3), j => Math.hypot((j % RW) - (goal % RW), ((j / RW) | 0) - ((goal / RW) | 0)) * 0.3, 20000);
         if (p) { layR(p, pathW); roadsR.push({ path: p, kind: 2 }); }
       }
-      // short lanes from each door to the green
+      // short lanes from each door: to the street in a street village, along the row in a hamlet, else to the green
+      const doorOf = hs => (hs.face === 1 ? hs.y - 1 : hs.y + 1) * RW + hs.x + (hs.face === 2 ? 0 : 1);
+      let prev = -1;
       for (const hs of village.houses) {
-        const door = (hs.face === 1 ? hs.y - 1 : hs.y + 1) * RW + hs.x + (hs.face === 2 ? 0 : 1);
+        const door = doorOf(hs);
         if (door < 0 || door >= RN || wt[door] || fl[door] & (F_HOUSE | F_FIELD)) continue;
-        const p = astar(door, vi, tileCost(pathW, 0.8, 1.5), j => Math.hypot((j % RW) - village.x, ((j / RW) | 0) - village.y) * 0.3, 4000);
+        let to = vi;
+        if (village.form === 'street' || village.form === 'strip') { const s = dRd.s[door]; if (s >= 0 && dRd.d[door] <= 5) to = s; }
+        if (village.form === 'shore') { to = prev >= 0 ? prev : vi; prev = door; }
+        if (to === door) continue;
+        const p = astar(door, to, tileCost(pathW, 0.8, 1.5), j => Math.hypot((j % RW) - (to % RW), ((j / RW) | 0) - ((to / RW) | 0)) * 0.3, 4000);
         if (p) { const q = p.filter(i => !(fl[i] & F_GREEN)); if (q.length) { layR(q, pathW); roadsR.push({ path: q, kind: 1 }); } }
       }
     }
@@ -1411,6 +1631,249 @@
     for (let i = 0; i < RN; i++) if (pathW[i] > 0) { fl[i] |= F_PATH; if (wt[i] === W_RIVER) fl[i] |= F_BRIDGE; }
     yield;
 
+    // ---- caves, made by the rock: karst along joints at the water table, lava tubes, sea caves, shelters ----
+    reg.stage = 'dissolving the caves';
+    const cvL = [new Int8Array(RN).fill(-1), new Int8Array(RN).fill(-1)], cvK = [new Uint8Array(RN), new Uint8Array(RN)]; // two slots: lower and upper
+    const cvTo = new Int32Array(RN).fill(-1), mouthL = new Int8Array(RN).fill(-1), flow = new Uint8Array(RN);
+    const info = { karst: 0, pattern: [], springs: 0, dolines: 0, levels: 0, lava: 0, skylights: 0, sea: 0, shelters: 0, hidden: 0 };
+    const mark = (slot, i, lv, kind) => { if (cvL[slot][i] < 0) { cvL[slot][i] = lv; cvK[slot][i] = kind; } };
+    const tdist = (a, b) => Math.hypot(a % RW - b % RW, ((a / RW) | 0) - ((b / RW) | 0));
+    // joints: two sets at right angles, square to the plate's drift (the regional squeeze), 4 or 5 tiles apart
+    const plt = w.plates[w.pid[ci]], th = Math.atan2(plt.vy, plt.vx), ca = Math.cos(th), sa = Math.sin(th), JS = hash2(cx, cy, seed + 665) < 0.5 ? 4 : 5;
+    const joint = new Uint8Array(RN);
+    for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
+      const u = tx * ca + ty * sa + 0.9 * gnoise(tx * 0.13, ty * 0.13, seed + 661), v = -tx * sa + ty * ca + 0.9 * gnoise(tx * 0.13 + 3.3, ty * 0.13, seed + 663);
+      joint[ty * RW + tx] = ((u % JS) + JS) % JS < 1 || ((v % JS) + JS) % JS < 1 ? 1 : 0;
+    }
+    // Dijkstra from many sources at once, each with its own level; every tile remembers which way leads back
+    const dist = new Float32Array(RN), came = new Int32Array(RN), lvOf = new Int8Array(RN), hp = new Heap(RN * 2);
+    const grow = (srcs, pass, cost) => {
+      dist.fill(1e9); came.fill(-1); hp.n = 0;
+      for (const s of srcs) { dist[s.i] = 0; lvOf[s.i] = s.lv; hp.push(0, s.i); }
+      while (hp.n) {
+        const i = hp.pop(), d = hp.top;
+        if (d > dist[i]) continue;
+        const x = i % RW, y = (i / RW) | 0, lv = lvOf[i];
+        for (let k = 0; k < 8; k++) {
+          const nx = x + DX8[k], ny = y + DY8[k];
+          if (nx < 0 || ny < 0 || nx >= RW || ny >= RH) continue;
+          const j = ny * RW + nx;
+          if (!pass(j, lv)) continue;
+          const nd = d + DL8[k] * cost(j);
+          if (nd < dist[j]) { dist[j] = nd; came[j] = i; lvOf[j] = lv; hp.push(nd, j); }
+        }
+      }
+    };
+    // follow each inlet's way back to its outlet, marking the passage; returns the paths, inlet first
+    const trace = (inlets, slot, kind) => inlets.map(s => {
+      const path = [];
+      for (let i = s, g = 0; i >= 0 && g < RN; i = came[i], g++) {
+        path.push(i); mark(slot, i, lvOf[i], kind);
+        if (kind === K_WET) { cvTo[i] = came[i]; flow[i] = Math.min(255, flow[i] + 1); }
+      }
+      return path;
+    });
+    // sinkholes: limestone at the surface on open, dry land, wetter and flatter first, at least 6 tiles apart
+    const pickInlets = (ok, max) => {
+      const c = [];
+      for (let i = 0; i < RN; i++) {
+        const tx = i % RW, ty = (i / RW) | 0;
+        if (tx < 2 || ty < 2 || tx > RW - 3 || ty > RH - 3 || wt[i] || built[i] || pathW[i] > 0 || trailW[i] >= 2 || rockS[i] !== R_LIME || gt[i] === G_ROCK || !ok(i)) continue;
+        c.push([i, hash2(i, 5, seed + 671) * (Pc[i] > 40 ? 1 : 0.5) * (0.5 + dep[i])]);
+      }
+      c.sort((a, b) => b[1] - a[1]);
+      const out = [];
+      for (const [i] of c) { if (out.length >= max) break; if (!out.some(j => tdist(i, j) < 6)) out.push(i); }
+      return out;
+    };
+    // limestone dissolves only where there's water to do it: no karst under a desert
+    let rainSum = 0;
+    for (let i = 0; i < RN; i++) rainSum += Pc[i];
+    const wetEnough = rainSum / RN > 25;
+    const karstPass = (j, lv) => wetEnough && !wt[j] && L[j] >= lv + 1 && rockAt(j, lv) === R_LIME;
+    const karstCost = j => (joint[j] ? 1 : 2.8) + 0.6 * hash2(j, 7, seed + 667);
+    const dolines = [];
+    // the active level: springs where limestone meets a river, lake or the sea at the water's own level
+    const springC = [];
+    // (within two tiles of the water, since low banks share the water's terrace; the spring issues on the side
+    // toward the water, onto the bank or into the river)
+    for (let i = 0; i < RN; i++) {
+      const wq = dW.s[i];
+      if (wt[i] || built[i] || wq < 0 || dW.d[i] > 2.5 || wt[wq] === W_POND) continue;
+      const lv = L[wq];
+      if (L[i] < lv + 1 || rockAt(i, lv) !== R_LIME) continue;
+      const x = i % RW, y = (i / RW) | 0, sx = Math.sign((wq % RW) - x), sy = Math.sign(((wq / RW) | 0) - y);
+      const q = Math.abs(sy) >= Math.abs(sx) && sy ? i + sy * RW : i + sx;
+      if (q < 0 || q >= RN || L[q] > lv) continue;
+      springC.push({ i, lv, q, k: hash2(i, 3, seed + 669) + (q === i + RW ? 0.3 : 0) + (wt[wq] === W_RIVER ? 0.2 : 0) });
+    }
+    springC.sort((a, b) => b.k - a.k);
+    const springs = [];
+    for (const s of springC) { if (springs.length >= 6) break; if (!springs.some(t => tdist(t.i, s.i) < 7)) springs.push(s); }
+    const wetLv = new Set();
+    if (springs.length) {
+      grow(springs, karstPass, karstCost);
+      const inl = pickInlets(i => dist[i] < 1e9 && L[i] >= lvOf[i] + 2, 9);
+      if (inl.length) {
+        const paths = trace(inl, 0, K_WET);
+        dolines.push(...inl);
+        info.karst = 1; info.levels = 1; info.pattern.push('branchwork');
+        for (const s of springs) if (flow[s.i]) { cvTo[s.i] = s.q; fl[s.i] |= F_SPRING; info.springs++; wetLv.add(s.lv); }
+        // trunks: a passage carrying three or more sinkholes' water is two tiles wide
+        for (let i = 0; i < RN; i++) if (cvL[0][i] >= 0 && flow[i] >= 3) for (const j of [i + 1, i + RW]) if (j < RN && karstPass(j, cvL[0][i])) mark(0, j, cvL[0][i], K_WET);
+        // a network maze where a sandstone cap lets water in everywhere: every joint round the passage opens
+        const capped = [];
+        for (let i = 0; i < RN; i++) if (cvL[0][i] >= 0 && rockAt(i, cvL[0][i] + 1) === R_SAND) capped.push(i);
+        let maze = 0;
+        for (const i of capped) {
+          const lv = cvL[0][i], x = i % RW, y = (i / RW) | 0;
+          for (let b = y - 3; b <= y + 3; b++) for (let a = x - 3; a <= x + 3; a++) {
+            if (a < 0 || b < 0 || a >= RW || b >= RH) continue;
+            const j = b * RW + a;
+            if (joint[j] && cvL[0][j] < 0 && karstPass(j, lv)) { mark(0, j, lv, K_WET); maze++; }
+          }
+        }
+        if (maze > 6) info.pattern.push('network maze');
+        // anastomotic loops near a spring that a big river floods back into: side passages that braid and rejoin
+        let braids = 0;
+        for (const path of paths) {
+          const sp = springs.find(s => s.i === path[path.length - 1]);
+          if (!sp || !((wt[sp.q] === W_RIVER && rwid[sp.q] >= 2.2) || wt[sp.q] === W_LAKE) || path.length < 10) continue;
+          const lv = sp.lv;
+          for (let k = path.length - 9; k < path.length - 2; k += 3) {
+            const a = path[k], b = path[Math.min(path.length - 1, k + 5)], salt = braids + k;
+            grow([{ i: a, lv }], karstPass, j => 1 + 2.5 * hash2(j, salt, seed + 675) + (cvL[0][j] >= 0 ? 4 : 0));
+            if (dist[b] >= 1e9) continue;
+            for (let prev = b, i = came[b], g = 0; i >= 0 && i !== a && g < 60; prev = i, i = came[i], g++) if (cvL[0][i] < 0) { mark(0, i, lv, K_WET); cvTo[i] = prev; }
+            braids++;
+          }
+        }
+        if (braids) info.pattern.push('anastomotic');
+      }
+    }
+    // the old level: an abandoned water table two to four terraces up, dry, opening where valleys cut it
+    {
+      const gapL = clamp(Math.round(0.07 / step), 2, 4), D = new Set();
+      for (const l of wetLv) D.add(l + gapL);
+      if (!D.size && wetEnough) {
+        // no spring today: the level with limestone under enough ground and the most valley walls cutting it
+        let bestL = -1, bc = 0;
+        for (let l = 0; l < 40; l++) {
+          let area = 0, walls = 0;
+          for (let i = RW; i < RN - RW; i++) {
+            if (wt[i] || L[i] < l + 1 || rockAt(i, l) !== R_LIME) continue;
+            if (L[i] >= l + 2) area++;
+            if (L[i + RW] <= l || L[i - 1] <= l || L[i + 1] <= l || L[i - RW] <= l) walls++;
+          }
+          const sc = Math.min(area / 12, walls);
+          if (area > 60 && walls > 2 && sc > bc) { bc = sc; bestL = l; }
+        }
+        if (bestL >= 0) D.add(bestL);
+      }
+      const entC = [];
+      for (let i = RW; i < RN - RW; i++) {
+        if (wt[i] || built[i]) continue;
+        const x = i % RW;
+        for (const d of D) {
+          if (L[i] < d + 1 || rockAt(i, d) !== R_LIME) continue;
+          const q = i + RW;
+          if (!wt[q] && L[q] <= d) { entC.push({ i, lv: d, vis: true, k: hash2(i, 9, seed + 677) + 0.5 }); break; }
+          if ([i - 1, i + 1, i - RW].some(j => Math.abs(j % RW - x) <= 1 && L[j] <= d)) { entC.push({ i, lv: d, vis: false, k: hash2(i, 9, seed + 677) }); break; }
+        }
+      }
+      entC.sort((a, b) => b.k - a.k);
+      const ents = [];
+      for (const e of entC) { if (ents.length >= 5) break; if (!ents.some(t => tdist(t.i, e.i) < 6)) ents.push(e); }
+      if (ents.length) {
+        grow(ents, karstPass, karstCost);
+        const inl = pickInlets(i => dist[i] < 1e9 && L[i] >= lvOf[i] + 2 && !dolines.includes(i), 6);
+        if (inl.length) {
+          trace(inl, 1, K_DRY);
+          dolines.push(...inl);
+          for (const e of ents) {
+            if (cvL[1][e.i] < 0) continue;
+            if (e.vis) { fl[e.i] |= F_MOUTH; mouthL[e.i] = e.lv; } else info.hidden++;
+          }
+          info.levels++;
+          if (!info.karst) { info.karst = 1; info.pattern.push('branchwork'); }
+        }
+      }
+    }
+    for (const i of dolines) fl[i] |= F_SINK;
+    info.dolines = dolines.length;
+    // lava tubes: from the highest basalt, a tube runs down the slope with momentum, a terrace under the surface,
+    // and its roof has fallen in here and there as skylights
+    if (rockCount[R_BAS] > RN * 0.2) {
+      const bas = [];
+      for (let i = 0; i < RN; i++) { const x = i % RW, y = (i / RW) | 0; if (!wt[i] && rockS[i] === R_BAS && x > 4 && y > 4 && x < RW - 5 && y < RH - 5) bas.push(i); }
+      bas.sort((a, b) => hW[b] - hW[a]);
+      const vents = [bas[0]];
+      for (const i of bas) { if (vents.length >= 2) break; if (tdist(i, vents[0]) >= 18) vents.push(i); }
+      for (const v of vents) {
+        if (v === undefined) continue;
+        const tube = [v], seen = new Set([v]);
+        let p = v, dir = -1;
+        for (let s = 0; s < 200; s++) {
+          const x = p % RW, y = (p / RW) | 0;
+          let best = -1, bc = 1e9, bk = -1;
+          for (let k = 0; k < 8; k++) {
+            const nx = x + DX8[k], ny = y + DY8[k];
+            if (nx < 0 || ny < 0 || nx >= RW || ny >= RH) continue;
+            const j = ny * RW + nx;
+            if (seen.has(j) || (h[j] - h[p]) / step > 0.5 || nx < 1 || ny < 1 || nx >= RW - 1 || ny >= RH - 1) continue; // lava can't climb
+            // down the broad slope of the volcano (the smooth world height), with momentum, wandering a little
+            const turn = dir < 0 ? 0 : Math.min(Math.abs(k - dir), 8 - Math.abs(k - dir));
+            const c = (hW[j] - hW[p]) / (DL8[k] * TILE_KM) * 6 + (h[j] - h[p]) / step * 0.3 + 0.3 * turn + 0.5 * hash2(j, k, seed + 673);
+            if (c < bc) { bc = c; best = j; bk = k; }
+          }
+          if (best < 0 || wt[best] || rockS[best] !== R_BAS) break;
+          dir = bk; p = best; seen.add(p); tube.push(p);
+        }
+        if (tube.length < 8) continue;
+        info.lava++;
+        tube.forEach((t, k) => {
+          const lv = L[t] - 1;
+          if (lv < 0) return;
+          mark(1, t, lv, K_LAVA);
+          if (k > 2 && k % 9 === 5 && !built[t] && !(pathW[t] > 0)) { fl[t] |= F_SINK; info.skylights++; }
+        });
+      }
+    }
+    // sea caves where waves meet a cliff of hard rock; shelters at the foot of sandstone cliffs
+    {
+      const cand = [];
+      for (let i = 0; i < RN - RW; i++) {
+        if (wt[i] || built[i]) continue;
+        const x = i % RW;
+        for (const q of [i + RW, i - 1, i + 1, i - RW]) {
+          if (q < 0 || q >= RN || Math.abs(q % RW - x) > 1) continue;
+          if (wt[q] === W_SEA && L[i] - L[q] >= 2 && rockAt(i, L[q]) !== R_SHALE) { cand.push({ i, q, lv: L[q], kind: K_SEA, k: hash2(i, 11, seed + 679) + (q === i + RW ? 0.6 : 0) }); break; }
+          if (q === i + RW && !wt[q] && L[i] - L[q] >= 3 && rockAt(i, L[q]) === R_SAND && cvL[0][i] < 0) { cand.push({ i, q, lv: L[q], kind: K_SHELTER, k: hash2(i, 11, seed + 679) * 0.6 }); break; }
+        }
+      }
+      cand.sort((a, b) => b.k - a.k);
+      const took = [];
+      for (const c of cand) {
+        if ((c.kind === K_SEA ? info.sea >= 4 : info.shelters >= 2) || took.some(t => tdist(t, c.i) < 8)) continue;
+        const dx = (c.i % RW) - (c.q % RW), dy = ((c.i / RW) | 0) - ((c.q / RW) | 0), len = c.kind === K_SEA ? 2 + ((hash2(c.i, 13, seed + 681) * 3) | 0) : 1;
+        let n = 0;
+        for (let s = 0; s < len; s++) {
+          const x = (c.i % RW) + dx * s, y = ((c.i / RW) | 0) + dy * s;
+          if (x < 0 || y < 0 || x >= RW || y >= RH) break;
+          const t = y * RW + x;
+          if (wt[t] || L[t] < c.lv + 1) break;
+          mark(0, t, c.lv, c.kind); n++;
+        }
+        if (!n) continue;
+        took.push(c.i);
+        if (c.q === c.i + RW) { fl[c.i] |= F_MOUTH; mouthL[c.i] = c.lv; }
+        if (c.kind === K_SEA) info.sea++; else info.shelters++;
+      }
+    }
+    let caves = 0, mouths = info.hidden;
+    for (let i = 0; i < RN; i++) { if (cvL[0][i] >= 0 || cvL[1][i] >= 0) caves++; if (fl[i] & F_MOUTH) mouths++; }
+    yield;
+
     // ---- plants: viability by Liebig's law, spaced by dart throwing with each kind's own radius ----
     reg.stage = 'growing the plants';
     const plants = [];
@@ -1420,6 +1883,8 @@
     const pathMask = new Uint8Array(RN);
     for (let i = 0; i < RN; i++) pathMask[i] = pathW[i] > 0 || trailW[i] >= 2 ? 1 : 0;
     const dPath = distField(pathMask, RW, RH);
+    // tree cover blurred over two tiles, so a wood thins out across its edge instead of stopping at a tile line
+    const coverF = blur(Float32Array.from(gt, (b, i) => (wt[i] ? 0 : COVER[b])), RW, RH, 2, 1);
     const cand = [];
     for (let i = 0; i < RN; i++) for (let k = 0; k < 3; k++) cand.push([i, k, hash2(i, k, seed + 571)]);
     cand.sort((a, b) => a[2] - b[2]);
@@ -1434,20 +1899,20 @@
       return true;
     };
     for (const [i, k] of cand) {
-      if (wt[i] || fl[i] & (F_HOUSE | F_FIELD | F_GREEN)) continue;
+      if (wt[i] || fl[i] & (F_HOUSE | F_FIELD | F_GREEN | F_SINK | F_SPRING)) continue;
       const tx = i % RW, ty = (i / RW) | 0, b = gt[i];
       const gx = tx + 0.15 + hash2(i, k, seed + 573) * 0.7, gy = ty + 0.2 + hash2(i, k, seed + 577) * 0.7;
       const wet = wetOf(i), temp = Tt[i], rain = Pc[i] + wet * 60;
-      // where trees grow: the biome's cover, groves and clearings by noise, thinning to nothing round the village
-      const x = X(tx), y = Y(ty), grove = fbm(x * 6, y * 6, seed + 581, 3);
-      let cover = COVER[b], shrubD = SHRUB[b];
-      if (wet > 0.72 && b !== ICE && b !== G_SALT) cover = Math.max(cover, b === DESERT ? 0.25 : 0.5);
-      if (b === GRASS || b === SAVANNA || b === DESERT || b === TUNDRA || b === BEACH) cover *= sstep(0.0, 0.32, grove) * 3;
-      else cover *= sstep(-0.5, -0.22, grove);
+      // where trees grow: the blurred cover, groves and clearings by noise, thinning to nothing round the village
+      const x = X(tx), y = Y(ty), grove = fbm(x * 6, y * 6, seed + 581, 3), cf = coverF[i];
+      let cover = cf, shrubD = SHRUB[b];
+      if (wet > 0.72 && b !== ICE && b !== G_SALT) cover = Math.max(cover, b === DESERT ? 0.25 : 0.5); // gallery woods along water
+      const open = 1 - sstep(0.2, 0.45, cf);
+      cover *= lerp(sstep(-0.5, -0.22, grove), sstep(0.0, 0.32, grove) * 3, open);
       const clear = sstep(2, 7, nearBuilt.d[i] + gnoise(x * 5, y * 5, seed + 583) * 2.5) * (dPath.d[i] < 1 ? 0 : dPath.d[i] < 2 ? 0.5 : 1);
-      // bushes gather along the edges: where the groves give out, beside paths and round the clearings
-      const edge = Math.exp(-(((grove + 0.3) / 0.14) ** 2)) + (dPath.d[i] >= 1 && dPath.d[i] < 2.5 ? 0.5 : 0) + (nearBuilt.d[i] > 1.5 && nearBuilt.d[i] < 4 ? 0.4 : 0);
-      cover *= clear; shrubD *= (0.3 + 1.6 * edge) * (dPath.d[i] < 1 ? 0 : 1);
+      // shrubs belong to a wood's mantle and fringe, beside paths and round clearings; under the canopy, few
+      const edge = Math.exp(-(((cf - 0.3) / 0.12) ** 2)) + Math.exp(-(((grove + 0.3) / 0.14) ** 2)) * (1 - open) * 0.6 + (dPath.d[i] >= 1 && dPath.d[i] < 2.5 ? 0.5 : 0) + (nearBuilt.d[i] > 1.5 && nearBuilt.d[i] < 4 ? 0.4 : 0);
+      cover *= clear; shrubD *= (0.12 + 1.5 * edge) * (dPath.d[i] < 1 ? 0 : 1);
       if (temp < -7.5) cover = 0; // above the treeline
       // which kind, by viability times abundance
       const want = k === 0 ? 'tree' : 'shrub';
@@ -1461,7 +1926,7 @@
         if (sp.wet) v = Math.min(v, rise(wet, sp.wet));
         if (sp.kind === 'reed' && dW.d[i] > 1.5) v = -1;
         if (sp.id === 'palm' && b !== BEACH && wet < 0.6) v = Math.min(v, 0.15);
-        if (sp.id === 'heather' || sp.id === 'sagebrush' || sp.id === 'cottongrass') v *= clamp(1 - COVER[b] * 1.4, 0.05, 1); // open-ground plants
+        if (sp.id === 'heather' || sp.id === 'sagebrush' || sp.id === 'cottongrass') v *= clamp(1 - cf * 1.4, 0.05, 1); // open-ground plants
         if (v <= 0) continue;
         vbest = Math.max(vbest, v);
         // each kind grows in patches (stands of pine, groves of oak) and the best suited dominate
@@ -1525,12 +1990,13 @@
       const u = gx / TS - 0.5, v = gy / TS - 0.5, i0 = clamp(Math.floor(u), 0, RW - 2), j0 = clamp(Math.floor(v), 0, RH - 2), fx = clamp(u - i0, 0, 1), fy = clamp(v - j0, 0, 1), k = j0 * RW + i0;
       return (shade[k] * (1 - fx) + shade[k + 1] * fx) * (1 - fy) + (shade[k + RW] * (1 - fx) + shade[k + RW + 1] * fx) * fy;
     };
-    // what stands in each row: plants, houses, the well
+    // what stands in each row: plants, houses, the well, boats
     const rows = Array.from({ length: RH }, () => []);
     for (const p of plants) rows[Math.min(RH - 1, Math.floor(p.gy))].push({ gy: p.gy, gx: p.gx, s: spriteCache.get(p.sp.id + '|' + p.vi + '|' + p.season), L: L[p.i] });
     if (village) {
       for (const hs of village.houses) rows[hs.y].push({ gy: hs.y + 0.85, gx: hs.x + 1, s: houseSprite(hs.face, hs.v), L: L[hs.y * RW + hs.x] });
-      rows[village.y].push({ gy: village.y + 0.6, gx: village.x + 0.5, s: wellSprite(), L: village.L });
+      if (village.well) rows[village.y].push({ gy: village.y + 0.6, gx: village.x + 0.5, s: wellSprite(), L: village.L });
+      for (const b of village.boats) rows[(b / RW) | 0].push({ gy: ((b / RW) | 0) + 0.6, gx: (b % RW) + 0.5, s: boatSprite(), L: L[b] });
     }
     for (const r of rows) r.sort((a, b) => a.gy - b.gy || a.gx - b.gx);
     // the water surface each tile can show at its own level (its own, or a neighbor's at the same level), and
@@ -1555,11 +2021,14 @@
       if (L[t] !== Lv) return wt[t] !== 0;
       return wsT[t] > -1e9 && (wt[t] === W_SEA || hAt(clamp(gx, 0, RW * TS - 1), clamp(gy, 0, RH * TS - 1)) < wsT[t]);
     };
+    const SHAFT = P('#100a12'), MOUTH_IN = P('#06040a'), MOUTH_RIM = P('#2a2028');
     for (let ty = 0; ty < RH; ty++) {
       for (let tx = 0; tx < RW; tx++) {
         const i = ty * RW + tx, Lv = L[i], sx0 = tx * TS, sy0 = TOP + ty * TS - Lv * FH;
         const back = ty > 0 ? L[i - RW] : Lv, left = tx > 0 ? L[i - 1] : Lv, right = tx < RW - 1 ? L[i + 1] : Lv;
         const wtr = wt[i], flg = fl[i], g3 = GROUND[wtr === W_SEA ? BEACH : gt[i]], nearW = wsT[i] > -1e9;
+        const fld = flg & F_FIELD ? village.fields[fieldAt[i]] : null, fid = fieldAt[i];
+        const sky = (flg & F_SINK) && cvK[1][i] === K_LAVA, spTo = flg & F_SPRING ? cvTo[i] : -1;
         for (let py = 0; py < TS; py++) {
           const gy = ty * TS + py, row = (sy0 + py) * IW;
           for (let px = 0; px < TS; px++) {
@@ -1574,20 +2043,41 @@
               else if (kind !== W_RIVER && hash2(gx, gy, seed + 603) < 0.008) c = WATER_C.riverLight;
               if (flg & F_BRIDGE) c = px === 0 || px === TS - 1 ? P('#5a3a24') : (py & 1 ? P('#a07848') : P('#8a6238'));
             } else {
+              // near a seam between grounds, each pixel reads its ground from a point nudged by a slow noise and an
+              // ordered dither, so the 8-pixel steps between biomes turn into a ragged, dithered edge
+              let gp = g3, gtp = gt[i];
+              if (mixed[i] && (px < 3 || px > 4 || py < 3 || py > 4)) {
+                const jx = Math.floor((gx + gnoise(gx * 0.19, gy * 0.19, seed + 541) * 3 + (bay(gx, gy) - 0.5) * 4) / TS);
+                const jy = Math.floor((gy + gnoise(gx * 0.19 + 7.7, gy * 0.19, seed + 543) * 3 + (bay(gx + 2, gy + 1) - 0.5) * 4) / TS);
+                if (jx >= 0 && jy >= 0 && jx < RW && jy < RH) { const j = jy * RW + jx; if (j !== i && L[j] === Lv && !wt[j]) { gtp = gt[j]; gp = GROUND[gtp]; } }
+              }
               const s = shAt(gx, gy) + (bay(gx, gy) - 0.5) * 0.7;
-              c = s > 0.45 ? g3[2] : s < -0.45 ? g3[0] : g3[1];
+              c = s > 0.45 ? gp[2] : s < -0.45 ? gp[0] : gp[1];
               if (wtr && wtr !== W_SEA) c = shadeC(c, 0.86); // a muddy bank inside a water tile
-              if (flg & F_FIELD) {
-                const f = village.fields.find(q => tx >= q.x0 && tx < q.x0 + q.fw && ty >= q.y0 && ty < q.y0 + q.fh);
-                const cc = CROPS[f.crop], edge = (tx === f.x0 && px === 0) || (tx === f.x0 + f.fw - 1 && px === TS - 1) || (ty === f.y0 && py === 0) || (ty === f.y0 + f.fh - 1 && py === TS - 1);
-                c = edge ? P('#3e6a2e') : ((f.dir ? gx : gy) & 1 ? cc[1] : cc[0]);
+              if (fld) {
+                // fields: furrows along each strip, a darker border where the next field or the open ground begins
+                const cc = CROPS[fld.strips ? (fld.crop + (fld.dir ? tx - fld.x0 : ty - fld.y0)) % CROPS.length : fld.crop];
+                const edge = (px === 0 && (tx === 0 || fieldAt[i - 1] !== fid)) || (px === TS - 1 && (tx === RW - 1 || fieldAt[i + 1] !== fid)) || (py === 0 && (ty === 0 || fieldAt[i - RW] !== fid)) || (py === TS - 1 && (ty === RH - 1 || fieldAt[i + RW] !== fid));
+                const sEdge = fld.strips && ((fld.dir && px === 0) || (!fld.dir && py === 0));
+                c = edge ? P('#3e6a2e') : sEdge ? shadeC(cc[1], 0.8) : ((fld.dir ? gx : gy) & 1 ? cc[1] : cc[0]);
               } else if (flg & F_GREEN) c = s > 0.2 ? P('#8cc85a') : P('#74b44a');
-              else if (hash2(gx, gy, seed + 607) < 0.014) c = g3[0];
-              else if ((gt[i] === GRASS || gt[i] === FOREST || gt[i] === SAVANNA) && hash2(gx >> 1, gy, seed + 609) < 0.012) c = g3[2];
-              if (gt[i] === GRASS && hash2(gx, gy, seed + 611) < 0.004) c = [P('#f4f1ea'), P('#f7c46c'), P('#d9583f')][(hash2(gx, gy, seed + 613) * 3) | 0];
+              else if (hash2(gx, gy, seed + 607) < 0.014) c = gp[0];
+              else if ((gtp === GRASS || gtp === FOREST || gtp === SAVANNA) && hash2(gx >> 1, gy, seed + 609) < 0.012) c = gp[2];
+              if (gtp === GRASS && !fld && hash2(gx, gy, seed + 611) < 0.004) c = [P('#f4f1ea'), P('#f7c46c'), P('#d9583f')][(hash2(gx, gy, seed + 613) * 3) | 0];
               const m = pm[gy * IW + gx];
-              if (m && !(flg & F_FIELD)) c = m === 1 ? (hash2(gx, gy, seed + 617) < 0.6 ? PATHC[1] : c) : (hash2(gx, gy, seed + 619) < 0.12 ? PATH_DARK : hash2(gx, gy, seed + 621) < 0.1 ? PATH_LIGHT : PATHC[m]);
+              if (m && !fld) c = m === 1 ? (hash2(gx, gy, seed + 617) < 0.6 ? PATHC[1] : c) : (hash2(gx, gy, seed + 619) < 0.12 ? PATH_DARK : hash2(gx, gy, seed + 621) < 0.1 ? PATH_LIGHT : PATHC[m]);
               if (flg & F_BRIDGE) c = px === 0 || px === TS - 1 ? P('#5a3a24') : (py & 1 ? P('#a07848') : P('#8a6238'));
+              // a sinkhole: a bowl in the ground with a dark shaft; a skylight: a hole in the lava's roof
+              if (flg & F_SINK) {
+                const d = (px - 3.5) ** 2 + (py - 3.5) ** 2 * 1.4;
+                if (sky) { if (d < 5) c = d < 2.2 ? MOUTH_IN : INK; else if (d < 9) c = shadeC(c, 0.72); }
+                else { if (d < 13) c = shadeC(c, d < 6 ? 0.64 : 0.82); if (d < 1.8) c = SHAFT; }
+              }
+              // a spring: water welling up on the side toward the river it feeds
+              if (spTo >= 0 && spTo !== i + RW) {
+                const ddx = (spTo % RW) - tx, ddy = ((spTo / RW) | 0) - ty, along = (px - 3.5) * ddx + (py - 3.5) * ddy, acr = Math.abs((px - 3.5) * ddy - (py - 3.5) * ddx);
+                if (along > 1 && acr < 1.6) c = along > 3 ? FOAM : WATER_C.riverLight;
+              }
               // rims and shadows: a lit lip where the land drops away north or west, a dark one to the east,
               // and the shadow cliffs to the north and west cast on the ground at their feet
               if ((py === 0 && back < Lv) || (px === 0 && left < Lv)) c = shadeC(c, 1.18);
@@ -1597,15 +2087,20 @@
             buf[row + gx] = c;
           }
         }
-        // the cliff face below this tile, down to the tile in front (the front row goes down to the base)
+        // the cliff face below this tile, down to the tile in front (the front row goes down to the base), in the
+        // colors of the beds it cuts
         const front = ty < RH - 1 ? L[i + RW] : 0;
         if (front < Lv) {
           const fh = (Lv - front) * FH, fy0 = sy0 + TS;
-          const mouth = (flg & F_MOUTH) && fh >= 8;
+          const mL = mouthL[i], mouth = (flg & F_MOUTH) && mL >= front && mL < Lv;
+          const mb = mouth ? (Lv - mL) * FH - 1 : -1, mt = mouth ? Math.max(1, mb - (Lv - mL >= 2 ? 6 : 3)) : -1;
+          const resurge = spTo === i + RW;
+          let pal = null, palBand = 1e9;
           for (let r = 0; r < fh; r++) {
             const Y = fy0 + r;
             if (Y >= IH) break;
             const band = Lv - 1 - Math.floor(r / FH), rr = r % FH;
+            if (band !== palBand) { palBand = band; pal = STRATA_R[rockAt(i, band)]; }
             for (let px = 0; px < TS; px++) {
               const gx = sx0 + px;
               let c;
@@ -1614,7 +2109,7 @@
                 const k = (gx * 7 + ((r + (gx & 1) * 2) >> 1)) % 5;
                 c = r >= fh - 2 ? FOAM : k === 0 ? FOAM : k < 3 ? WATER_C.riverLight : WATER_C.river;
               } else {
-                c = strata[(hash2(band, 17, seed + 631) * 3) | 0];
+                c = pal[(hash2(band, 17, seed + 631) * 3) | 0];
                 if (rr === FH - 1 && (band & 1)) c = shadeC(c, 0.82); // bedding planes
                 if (hash2(gx, band, seed + 633) < 0.12 && rr > 0 && rr < 3) c = shadeC(c, 0.62); // cracks
                 if (px === 0 && left < Lv) c = shadeC(c, 1.12);
@@ -1623,8 +2118,11 @@
                 else if (r === 1 && hash2(gx, 3, seed + 635) < 0.45 && gt[i] !== G_ROCK && gt[i] !== DESERT && gt[i] !== BEACH) c = shadeC(g3[0], 0.7);
                 // a path down the cliff is cut into steps
                 if (pm[(ty * TS + TS - 1) * IW + gx] >= 2 && r > 0 && r < fh - 1) c = (r & 1) ? PATH_DARK : PATHC[2];
-                if (mouth && px >= 2 && px <= 5 && r >= fh - 7 && r < fh - 1) c = (r === fh - 7 && (px === 2 || px === 5)) ? c : r === fh - 7 || px === 2 || px === 5 ? P('#2a2028') : P('#06040a');
-                if (r === fh - 1) c = INK;
+                // a cave mouth, opening at the height of its own level in the face
+                if (mouth && px >= 2 && px <= 5 && r >= mt && r <= mb) c = (r === mt && (px === 2 || px === 5)) ? c : r === mt || px === 2 || px === 5 ? MOUTH_RIM : MOUTH_IN;
+                // a spring at the foot of the face, the river's water issuing from the rock
+                if (resurge && px >= 2 && px <= 5 && r >= fh - 4) c = r === fh - 4 ? MOUTH_RIM : px === 3 || px === 4 ? (r >= fh - 2 ? FOAM : WATER_C.riverLight) : MOUTH_IN;
+                if (r === fh - 1 && !(resurge && (px === 3 || px === 4))) c = INK;
               }
               buf[Y * IW + gx] = c;
             }
@@ -1640,39 +2138,46 @@
     new Uint32Array(id.data.buffer).set(buf);
     ictx.putImageData(id, 0, 0);
     yield;
-    // ---- underground: the surface darkened, and the caves under it drawn as a cutaway ----
+    // ---- underground: the surface darkened, and the passages under it drawn as a cutaway, each at its own level ----
     reg.stage = 'mapping the caves';
     const ub = new Uint32Array(buf.length);
     for (let k = 0; k < buf.length; k++) { const c = buf[k]; ub[k] = pack(((c & 255) * 0.16 + 8) | 0, (((c >>> 8) & 255) * 0.16 + 8) | 0, (((c >>> 16) & 255) * 0.2 + 16) | 0); }
-    const floorC = [P('#4e3c30'), P('#64503e'), P('#7a644c')], wallC = strata.map(c => shadeC(c, 0.6));
-    // each connected cave system lies at one depth: two terraces under the lowest ground above it
-    const sys = new Int32Array(RN).fill(-1), sysL = [];
-    for (let s0 = 0; s0 < RN; s0++) {
-      if (!(fl[s0] & F_CAVE) || sys[s0] >= 0) continue;
-      const id = sysL.length, q = [s0];
-      sys[s0] = id;
-      let mn = 1e9;
-      for (let k = 0; k < q.length; k++) {
-        const i = q[k], x = i % RW;
-        mn = Math.min(mn, L[i]);
-        for (const j of [i - 1, i + 1, i - RW, i + RW]) if (j >= 0 && j < RN && Math.abs(j % RW - x) <= 1 && fl[j] & F_CAVE && sys[j] < 0) { sys[j] = id; q.push(j); }
+    const FLOOR = [];
+    FLOOR[K_WET] = ['#4c4638', '#5a5446', '#6a6452'].map(P); FLOOR[K_DRY] = ['#766c58', '#8a8068', '#a09478'].map(P);
+    FLOOR[K_LAVA] = ['#3a3440', '#4a4452', '#5c5464'].map(P); FLOOR[K_SEA] = ['#22506c', '#2a5a7a', '#336a8c'].map(P); FLOOR[K_SHELTER] = ['#86583c', '#9a6a4a', '#b07a54'].map(P);
+    const STREAM = P('#3c90cc'), STREAM_L = P('#6cc0e4'), STAL = P('#efe6cc'), DAY = [P('#f7c46c'), P('#d9a050')], EDGE = P('#100a12');
+    // a stream pixel: within reach of the segment from the tile's middle toward a neighbor's middle
+    const nearSeg = (qx, qy, dx, dy) => { const l2 = dx * dx + dy * dy, t = clamp((qx * dx + qy * dy) / l2, 0, 1); return Math.hypot(qx - dx * t, qy - dy * t); };
+    for (let ty = 0; ty < RH; ty++) for (const slot of [0, 1]) for (let tx = 0; tx < RW; tx++) {
+      const i = ty * RW + tx, lv = cvL[slot][i];
+      if (lv < 0) continue;
+      const kind = cvK[slot][i], sx0 = tx * TS, sy0 = TOP + ty * TS - lv * FH, fc = FLOOR[kind];
+      const open = j => cvL[slot][j] >= 0 && Math.abs(cvL[slot][j] - lv) <= 1;
+      const backC = ty > 0 && open(i - RW), leftC = tx > 0 && open(i - 1), rightC = tx < RW - 1 && open(i + 1), frontC = ty < RH - 1 && open(i + RW);
+      const wallP = STRATA_R[rockAt(i, lv + 1)].map(c => shadeC(c, 0.55));
+      // the stream: this tile's way down toward its spring, and the ways in from the tiles that drain into it
+      const segs = [];
+      if (slot === 0 && kind === K_WET) {
+        if (cvTo[i] >= 0) segs.push([(cvTo[i] % RW) - tx, ((cvTo[i] / RW) | 0) - ty]);
+        for (let d = 0; d < 8; d++) { const nx = tx + DX8[d], ny = ty + DY8[d]; if (nx >= 0 && ny >= 0 && nx < RW && ny < RH && cvTo[ny * RW + nx] === i && cvL[0][ny * RW + nx] >= 0) segs.push([DX8[d], DY8[d]]); }
       }
-      sysL.push(Math.max(0, mn - 2));
-    }
-    for (let ty = 0; ty < RH; ty++) for (let tx = 0; tx < RW; tx++) {
-      const i = ty * RW + tx;
-      if (!(fl[i] & F_CAVE)) continue;
-      const Lc = sysL[sys[i]], sx0 = tx * TS, sy0 = TOP + ty * TS - Lc * FH;
-      const cave = j => j >= 0 && j < RN && (fl[j] & F_CAVE) && sys[j] === sys[i];
-      const backC = ty > 0 && cave(i - RW), leftC = tx > 0 && cave(i - 1), rightC = tx < RW - 1 && cave(i + 1), frontC = ty < RH - 1 && cave(i + RW);
-      for (let py = 0; py < TS; py++) for (let px = 0; px < TS; px++) {
-        const gx = sx0 + px, gy = ty * TS + py;
-        let c = floorC[hash2(gx, gy, seed + 641) < 0.15 ? 0 : hash2(gx, gy, seed + 643) < 0.1 ? 2 : 1];
-        if (!backC && py < 3) c = wallC[(py + (hash2(gx, ty, seed) * 2 | 0)) % 3]; // the back wall of the passage, in the strata
-        if ((!leftC && px === 0) || (!rightC && px === TS - 1) || (!frontC && py === TS - 1) || (!backC && py === 3)) c = P('#100a12');
-        if (hash2(gx, gy, seed + 645) < 0.004) c = P('#9fe8ff'); // crystals
-        if (fl[i] & F_MOUTH && py > 3 && px > 0 && px < TS - 1) c = (px + py) & 1 ? P('#f7c46c') : P('#d9a050'); // daylight at a mouth
-        ub[(sy0 + py) * IW + gx] = c;
+      const lit = (fl[i] & F_SINK) && (slot === 1 || kind === K_WET), mo = (fl[i] & F_MOUTH) && mouthL[i] === lv;
+      for (let py = 0; py < TS; py++) {
+        const Y = sy0 + py;
+        if (Y < 0 || Y >= IH) continue;
+        for (let px = 0; px < TS; px++) {
+          const gx = sx0 + px, gy = ty * TS + py;
+          let c = fc[hash2(gx, gy, seed + 641) < 0.15 ? 0 : hash2(gx, gy, seed + 643) < 0.1 ? 2 : 1];
+          if (kind === K_LAVA && (gx + gy * 2) % 6 === 0) c = fc[0]; // the ropy floor of a drained tube
+          if (kind === K_DRY && hash2(gx, gy, seed + 647) < 0.04) c = STAL; // stalagmites in the dry passages
+          if (kind === K_SEA && hash2(gx, gy, seed + 649) < 0.04) c = FOAM;
+          for (const [dx, dy] of segs) if (nearSeg(px - 3.5, py - 3.5, dx * TS, dy * TS) < 1.3) { c = hash2(gx, gy, seed + 651) < 0.15 ? STREAM_L : STREAM; break; }
+          if (!backC && py < 3) c = wallP[(py + (hash2(gx, ty, seed) * 2 | 0)) % 3]; // the back wall of the passage, in its rock
+          if ((!leftC && px === 0) || (!rightC && px === TS - 1) || (!frontC && py === TS - 1) || (!backC && py === 3)) c = EDGE;
+          if (lit && Math.hypot(px - 3.5, py - 4.5) < 2.2) c = DAY[(px + py) & 1]; // daylight down a shaft or skylight
+          if (mo && py > 3 && px > 0 && px < TS - 1) c = DAY[(px + py) & 1]; // daylight at a mouth
+          ub[Y * IW + gx] = c;
+        }
       }
     }
     const uimg = mk(), uctx = uimg.getContext('2d'), uid = uctx.createImageData(IW, IH);
@@ -1694,7 +2199,7 @@
       for (let a = 0; a < 40; a++) sctx.fillRect(Math.round(vx + Math.cos(a / 40 * Math.PI * 2) * 12), Math.round(vy + Math.sin(a / 40 * Math.PI * 2) * 9), 1, 1);
     }
     Object.assign(reg, {
-      img, uimg, simg, IW, IH, TOP, step, village, caves, mouths, fam,
+      img, uimg, simg, IW, IH, TOP, step, village, caves, mouths, fam, caveInfo: info,
       cam: village ? [village.x * TS + 4, TOP + village.y * TS - village.L * FH] : [IW / 2, IH / 2],
       ms: performance.now() - t0, nPlants: plants.length, biome: BIOME_NAME[cb === 255 ? BEACH : cb] || 'sea',
       T: w.T[ci], Pv: w.P[ci], ready: true, stage: 'done',
@@ -1755,6 +2260,10 @@
         if (tab === 'Final') { y += 2; sw(y, ROAD, 'ROAD'); y += 8; sw(y, TRAIL, 'TRAIL'); y += 8; sw(y, '#f4f1ea', 'VILLAGE'); y += 8; }
       } else if (tab === 'Soil') {
         for (let s = 0; s < 7; s++) { sw(y, SOIL_COL[s], SOIL_SHORT[s]); y += 8; }
+      } else if (tab === 'Rock') {
+        for (const r of [R_LIME, R_SAND, R_SHALE, R_GRAN, R_BAS]) { sw(y, ROCK_COL[r], ROCK_NAME[r]); y += 8; }
+        sw(y, '#5a5040', 'KARST'); y += 8;
+        text(g, 'CAVES:', x0 + 4, y + 4, '#9b98b0'); text(g, 'KARST IN', x0 + 4, y + 11, '#9b98b0'); text(g, 'LIMESTONE,', x0 + 4, y + 18, '#9b98b0'); text(g, 'LAVA TUBES', x0 + 4, y + 25, '#9b98b0'); text(g, 'IN BASALT', x0 + 4, y + 32, '#9b98b0');
       }
       // progress, or a hint
       if (gen) {
@@ -1841,6 +2350,14 @@
       if (dirty) { render(); dirty = false; }
     }
     let noteEl = null;
+    const caveText = r => {
+      const c = r.caveInfo, parts = [], pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+      if (c.karst) parts.push(`${c.pattern.join(', ')} karst at ${pl(c.levels, 'level')} (${pl(c.springs, 'spring')}, ${pl(c.dolines, 'sinkhole')})`);
+      if (c.lava) parts.push(`${pl(c.lava, 'lava tube')} with ${pl(c.skylights, 'skylight')}`);
+      if (c.sea) parts.push(pl(c.sea, 'sea cave'));
+      if (c.shelters) parts.push(pl(c.shelters, 'rock shelter'));
+      return parts.length ? `Caves: ${parts.join('; ')}; ${pl(r.mouths, 'mouth')}.` : `No caves in its ${r.fam}.`;
+    };
     function note() {
       if (!noteEl) return;
       const ms = STAGES.map(s => s.toLowerCase() + ' ' + Math.round(times[s] || 0)).join(', ');
@@ -1848,8 +2365,8 @@
       else if (rgen) noteEl.textContent = `Embarking on ${sel[0]},${sel[1]}: ${region ? region.stage : ''}...`;
       else if (view === 'region' && region && region.ready) {
         const r = region, v = r.village;
-        noteEl.textContent = `Region ${r.cx},${r.cy}: ${r.biome}, ${Math.round(r.T)} C, ${Math.round(r.Pv)} cm of rain a year, ${r.fam} rock in terraces of ${Math.round(r.step * 1000)} m. ` +
-          `${v ? `A ${v.big ? 'town' : 'village'} of ${v.houses.length} houses and ${v.fields.length} fields` : 'No village'}, ${r.nPlants} plants, ${r.mouths} cave mouths. Built in ${Math.round(r.ms)} ms.`;
+        noteEl.textContent = `Region ${r.cx},${r.cy}: ${r.biome}, ${Math.round(r.T)} C, ${Math.round(r.Pv)} cm of rain a year, ${r.fam} in terraces of ${Math.round(r.step * 1000)} m. ` +
+          `${v ? `A ${FORM_NAME[v.form]}${v.big ? ' (a town)' : ''} of ${v.houses.length} houses and ${v.fields.length} field${v.fields.length === 1 ? '' : 's'}` : 'No village'}, ${r.nPlants} plants. ${caveText(r)} Built in ${Math.round(r.ms)} ms.`;
       }
       else noteEl.textContent = `World of seed ${seed} built in ${Math.round(tTotal)} ms of wall time; work per stage: ${ms} ms. ${world.towns ? world.towns.length : 0} villages, ${world.roads ? world.roads.length : 0} roads, ${world.lakes ? world.lakes.filter(l => !l.salt).length : 0} lakes, ${world.lakes ? world.lakes.filter(l => l.salt).length : 0} salt flats.`;
     }
@@ -1876,6 +2393,7 @@
       const put = im => g.drawImage(im, sx, sy, vw, vh, 0, 0, vw * zoom, vh * zoom);
       put(under ? region.uimg : region.img);
       if (showScores) { g.globalAlpha = 0.55; put(region.simg); g.globalAlpha = 1; }
+      if (under && !region.caves) { g.globalAlpha = 0.82; g.fillStyle = '#0e0b16'; g.fillRect(0, VH / 2 - 8, VW, 15); g.globalAlpha = 1; text(g, 'NO CAVES IN ' + region.fam, 10, VH / 2 - 3, '#f7c46c'); }
       g.globalAlpha = 0.82; g.fillStyle = '#0e0b16'; g.fillRect(0, 0, VW, 11); g.globalAlpha = 1;
       text(g, '< WORLD', 3, 3, '#f7c46c');
       text(g, (under ? 'UNDERGROUND  ' : '') + region.biome + '  ' + Math.round(region.T) + ' C  ' + Math.round(region.Pv) + ' CM', 40, 3, '#cdcbd9');

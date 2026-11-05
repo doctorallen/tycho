@@ -7,11 +7,20 @@ Where people settle, walk and leave the trees, read from the land the way real p
 Text marked *(inference)* is reasoning from the sources, not a sourced fact.
 
 <figure class="demo"><div class="stage" data-demo="geo-world"></div>
-<figcaption><b>Villages, roads and trees on a made world.</b> The world from <a href="geography.html">Real geography</a>. Villages stand at the best-scoring sites (Emilien's veto-and-weights rule: water, flat arable ground, shelter from the prevailing wind, a sunny slope, out of the floodplain); roads join them by Tobler's walking cost over 16 directions (Galin), and later paths reuse worn ones (Helbing). Turn on <i>Show scores</i> to see the site score, then tap a village to walk into it: houses round a green, fields on the flat, plants chosen by the weakest habitat factor (Liebig's law) and spaced as Merryfolk spaces them.</figcaption></figure>
+<figcaption><b>Villages, roads and trees on a made world.</b> The world from <a href="geography.html">Real geography</a>. Villages stand at the best-scoring sites (Emilien's veto-and-weights rule: water, flat arable ground, shelter from the prevailing wind, a sunny slope, out of the floodplain); roads join them by Tobler's walking cost over 16 directions (Galin), and later paths reuse worn ones (Helbing). Turn on <i>Show scores</i> to see the site score, then tap a village to walk into it. Its form comes from its site: a street village with crofts behind each house along a valley road, a forest strip village, a round green, an Anger on the road, a hill village packed on its hilltop, or a fishing hamlet strung along the shore with its boats. Plants are chosen by the weakest habitat factor (Liebig's law) and spaced as Merryfolk spaces them, and biomes blend into each other at their edges.</figcaption></figure>
+
+The demo's limits, plainly:
+- **Villages:** one per region, all its houses alike; forms are chosen by rules read off the site, not grown by Emilien's house-by-house loop; no church, mill or market.
+- **Fields:** a croft strip stops where the ground changes terrace, so on broken ground strips are short.
+- **Biome edges:** blended per pixel only between tiles on the same terrace; a seam that meets a cliff stays a tile step.
+- **Timing:** a region takes 0.09 to 0.33 s on a desktop, 0.2 s typically (up to 0.42 s for the first, which also paints the plant sprites).
+- (Fixed: villages used to form only round a green; biome edges ran straight along world cells, and forests carried too many bushes. Sources in [caves_villages_edges.md](notes/caves_villages_edges.md).)
 
 - [Settlements](#settlements)
+- [Village forms](#village-forms)
 - [Paths](#paths)
 - [Vegetation](#vegetation)
+- [Biome edges](#biome-edges)
 - [Drawing height in 3/4 view](#drawing-height-in-34-view)
 - [Sources](#sources)
 
@@ -106,19 +115,37 @@ Real and generated villages share three regularities: houses join the road netwo
 - **Validation.** Generated parcels averaged 2.873 neighbors and 4.29 contour edges, against 2.812 and 4.068 in the real village.
 - **Footprints.** A quad starts "at the closest position to the road, and oriented according to the closest normal to the road", then grows to the building type's maximum size or the parcel contour. Segments close to the contour snap to it, which makes terraced rows when neighbors do the same.
 
-Players of Watabou's generator split between "villages sit on both sides of a trade road with perpendicular side roads" and "small villages should not have roads running through them" (via search summary) ([comments](https://watabou.itch.io/village-generator/comments?after=162)). No source was found on the historical morphology of street against green villages beyond the spring-line article.
+Players of Watabou's generator split between "villages sit on both sides of a trade road with perpendicular side roads" and "small villages should not have roads running through them" (via search summary) ([comments](https://watabou.itch.io/village-generator/comments?after=162)). Its "crossroads" tag puts the village at a highway intersection or T-junction ([devlog](https://watabou.itch.io/village-generator/devlog/840277/164-crossroads-and-numbered-houses)).
 
-A tile-grid recipe *(inference)*:
+## Village forms
 
-1. Lay the through-road from one map edge to another (Emilien's Ψ points) with least-cost A*.
-2. Pick the center: the best-scoring cell on the road, or a road junction (Watabou).
-3. For a green village, carve a distorted circle 3 to 5 tiles across as the green, with a well or tree at its center; for a street village, skip it.
-4. Seed houses with Emilien's loop, using accessibility (λ0 of 1 to 2 tiles from the road), sociability (λ0 of 2 to 3 tiles) and slope.
-5. Join each house by A* with road tiles at w_ex = 0.1 to 0.2.
-6. Face each house toward its nearest road tile, or the green's center round a green. 3/4 view has only four facings, so take the sign of the dominant axis.
-7. Grow strip fields from the road edge, perpendicular to it, stopping at slope changes.
+Settlement geography sorts villages first into **nucleated** and **dispersed**, then by plan. Roberts classes English plans as **rows** or **agglomerations**, regular or irregular, with or without a **green** (via search summary). In Durham and northern England up to 80% of settlements show signs of planning, many in a "regular two-row format" with rows facing across a street or green; excavated Newsham had at least 11 tofts, West Hartburn about 12 ([Hull, Beresford's Lost Villages](https://dmv.wordpress.hull.ac.uk/?p=278)). Behind each toft, the plot the house stood on, ran its croft, "strips of land behind the tofts" ([Wikipedia, Toft](https://en.wikipedia.org/wiki/Toft_village)). Round a nucleated village lay two or three great open fields, "usually several hundred acres each", in furlongs of strips about 200 m long and 4.6 to 20 m wide ([Wikipedia, Open-field system](https://en.wikipedia.org/wiki/Open-field_system); [Ridge and furrow](https://en.wikipedia.org/wiki/Ridge_and_furrow)). Roberts and Wrathmell's Central Province, the "champion" country of open fields and nucleated villages, has wooded, dispersed provinces either side, and the split was forming before the 9th century ([Hull](https://dmv.wordpress.hull.ac.uk/?p=102)).
 
-On slopes, the quadratic slope cost makes rows follow the contours, which reads well in 3/4 oblique as rows of houses stacked up a hill, each on its own ledge *(inference)*.
+German settlement geography names the forms most finely:
+
+| Form | Shape | What made it |
+|---|---|---|
+| Haufendorf | Clustered, irregular | Grown without a plan, often with open fields; many classic forms are later reshapings ([de.wikipedia](https://de.wikipedia.org/wiki/Haufendorf)) |
+| Straßendorf | Farmsteads directly on one road at roughly regular intervals | Planned or grown, often at road junctions ([de.wikipedia](https://de.wikipedia.org/wiki/Straßendorf)) |
+| Zeilendorf | One row along a path or stream | Shaped by the terrain; along rivers one-sided, on the terrace edge above the flood ([de.wikipedia](https://de.wikipedia.org/wiki/Zeilendorf)) |
+| Angerdorf | Farmsteads facing a lens- or eye-shaped common green, often with a pond | The medieval eastward colonization ([de.wikipedia](https://de.wikipedia.org/wiki/Angerdorf)) |
+| Rundling | Wedge-shaped farms round a round green with one entrance, originally 3 to 10 farms | Lords regrouping Slavic settlers, from about 1150 ([de.wikipedia](https://de.wikipedia.org/wiki/Rundling)) |
+| Waldhufendorf | Farms along a valley road "like beads on a chain", each with a strip running up to the ridge, forest left at its end | Upland clearance; chains up to 25 km in Saxon valleys ([de.wikipedia](https://de.wikipedia.org/wiki/Waldhufendorf)) |
+
+A Frankish Hufe was 24.2 ha in a strip up to almost 2.5 km long, with farmsteads 50 to 100 m apart ([de.wikipedia, Hufe](https://de.wikipedia.org/wiki/Hufe)). Regular plans occur only with deliberate planning; a Weiler has 10 to 20 house sites ([de.wikipedia, Dorf](https://de.wikipedia.org/wiki/Haufendorf)). The French village-rue has its buildings "on both sides of a single street", on plots "as wide as the house" ([fr.wikipedia](https://fr.wikipedia.org/wiki/Village-rue)). Perched villages crown a relief, mostly fortified ([fr.wikipedia](https://fr.wikipedia.org/wiki/Village_perché)), as Italy's hill towns did after the 10th century's incastellamento ([Wikipedia](https://en.wikipedia.org/wiki/Incastellamento)). Fishing villages sit round a small harbor or work from a beach, needing "a safe way of landing fish and securing boats" ([Wikipedia](https://en.wikipedia.org/wiki/Fishing_village)). English greens may have begun as pens for livestock "from wild animals or human raiders during the night" ([Wikipedia](https://en.wikipedia.org/wiki/Village_green)). In generators, Emilien's village types (high-land, defensive, fisherman) reweight the same interest functions ([PDF](https://perso.liris.cnrs.fr/egalin/Articles/2012-villages.pdf)), and Manor Lords lets the player draw burgage plots that snap to the road with room at the back (via search summary) ([wiki](https://wiki.hoodedhorse.com/Manor_Lords/Burgage_plots)).
+
+What decides the form, then: planning or growth, the road, the terrain (a valley floor allows one street; a hilltop forces a cluster), water, defense, and land tenure. The demo turns that into rules read off the site *(inference)*. The world's roads are laid first, since villages grew along them; the village's center is scored as before plus nearness to a road (and the shore, when its world cell is on a coast), and then:
+
+| Site | Form | Layout |
+|---|---|---|
+| A sea or lake within 7 tiles | Fishing hamlet | One row along the shore (ordered along the shore's main axis), facing the water, a boat drawn up before each house, gardens behind |
+| A hilltop (60% of a ring 5 to 7 tiles out lies lower) or rough ground (under 45% within a terrace of the center) | Hill village (Haufendorf) | 10 to 14 houses packed irregularly round a small square on the leveled top, open-field furlongs below |
+| A road within 4 tiles, woods round (over 30%) | Forest strip village (Waldhufendorf) | A farm each side of the road every 4 tiles, each with one strip 13 tiles long running back into the woods |
+| A road along a valley (more ground at the center's level along the road than across it) | Street village (Straßendorf) | The ground beside the road leveled to it; a house each side every 2.6 tiles, facing the road, a croft strip behind each, stopping where the ground changes terrace |
+| A road through open flats | Anger village | A lens of green 10 tiles long along the road, a row of houses each side facing it, furlongs around |
+| No road, open flats | Green village | Houses round a round green with a well, furlongs around |
+
+The world's siting kept three of its sixteen places for the best shore sites, since a fishing village lives by the sea rather than the soil and would otherwise never win on arable land. Furlongs are drawn as strips, each tile row or column its own crop. In two seeds (4242 and 777) the 32 villages came out as 9 forest strip villages, 9 hill villages, 5 street villages, 4 green villages, 3 fishing hamlets and 2 Anger villages *(measured)*.
 
 ## Paths
 
@@ -236,6 +263,28 @@ Willows go on grass tiles with water in the 3×3 neighborhood, not reserved, not
 
 These tables are a discretized version of the Cordonnier and Gain hat functions: soil class stands in for moisture and depth, and the edge and settlement bonuses stand in for succession, with birch and saplings as pioneers near disturbance. The constants are game-specific, not ecologically calibrated. Under eight inks, species must differ in silhouette more than color, so three or four species per quest (oak, birch, willow, pine) is the practical ceiling *(inference)*.
 
+## Biome edges
+
+Real biome edges are rarely lines. An ecotone "may be narrow or wide", "a gradual blending of the two communities across a broad area" or "a sharp boundary line" ([Wikipedia, Ecotone](https://en.wikipedia.org/wiki/Ecotone)). The treeline is "rarely a defined line and instead forms a fuzzy transitional zone" between the timberline, the treeline and the last single trees ([Nature Scitable](https://www.nature.com/scitable/knowledge/library/global-treeline-position-15897370)); the Arctic forest-tundra averages about 145 km wide, "larger trees along rivers and on sheltered sites set in a matrix of tundra" ([Wikipedia, Tree line](https://en.wikipedia.org/wiki/Tree_line)). Gallery forests push fingers of woodland along rivers into grassland, with abrupt edges only a few meters wide ([Wikipedia](https://en.wikipedia.org/wiki/Gallery_forest)). A forest edge is layered: the Swiss forest inventory measures a mantle of edge trees (up to 7 m and more), then a shrub belt (under 2 to over 4 m), then a herb fringe ([LFI](https://www.lfi.ch/api/data-catalog/var/1287); [LFI](https://lfi.ch/api/data-catalog/var/1088)). Under a closed canopy little light reaches the floor (a tropical canopy "intercepts around 95% of the sunlight"), and where a gap opens the undergrowth thickens ([Wikipedia, Understory](https://en.wikipedia.org/wiki/Understory)). So shrubs belong at edges and gaps, thin under closed forest *(inference)*.
+
+| System | Edges |
+|---|---|
+| Minecraft before 1.18 | Zoom layers that coin-flip edge cells between parents, a smoothing layer, buffer biomes between incompatible ones, and a final Voronoi zoom jittering one point per 4-block cell by about ±1.8 blocks ([cubiomes](https://raw.githubusercontent.com/Cubitect/cubiomes/master/layers.c)) |
+| Minecraft 1.18 | Biomes are boxes in a six-parameter climate space and a point takes the nearest, so edges follow smooth noise contours ([Minecraft Wiki](https://minecraft.wiki/w/World_generation)); "biome blend" (radius 0–7, default 2) only averages grass and water colors ([Biome](https://minecraft.wiki/w/Biome); [Options.txt](https://minecraft.wiki/w/Options.txt_(Java_Edition))) |
+| Dwarf Fortress | Biomes per region tile, then "noise is calculated and applied which causes the irregular region boundaries on the local map" ([DF wiki](https://dwarffortresswiki.org/index.php/DF2014:Biome)) |
+| Red Blob noisy edges | Each boundary recursively subdivided inside its cells' quadrilateral, amplitude 0.25 to 0.5 ([Red Blob Games](https://www.redblobgames.com/maps/noisy-edges/)) |
+| Domain warping | Look up f(p + h(p)) instead of f(p) ([Quilez](https://iquilezles.org/articles/warp/)) |
+| Dual-grid tiles | Tiles at a half-cell offset, marching squares on the base cells: 6 tiles with rotation, 16 without, instead of the blob's 47 ([Boris the Brave](https://www.boristhebrave.com/2023/05/31/quarter-tile-autotiling/)) |
+| Height-blended splatting | The layer whose height plus weight is highest wins within a depth of 0.2, so sand fills the cracks between stones ([Mishkinis 2013](https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting)) |
+
+The demo's region used to copy each world cell's biome through a small warp, so edges ran straight along the 4 km cells and showed as 10-tile steps. Now it does three things:
+
+1. **Biomes by climate, per tile**, as Minecraft 1.18 does. Each tile reads the world's temperature (with the lapse rate from its own height) and rain, the rain from land cells only so a coast doesn't read the sea's dry air as desert, both looked up through a domain warp of about a cell and jittered by noise (±0.7 °C and ±10% of the rain, typically), and classifies them with the world's own Whittaker rule. Edges follow the climate's contours. Swamps and beaches still come from the world cell.
+2. **Dithered seams.** Where a tile's neighbor on the same terrace has another ground, each pixel within 3 px of the border reads its ground from a point nudged by a slow noise (±3 px) plus an ordered dither (±2 px). The 8-pixel steps become a ragged edge with a little dither in it, the pixel-art cousin of height-blended splatting *(inference)*.
+3. **A blended wood edge.** Tree cover is blurred over two tiles before groves and clearings are applied, so a wood thins across its edge with trees straying out, and the gallery-wood rule keeps trees along water. Shrubs follow the mantle and fringe: dense where the blurred cover is around 0.3 (a band about 0.15 to 0.45), along paths and round clearings. Under closed forest a biome's shrub density is multiplied by 0.12 (it was 0.3), and at an edge by up to 1.6.
+
+The cost is a few extra noise lookups per tile and per seam pixel, inside the region's 0.1 to 0.4 s.
+
 ## Drawing height in 3/4 view
 
 In 3/4 oblique a raised area is drawn as its top surface shifted up the screen by height × pixels per level, plus a front-facing vertical face below its southern edge. East and west edges get thin side faces or rims, and north edges only a lip line, because that face points away. Height reads only through value contrast (a lighter top, a darker face, a cast shadow at the foot), so a cliff is a stack of autotiled bands: lip, face rows, foot, shadow. Elsewhere's own 2:1 isometric look is a different projection; this section applies to a quest or game that chooses 3/4 oblique, or to Tycho generally.
@@ -295,7 +344,10 @@ Merryfolk shows the shape at scale. Its land is quantized into four terraces who
 - [SNESLab, BG3 high priority](https://sneslab.net/wiki/BG3_High_Prio) and [SNESdev wiki, Mode 5](https://snes.nesdev.org/wiki/Mode_5)
 - [Slynyrd, Pixelblog 20: top-down tiles](https://slynyrd.com/blog/2019/8/27/pixelblog-20-top-down-tiles)
 
-The full research is in the notes on [settlements, paths and vegetation](notes/settlements_paths_vegetation.md).
+- Village forms: [Hull, Beresford's Lost Villages](https://dmv.wordpress.hull.ac.uk/?p=278), [de.wikipedia, Dorf](https://de.wikipedia.org/wiki/Haufendorf), [Waldhufendorf](https://de.wikipedia.org/wiki/Waldhufendorf), [Angerdorf](https://de.wikipedia.org/wiki/Angerdorf), [Hufe](https://de.wikipedia.org/wiki/Hufe), [fr.wikipedia, Village-rue](https://fr.wikipedia.org/wiki/Village-rue), [Wikipedia, Open-field system](https://en.wikipedia.org/wiki/Open-field_system)
+- Biome edges: [Wikipedia, Ecotone](https://en.wikipedia.org/wiki/Ecotone), [Swiss NFI forest edge](https://www.lfi.ch/api/data-catalog/var/1287), [cubiomes layers.c](https://raw.githubusercontent.com/Cubitect/cubiomes/master/layers.c), [Minecraft Wiki, World generation](https://minecraft.wiki/w/World_generation), [DF wiki, Biome](https://dwarffortresswiki.org/index.php/DF2014:Biome), [Red Blob Games, noisy edges](https://www.redblobgames.com/maps/noisy-edges/), [Quilez, domain warping](https://iquilezles.org/articles/warp/)
+
+The full research is in the notes on [settlements, paths and vegetation](notes/settlements_paths_vegetation.md) and on [caves, village forms and biome edges](notes/caves_villages_edges.md).
 
 <script src="demos/kit.js"></script>
 <script src="demos/flora.js"></script>

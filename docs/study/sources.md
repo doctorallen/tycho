@@ -222,6 +222,14 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [SNESdev wiki, Mode 5](https://snes.nesdev.org/wiki/Mode_5): SNES background modes.
 - [Slynyrd, Pixelblog 20: top-down tiles](https://slynyrd.com/blog/2019/8/27/pixelblog-20-top-down-tiles): 16×16 as the common tile size.
 
+- [Palmer 1991, origin and morphology of limestone caves](https://digitalcommons.usf.edu/kip_articles/4015): branchwork, network and anastomotic caves, and what makes each.
+- [USGS, the truth about lava skylights](https://www.usgs.gov/news/truth-about-terrifying-lava-skylight-where-only-trained-should-lurk): how lava tubes form and open.
+- [Paris et al. 2021, karst network generation](https://perso.liris.cnrs.fr/aparis/public_html/projects/paris2021_Karsts.html): karst grown along joints and inception horizons.
+- [Wikipedia (German), Waldhufendorf](https://de.wikipedia.org/wiki/Waldhufendorf): the forest strip village, one of the village forms.
+- [University of Hull, Beresford's lost villages](https://dmv.wordpress.hull.ac.uk/?p=278): village plans in England.
+- [Cubitect, cubiomes layers.c](https://raw.githubusercontent.com/Cubitect/cubiomes/master/layers.c): Minecraft's biome layers and their edge rules, reimplemented.
+- [Swiss National Forest Inventory, forest edge](https://www.lfi.ch/api/data-catalog/var/1287): how forest edges are measured.
+
 ## People and histories
 
 [The page](people.md), which lists all its sources.

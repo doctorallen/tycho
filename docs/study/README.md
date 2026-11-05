@@ -68,8 +68,8 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Sprites and items](sprites.md) | Masks, kits and renders for characters, creatures and items; the finishing passes; determinism and machine learning |
 | [Plants](plants.md) | One brancher, a crown envelope and clump stamps for sixty species of trees, shrubs, flowers and cacti |
 | [Worlds and levels](worlds.md) | Noise and climate terrain, graph-first levels, small-region WFC, dual-grid autotiles, villages, and generate-and-test |
-| [Real geography](geography.md) | How real landforms, water, climate and caves are made, with a world you can watch form and visit in 3/4 view |
-| [Settlements, paths and trees](settling.md) | Where villages go, how paths and trails form, where each plant grows, and how height is drawn in 3/4 view |
+| [Real geography](geography.md) | How real landforms, water, climate, rock and caves are made, with a world you can watch form and visit in 3/4 view |
+| [Settlements, paths and trees](settling.md) | Where villages go and the form each takes, how paths and trails form, where each plant grows, soft biome edges, and how height is drawn in 3/4 view |
 | [People and histories](people.md) | Naming languages, cultures, generated histories that leave marks on a place, and daily routines, all feeding Tyrell |
 | [Animals](animals.md) | Seeded creatures colored by biome and role, herds and flocks on a spatial hash, and which animals live where, and how many |
 | [Zoom and chunks](zoom.md) | An endless world zoomed from region map to single flower through a pyramid of indexed chunks |

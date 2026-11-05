@@ -6,6 +6,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Plants](#plants)
 - [Worlds and levels](#worlds-and-levels)
 - [Real geography](#real-geography)
+- [Buildings and interiors](#buildings-and-interiors)
 - [People and histories](#people-and-histories)
 - [Animals](#animals)
 - [Zoom and chunks](#zoom-and-chunks)
@@ -229,6 +230,19 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [University of Hull, Beresford's lost villages](https://dmv.wordpress.hull.ac.uk/?p=278): village plans in England.
 - [Cubitect, cubiomes layers.c](https://raw.githubusercontent.com/Cubitect/cubiomes/master/layers.c): Minecraft's biome layers and their edge rules, reimplemented.
 - [Swiss National Forest Inventory, forest edge](https://www.lfi.ch/api/data-catalog/var/1287): how forest edges are measured.
+
+## Buildings and interiors
+
+[The page](buildings.md).
+
+- [Marson and Musse 2010, automatic real-time generation of floor plans based on squarified treemaps](https://doi.org/10.1155/2010/624817): rooms by subdividing a footprint.
+- [Bruls, Huizing and van Wijk, squarified treemaps](https://www.win.tue.nl/~vanwijk/stm.pdf): the subdivision behind it.
+- [Merrell et al. 2011, interactive furniture layout using interior design guidelines](https://graphics.stanford.edu/projects/furniture/): furniture placed by rules.
+- [Shaun Lebron, isometric blocks](https://shaunlebron.github.io/IsometricBlocks/): sorting isometric boxes by their hexagons.
+- [Andrew Russell, how 2.5D sorting works in River City Ransom: Underground](https://andrewrussell.net/2016/06/how-2-5d-sorting-works-in-river-city-ransom-underground/): a topological depth sort in a shipped game.
+- [fallout2-ce, tile.cc](https://github.com/alexbatalov/fallout2-ce/blob/main/src/tile.cc): Fallout 2's tile and roof drawing.
+- [Exult, gamewin.cc](https://github.com/exult/exult/blob/master/gamewin.cc): Ultima VII's roofs lifted in place.
+- [Game Developer, how Townscaper works](https://www.gamedeveloper.com/game-platforms/how-townscaper-works-a-story-four-games-in-the-making): Oskar Stålberg's irregular grid and building rules.
 
 ## People and histories
 

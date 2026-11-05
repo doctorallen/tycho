@@ -1,6 +1,6 @@
 # The study
 
-This study asks how games generate pixel characters, items, plants, worlds, light, motion and effects with code, which styles, resolutions and perspectives those methods suit, and what Tycho should add to support them. The finding fits in a sentence. Procedural pixel art that passes for hand-made is almost never pure generation: it pairs hand-made structure with small seeded generators and rule-based finishing passes, then drops bad seeds by test. At the resolutions Tycho's games use, from Neo's 192-pixel-wide view to Elsewhere's 320×180, the methods that pay off are cheap CPU work done once into palette-indexed buffers, so each frame only blits. Every page carries live demos, generated in your browser from a seed.
+This study asks how games generate pixel characters, items, plants, worlds, buildings, people, animals, light, motion, effects and sound with code, how text and budgets work on a phone, which styles, resolutions and perspectives those methods suit, and what Tycho should add to support them. The finding fits in a sentence. Procedural pixel art that passes for hand-made is almost never pure generation: it pairs hand-made structure with small seeded generators and rule-based finishing passes, then drops bad seeds by test. At the resolutions Tycho's games use, from Neo's 192-pixel-wide view to Elsewhere's 320×180, the methods that pay off are cheap CPU work done once into palette-indexed buffers, so each frame only blits. Every page carries live demos, generated in your browser from a seed.
 
 **Proposed: none of this is in Tycho yet.** The demos run in the pages, written in plain JS with the study's own kit (`demos/kit.js`), not Tycho. What would move into Tycho, and when, is in [the roadmap](roadmap.md).
 
@@ -70,6 +70,7 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Worlds and levels](worlds.md) | Noise and climate terrain, graph-first levels, small-region WFC, dual-grid autotiles, villages, and generate-and-test |
 | [Real geography](geography.md) | How real landforms, water, climate, rock and caves are made, with a world you can watch form and visit in 3/4 view |
 | [Settlements, paths and trees](settling.md) | Where villages go and the form each takes, how paths and trails form, where each plant grows, soft biome edges, and how height is drawn in 3/4 view |
+| [Buildings and interiors](buildings.md) | Houses from a seed (rooms, doors, furniture, roofs by climate), cutaways and roof fades, x-ray, and depth sorting that holds for big objects |
 | [People and histories](people.md) | Naming languages, cultures, generated histories that leave marks on a place, and daily routines, all feeding Tyrell |
 | [Animals](animals.md) | Seeded creatures colored by biome and role, herds and flocks on a spatial hash, and which animals live where, and how many |
 | [Zoom and chunks](zoom.md) | An endless world zoomed from region map to single flower through a pyramid of indexed chunks |

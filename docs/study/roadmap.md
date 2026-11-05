@@ -39,6 +39,7 @@ What would move into Tycho from this study, in five waves: an indexed foundation
 | 3 | `gen.wfc` (simple tiled model, fixed cells, seeded retry) | world | none | Elsewhere, White Dragon | M | [Worlds and levels](worlds.md) |
 | 3 | `flora` (Weber–Penn-style brancher, colonization and L-system options, architecture enum, species table, clump stamps, rosettes, pads and ribbed columns, decay levels, season slots, meadow mixes) | pixels | Merryfolk `makeBareTree`, `paintCrown` | Elsewhere, Merryfolk | L | [Plants](plants.md) |
 | 3 | `lod` (chunk pyramid: unbounded `(L, cx, cy)` keys, per-level LRU with a byte budget, sliced `make`, mode downscale on indexes, parent fallback, level crossfade, zoom ladder, cumulative pinch scale) | pixels, play | Merryfolk `Ground`, `ZOOMS`, `snapZoom`, pinch and wheel anchoring | Merryfolk, then an endless Elsewhere world | M–L | [Zoom and chunks](zoom.md) |
+| 3 | `gen.house` (a tile-grid house: rooms, doors, furniture and a roof by climate, returned as plain JSON) | world | none | Elsewhere | M | [Buildings and interiors](buildings.md) |
 | 3 | `people` (`lang` naming languages and glossed place names, `culture`, `chronicle` event cards that leave marks, `routine`, and a bridge `populate` step into Tyrell) | world, with a Tyrell bridge | none | Elsewhere | M–L | [People and histories](people.md) |
 | 3 | `fauna` (species tables like Dwarf Fortress's tokens, placement from the seed, counts by body mass, a seasonal predator-prey step) and `flock` (a spatial hash, Reynolds steering with a seven-neighbor cap, flow fields on `field`) | world, play | none | Elsewhere | M | [Animals](animals.md) |
 | 4 | `bake` additions (rotation caches, sprite stacks) | pixels | Tycho's own scalers; MMPX reference code | Lodestar, Elsewhere | M | [Motion](motion.md) |
@@ -163,7 +164,7 @@ Tycho.finish.silhouette(S, ink) → Sheet                   // hit flash, baked
 Tycho.finish.seethrough(S, level, { n = 4, cell }) → Sheet // dithered transparency, baked
 ```
 
-**`iso`** ([Perspectives](views.md)). Lifts Elsewhere's `Ink.Iso` faces and the frogs' projection, keeping the frogs' non-tile scale `K = 0.7` as an option rather than a default. Depth order is a front-corner sort, topological for long footprints.
+**`iso`** ([Perspectives](views.md)). Lifts Elsewhere's `Ink.Iso` faces and the frogs' projection, keeping the frogs' non-tile scale `K = 0.7` as an option rather than a default. Depth order is `Sort.boxes`, a topological sort of world boxes with cycle breaking, so big buildings, trees and bridges draw in the right order. It holds only if overlap is tested on the boxes' hexagons rather than the sprites' rectangles and every sprite fits inside its box ([Buildings and interiors](buildings.md)). A pre-painted Bayer fade for roofs and an x-ray mask for figures behind walls stay within the GPU stand-in.
 
 ```js
 // pixels: Tycho.iso
@@ -294,6 +295,8 @@ L.step(view, { budget: ms });  L.draw(g, view, { fade = 200 })                 /
 Tycho.lod.down(sheet, { op: 'mode' | 'weighted' | 'point', weights }) → Sheet // palette-safe 2× downscale
 Tycho.lod.ladder({ tile: 16, steps: [[0, 3], [0, 2], [0, 1], [1, 1], [2, 1]] }); Tycho.lod.snap(scale, ladder, { hysteresis = 0.12 })
 ```
+
+**`gen.house`** ([Buildings and interiors](buildings.md)). A house from a seed on the tile grid: a footprint by climate, rooms by squarified subdivision, doors joining them, furniture by rules, and a hip or gable roof whose pitch follows the climate (steep for snow, flat for desert, stilts by water). It returns plain JSON, so a quest saves a house as a seed and draws it with `iso` and the cutaway.
 
 **`people`** ([People and histories](people.md)). A seeded writer of people with a past, so a generated site comes with the reasons it looks the way it does. `lang` makes glossed naming languages and place names built from the land (a ford, a hill, a river); `culture` picks values, dress and building habits from the environment; `chronicle` runs short event cards (a founding, a feud, a flood, a shrine) whose marks land on the map; `routine` writes daily schedules. A bridge `populate` step turns all of it into Tyrell people, households, routines and memories when a quest loads. Tyrell keeps the minds; this only gives them somewhere to have come from.
 

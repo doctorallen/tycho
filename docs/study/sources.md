@@ -1,10 +1,11 @@
 # Sources
 
-Every external source the study cites, about 200 in all, grouped by the page that draws on it and listed once each, under the page where it matters most. Each line gives the source and a few words on what it is or what the study took from it. Tycho's and the games' own files are cited on the pages themselves, and the research notes behind each page are in [the notes](notes/README.md), which also carry sources the pages don't.
+Every external source the study cites, about 300 in all, grouped by the page that draws on it and listed once each, under the page where it matters most. Each line gives the source and a few words on what it is or what the study took from it. Tycho's and the games' own files are cited on the pages themselves, and the research notes behind each page are in [the notes](notes/README.md), which also carry sources the pages don't.
 
 - [Sprites and items](#sprites-and-items)
 - [Plants](#plants)
 - [Worlds and levels](#worlds-and-levels)
+- [Real geography](#real-geography)
 - [Zoom and chunks](#zoom-and-chunks)
 - [Palette and resolution](#palette-and-resolution)
 - [Perspectives](#perspectives)
@@ -113,6 +114,108 @@ Every external source the study cites, about 200 in all, grouped by the page tha
 - [Turn Based Lovers, interview with Wildermyth's developer](https://turnbasedlovers.com/10-turns-interview/with-wildermyth-developer): generation built around characters, not plot.
 - [Caves of Qud wiki, World generation](https://wiki.cavesofqud.com/wiki/World_generation): five fixed periods of sultan rule, generated and tied to sites.
 - [Smith and Whitehead, expressive range (arXiv 2004.10808)](https://arxiv.org/pdf/2004.10808): judging a generator by many outputs on two metrics, as a heatmap.
+
+## Real geography
+
+[The page](geography.md).
+
+- [Tarn Adams, Gamasutra Q&A on the development of Dwarf Fortress](https://gamasutra.com/design/q-a-dissecting-the-development-of-i-dwarf-fortress-i-with-creator-tarn-adams): Dwarf Fortress's world generation in Adams's words, stage by stage.
+- [John Harris, Interview: The Making Of Dwarf Fortress (Game Developer, 2008)](https://www.gamedeveloper.com/design/interview-the-making-of-dwarf-fortress): midpoint displacement, drainage and salinity fields, rivers that dig when stuck.
+- [Dwarf Fortress wiki, DF2014:World generation](https://dwarffortresswiki.org/index.php/DF2014:World_generation): Adams's stage list quoted in full; world sizes 17 to 257 squares.
+- [Dwarf Fortress wiki, DF2014:Advanced world generation](https://dwarffortresswiki.org/index.php/DF2014:Advanced_world_generation): field tokens, the weighted mesh, biome thresholds, erosion and cavern parameters.
+- [Dwarf Fortress wiki, DF2014:World rejection](https://dwarffortresswiki.org/index.php/DF2014:World_rejection): "belt and braces"; region counts, ranges and placement minimums that reroll a world.
+- [Dwarf Fortress wiki, World rejection](https://dwarffortresswiki.org/index.php/World_rejection): worlds that fail placement constraints, and the rejection log.
+- [Dwarf Fortress wiki, DF2014:Site](https://dwarffortresswiki.org/index.php/DF2014:Site): site types and the cap on new sites.
+- [Dwarf Fortress wiki, v0.31:Civilisation](https://dwarffortresswiki.org/index.php/v0.31:Civilisation): savagery that blocks civilization placement.
+- [Isegoria, quoting Polygon on Dwarf Fortress (2014)](https://www.isegoria.net/?p=35819): strata as a separate fractal; rivers "only after biomes exist".
+- [Minecraft Wiki, World generation](https://minecraft.wiki/w/World_generation): the six biome parameters and their bands, density, splines, continentalness as a shelf.
+- [Minecraft Wiki, Cave](https://minecraft.wiki/w/Cave): cheese, spaghetti and noodle caves; aquifer cells of 16×12×16 blocks.
+- [Henrik Kniberg, Minecraft terrain generation in a nutshell (2022)](https://www.youtube.com/watch?v=CSa5O6knuwI): the talk on the 1.18 generator.
+- [Martin O'Leary, mewo2/terrain](https://github.com/mewo2/terrain/blob/master/terrain.js): 16,384 points, primitive heightmaps, five rounds of flux-and-slope erosion, cities by river flux.
+- [Red Blob Games, mapgen4 mesh.ts](https://github.com/redblobgames/mapgen4/blob/master/mesh.ts): precomputed Poisson points loaded from a file.
+- [Red Blob Games, mapgen4 config.js](https://github.com/redblobgames/mapgen4/blob/master/config.js): mapgen4's parameters.
+- [Red Blob Games, mapgen4 README](https://github.com/redblobgames/mapgen4/blob/master/README.org): 1 million+ cells possible, prettiest around 25k.
+- [Red Blob Games, mapgen4 map.ts](https://github.com/redblobgames/mapgen4/blob/master/map.ts): elevation, the wind-sorted rain sweep, priority-flood rivers, trunk beds lowered to tributaries.
+- [Amit Patel, mapgen4: rainfall (2018)](https://simblob.blogspot.com/2018/09/mapgen4-rainfall.html): one sorted pass along the wind; moisture leaking through passes.
+- [Amit Patel, mapgen4: threads (2018)](https://simblob.blogspot.com/2018/09/mapgen4-threads.html): generation moved into a Web Worker "to make it run acceptably fast".
+- [Azgaar wiki, Advanced options](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Advanced-options): the jittered lattice and its points count.
+- [Azgaar wiki, Knowledge Base](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Knowledge-Base): 10K points for performance, no mobile app, cultures by terrain.
+- [Azgaar wiki, Heightmap template editor](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Heightmap-template-editor): heightmaps from blob primitives, with 20 as sea level.
+- [Azgaar wiki, Geographical features](https://github.com/Azgaar/Fantasy-Map-Generator/wiki/Geographical-Features-Overview): lake subtypes and features.
+- [Azgaar, temperature-generator.ts](https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/src/model/physical/temperature-generator.ts): temperature by latitude, minus 6.5 °C per km.
+- [Azgaar, precipitation-generator.ts](https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/src/model/physical/precipitation-generator.ts): winds by latitude tier; cells above height 85 block the wind.
+- [Azgaar, river-generator.ts](https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/src/model/physical/river-generator.ts): rivers at flux 30, lakes raised to their shore, a downcut of at most 5.
+- [Azgaar, lakes.ts](https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/src/model/physical/lakes.ts): lakes drain only when inflow beats evaporation.
+- [Azgaar, biomes-generator.ts](https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/src/model/physical/biomes-generator.ts): a 5 × 26 moisture-by-temperature biome matrix with overrides.
+- [Mindwerks, WorldEngine](https://github.com/Mindwerks/worldengine): plate-based worlds and Holdridge life zones; "could take a few minutes".
+- [WorldEngine, plates.py](https://github.com/Mindwerks/worldengine/blob/master/worldengine/plates.py): the pyplatec plate simulation's defaults.
+- [WorldEngine, generation.py](https://github.com/Mindwerks/worldengine/blob/master/worldengine/generation.py): borders faded to ocean, a flattened shelf, oceans flooded from the edges.
+- [WorldEngine, simulations](https://github.com/Mindwerks/worldengine/tree/master/worldengine/simulations): precipitation as gamma-shaped noise; river and erosion passes.
+- [Undiscovered Worlds, what it is](https://undiscoveredworlds.blogspot.com/2019/01/what-is-undiscovered-worlds.html): global maps at about 16 km a pixel, regional maps on demand.
+- [Undiscovered Worlds, springs and valleys (2025)](https://undiscoveredworlds.blogspot.com/2025/12/springs-and-valleys.html): rivers and lakes "more or less" working.
+- [Undiscovered Worlds on GitHub](https://github.com/fegennari/Undiscovered_Worlds): the source.
+- [Frozen Fractal, Around The World, part 2: plate tectonics (2023)](https://frozenfractal.com/blog/2023/11/13/around-the-world-2-plate-tectonics/): plates by flood fill; boundary type × crust type picks a profile.
+- [Terrafirmacraft docs, world presets (1.20.x)](https://terrafirmacraft.github.io/Documentation/1.20.x/worldgen/world-preset): layer types and twenty rocks stacked as a chain.
+- [Modrinth, Terrafirmacraft 3.0.0 beta](https://modrinth.com/mod/terrafirmacraft/version/3.0.0-beta): more predictable strata, ores rebalanced around them.
+- [Vintage Story Wiki, Rock](https://wiki.vintagestory.at/Rock): geologic provinces set layer thickness; ores tied to host rocks.
+- [Cordonnier et al. 2016, Large Scale Terrain Generation from Tectonic Uplift and Fluvial Erosion](https://www.cs.purdue.edu/homes/bbenes/papers/Cordonier16CGF.pdf): the implicit stream-power solve, about 200 steps to converge at any resolution.
+- [Schott et al. 2023, project page](https://h-schott.github.io/p/uplift): stream power as an interactive authoring tool.
+- [H-Schott, StreamPowerErosion](https://github.com/H-Schott/StreamPowerErosion): the released code.
+- [StreamPowerErosion, spe_shader.glsl](https://github.com/H-Schott/StreamPowerErosion/blob/main/data/shaders/spe_shader.glsl): the per-cell compute-shader kernel and its defaults.
+- [Barnes, Lehman and Mulla 2014, Priority-Flood (arXiv 1511.04463)](https://arxiv.org/abs/1511.04463): depression filling in O(n) or O(n lg n), with flow directions.
+- [Beyer 2015, Implementation of a method for hydraulic erosion](https://ardordeosis.github.io/implementation-of-a-method-for-hydraulic-erosion/thesis-beyer.pdf): droplet erosion and its timings; cost grows with radius².
+- [Sebastian Lague, Hydraulic-Erosion](https://github.com/SebLague/Hydraulic-Erosion): a Unity port of droplet erosion with precomputed brushes.
+- [henrikglass, erodr](https://github.com/henrikglass/erodr): droplet erosion in C, and its defaults.
+- [Smelik et al. 2009, A Survey of Procedural Methods for Terrain Modelling](https://publications.graphics.tudelft.nl/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBBcmtLIiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--a99ce149fd6820493fdcb22b4f4b5e3cccbd976e/SDGTB09a.pdf): thermal erosion by talus angle; Olsen's real-time speed-ups.
+- [Peel's Köppen page, University of Melbourne](https://people.eng.unimelb.edu.au/mpeel/koppen.html): the Köppen–Geiger rules.
+- [Peel, Finlayson and McMahon 2007 (HESS)](https://hess.copernicus.org/articles/11/1633/2007/): the updated Köppen–Geiger classification.
+- [PMC, Köppen table reproduction](https://pmc.ncbi.nlm.nih.gov/articles/PMC4676011/table/t1): a copy that disagrees on the steppe threshold.
+- [Johnson, Yannakakis and Togelius 2010, cellular automata for real-time cave levels](https://www.um.edu.mt/library/oar/bitstream/123456789/22895/1/Cellular_automata_for_real-time_generation_of.pdf): 50×50 caves in 0.41 ms.
+- [Paris et al. 2021, Synthesizing Geologically Coherent Cave Networks](https://diglib.eg.org/handle/10.1111/cgf14420): karst skeletons by anisotropic shortest paths.
+- [Wikipedia, Spring line settlement](https://en.wikipedia.org/wiki/Spring_line_settlement): villages at the foot of an escarpment where springs emerge.
+- [Rashid Faridi, site of a settlement](https://rashidfaridi.com/2019/08/06/site-of-a-settlement): wet-point and dry-point sites.
+- [Save My Exams, settlements and service provision](https://www.savemyexams.com/igcse/geography/cie/20/flashcards/1-population-and-settlement/1-5-settlements-and-service-provision/): the standard site factors.
+- [British Landscape, reading the landscape](https://britishlandscape.org/reading-the-landscape/files/archive-apr-2013.htm): aspect and shelter as siting factors.
+- [AMS Glossary, adret](https://glossary.ametsoc.org/wiki/adret/): the sun-facing slope.
+- [AMS Glossary, ubac](https://glossary.ametsoc.org/wiki/ubac/): the shaded slope, with a lower timber line.
+- [cahier-de-prepa.fr course notes](https://cahier-de-prepa.fr/hkal-thiers/download?id=1628): adret for villages and crops, ubac for forest.
+- [Parc national des Écrins booklet](https://www.ecrins-parcnational.fr/sites/ecrins-parcnational.com/files/fiche_doc/17153/correctionslivretenfant05-09-07.pdf): villagers settled the sunniest zones.
+- [GMBA, treeline definition](https://www.gmba.unibe.ch/tools/definitions/treeline_definition/index_eng.html): the treeline at a growing-season mean of about 6.4 °C.
+- [Körner and Paulsen 2004](https://edoc.unibas.ch/8594): 6.7 ± 0.8 °C from 46 treeline sites.
+- [PMC3535059](https://pmc.ncbi.nlm.nih.gov/articles/PMC3535059): the treeline temperature, later work.
+- [Emilien et al. 2012, Procedural Generation of Villages on Arbitrary Terrains](https://perso.liris.cnrs.fr/egalin/Articles/2012-villages.pdf): interest maps with a veto, roads and houses grown together, parcels.
+- [HAL, Emilien et al. 2012](https://hal.archives-ouvertes.fr/hal-00694525): the same paper's record.
+- [Watabou, village generator devlog 1.4.0](https://watabou.itch.io/village-generator/devlog/507254/140-village-square-and-orchards): a distorted circle on the highway becomes the square.
+- [Watabou, village generator devlog 1.6.4](https://watabou.itch.io/village-generator/devlog/840277/164-crossroads-and-numbered-houses): villages at a crossroads or T-junction.
+- [Watabou, village generator comments](https://watabou.itch.io/village-generator/comments?after=162): players on roads through villages.
+- [Mezha, Ostriv Alpha 5](https://mezha.media/en/2023/03/20/the-ukrainian-urban-planning-strategy-ostriv-has-received-an-alpha-5-update): two- and three-story houses and paved roads.
+- [Wikipedia, Tobler's hiking function](https://en.wikipedia.org/wiki/Tobler%27s_hiking_function): walking speed against slope, fastest slightly downhill.
+- [movecost vignette](https://cran.nics.utk.edu/cran/web/packages/movecost/vignettes/movecost.Rmd): least-cost paths with Tobler, cell by cell.
+- [par.nsf.gov 10420114](https://par.nsf.gov/servlets/purl/10420114): one cost function misses travel-rate variability.
+- [Galin et al. 2010, Procedural Generation of Roads](https://perso.liris.cnrs.fr/egalin/Articles/2010-roads.pdf): road cost curves, bridges and tunnels, k-masks against 45° artifacts.
+- [Galin et al. 2011, Authoring Hierarchical Road Networks](https://www.cs.purdue.edu/homes/bbenes/papers/Galin11CGF.pdf): road levels by settlement size, proximity pruning, merged junctions.
+- [Helbing et al., active walker model (arXiv cond-mat/9806097)](https://ar5iv.labs.arxiv.org/html/cond-mat/9806097): trails that wear in with use and fade without it.
+- [Helbing et al., arXiv cond-mat/9805158](https://arxiv.org/pdf/cond-mat/9805158): direct, minimal and minimal-detour trail systems.
+- [USFS, trail design](https://www.fs.usda.gov/t-d/pubs/htmlpubs/htm07232806/page04.htm): the half rule and the ten percent average guideline.
+- [Shuswap Trail Alliance, trail design standards](https://shuswaptrails.com/userfiles/file/sta_trail_design_standards%20sml.pdf): maximum short-pitch grades.
+- [Cordonnier et al. 2017 (ACM ToG)](https://cs.purdue.edu/homes/bbenes/papers/Cordonnier17ToG.pdf): viability hat functions, vigor and stress, humus by slope, the lapse rate.
+- [Gain et al. 2017, EcoBrush](https://people.cs.uct.ac.za/~Jgain/wp-content/papercite-data/pdf/gain2017.pdf): monthly soil moisture, clustered conditions, plant spacing histograms.
+- [Eurographics record, EcoBrush](https://diglib.eg.org:443/handle/10.1111/cgf13107): the same paper's record.
+- [Hammes on flipcode](https://flipcode.com/archives/02-07-2002.shtml): plants placed at runtime from ecotopes.
+- [Hammes 2001 (DOI 10.1007/3-540-44818-7_14)](https://doi.org/10.1007/3-540-44818-7_14): the paper.
+- [Deussen et al. 1998, Realistic modeling and rendering of plant ecosystems](https://algorithmicbotany.org/papers/ecosys.sig98.pdf): circle competition and self-thinning; eight species segregate.
+- [Deussen et al. 1998, project page](https://algorithmicbotany.org/papers/ecosys.sig98.html): the paper's page.
+- [Verdant 02 Elevation Tileset](https://csaf.itch.io/verdant-02-elevation): cliffs as four bands plus a shadow row; lit north and west rims.
+- [Biome tileset terrain set-up tutorial](https://itch.io/devlog/986063/biome-tileset-packs-terrain-set-up-tutorial.amp): layers for cliffs and caves; three-part, 3-frame waterfalls.
+- [OpenGameArt, cave entrances](https://opengameart.org/node/5481): entrances only in the faces you see.
+- [Radical Fish Games, why auto jump](https://www.radicalfishgames.com/?p=1168): CrossCode's height layers without perspective.
+- [PlayStation Blog, Sea of Stars](https://blog.playstation.com/?p=382678): climbing and ledge-hoisting as core traversal.
+- [MobileSyrup, interview with Thierry Boulanger](https://mobilesyrup.com/2023/09/11/sea-of-stars-level-design-sabotage-studio-thierry-boulanger-interview/): verticality in Sea of Stars' levels.
+- [Nintendo Life, Sea of Stars hands-on](https://www.nintendolife.com/news/2020/03/hands_on_first_impressions_of_sea_of_stars_the_next_project_from_the_messenger_dev_sabotage): moving off the grid.
+- [Nexus Mods, Wargroove tileset mod](https://www.nexusmods.com/wargroove/mods/44): cliffs as a wall-style autotile, not true elevation.
+- [SNESLab, BG3 High Priority](https://sneslab.net/wiki/BG3_High_Prio): per-tile priority bits, for walk-under layers.
+- [SNESdev wiki, Mode 5](https://snes.nesdev.org/wiki/Mode_5): SNES background modes.
+- [Slynyrd, Pixelblog 20: top-down tiles](https://slynyrd.com/blog/2019/8/27/pixelblog-20-top-down-tiles): 16×16 as the common tile size.
 
 ## Zoom and chunks
 

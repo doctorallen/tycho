@@ -68,7 +68,8 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Sprites and items](sprites.md) | Masks, kits and renders for characters, creatures and items; the finishing passes; determinism and machine learning |
 | [Plants](plants.md) | One brancher, a crown envelope and clump stamps for sixty species of trees, shrubs, flowers and cacti |
 | [Worlds and levels](worlds.md) | Noise and climate terrain, graph-first levels, small-region WFC, dual-grid autotiles, villages, and generate-and-test |
-| [Real geography](geography.md) | How real landforms, water, climate, settlements and paths are made, with a world you can watch form and visit in 3/4 view |
+| [Real geography](geography.md) | How real landforms, water, climate and caves are made, with a world you can watch form and visit in 3/4 view |
+| [Settlements, paths and trees](settling.md) | Where villages go, how paths and trails form, where each plant grows, and how height is drawn in 3/4 view |
 | [Zoom and chunks](zoom.md) | An endless world zoomed from region map to single flower through a pyramid of indexed chunks |
 | [Palette and resolution](looks.md) | Hardware and modern styles as rules, OKLab ramps, world-anchored dither, detail tiers and integer scaling |
 | [Perspectives](views.md) | Top-down, 3/4, isometric, side, Mode 7, raycast, stacked and hex views, parallax, and sprite stacks against real 3D |

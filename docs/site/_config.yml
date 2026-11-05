@@ -47,6 +47,7 @@ nav:
       - { title: Plants, url: /docs/study/plants.html }
       - { title: Worlds and levels, url: /docs/study/worlds.html }
       - { title: Real geography, url: /docs/study/geography.html }
+      - { title: Settlements, paths and trees, url: /docs/study/settling.html }
       - { title: Zoom and chunks, url: /docs/study/zoom.html }
       - { title: Palette and resolution, url: /docs/study/looks.html }
       - { title: Perspectives, url: /docs/study/views.html }

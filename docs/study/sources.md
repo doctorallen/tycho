@@ -7,6 +7,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Worlds and levels](#worlds-and-levels)
 - [Real geography](#real-geography)
 - [People and histories](#people-and-histories)
+- [Animals](#animals)
 - [Zoom and chunks](#zoom-and-chunks)
 - [Palette and resolution](#palette-and-resolution)
 - [Text and interface](#text-and-interface)
@@ -233,6 +234,19 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Azgaar's Fantasy Map Generator](https://github.com/Azgaar/Fantasy-Map-Generator): names, cultures and religions placed on a map.
 - [Ultima Codex, Ultima VII SCHEDULE.DAT](https://www.wiki.ultimacodex.com/wiki/Ultima_VII_internal_formats_%E2%80%93_SCHEDULE.DAT): the classic daily schedule as data.
 - [Paavo, what was Radiant AI, anyway?](https://blog.paavo.me/radiant-ai): Oblivion's schedules and packages, and what was cut.
+
+## Animals
+
+[The page](animals.md).
+
+- [Craig Reynolds, Boids](https://www.red3d.com/cwr/boids/) and [steering behaviors for autonomous characters (GDC 1999)](https://www.red3d.com/cwr/steer/gdc99/): flocking from three rules, and the steering behaviors after it.
+- [Hecker et al. 2008, real-time motion retargeting to highly varied user-created morphologies](https://www.chrishecker.com/Real-time_Motion_Retargeting_to_Highly_Varied_User-Created_Morphologies): how Spore animates any body.
+- [Couzin et al. 2002, collective memory and spatial sorting in animal groups](https://www.cs.princeton.edu/courses/archive/fall24/cos597C/bib/couzinKJRF.pdf): zones of repulsion, alignment and attraction.
+- [Ballerini et al. 2008](https://web3.arxiv.org/abs/0709.1916): starlings heed about seven neighbors, not a fixed distance.
+- [Dwarf Fortress wiki, creature token](https://dwarffortresswiki.org/index.php/DF2014:Creature_token): species as rows of tokens.
+- [Minecraft Wiki, mob spawning](https://minecraft.wiki/w/Mob_spawning): spawning rules by light, block and biome.
+- [Bennie et al. 2014, biogeography of time partitioning in mammals](https://pmc.ncbi.nlm.nih.gov/articles/PMC4183310): who is active by day, night and dusk.
+- [Krebs et al. 2001, what drives the 10-year cycle of snowshoe hares?](https://www.zoology.ubc.ca/~krebs/papers/180.pdf): the hare and lynx cycle.
 
 ## Zoom and chunks
 

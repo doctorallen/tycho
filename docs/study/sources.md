@@ -13,6 +13,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Light](#light)
 - [Motion](#motion)
 - [Effects and simulations](#effects-and-simulations)
+- [Sound and music](#sound-and-music)
 - [Reaching a style](#reaching-a-style)
 - [The five games](#the-five-games)
 
@@ -348,6 +349,19 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [jason.today, falling sand improved](https://jason.today/falling-improved): alternating scan direction so neither side goes first.
 - [Hacker News, a falling-sand thread](https://news.ycombinator.com/item?id=31309616): clock bits and updating in place.
 - [LifeWiki, Margolus neighborhood](https://conwaylife.com/wiki/Margolus_neighborhood): order-free block updates that leave gaps between grains.
+
+## Sound and music
+
+[The page](sound.md).
+
+- [DrPetter, sfxr](https://www.drpetter.se/project_sfxr.html): the 2007 generator that made game effects from a dozen numbers.
+- [Frank Force, ZzFX](https://github.com/KilledByAPixel/ZzFX): the same idea in 21 numbers and under a kilobyte.
+- [Paul Adenot, Web Audio performance notes](https://padenot.github.io/web-audio-perf/): what each node costs.
+- [NESdev wiki, the APU](https://www.nesdev.org/wiki/APU): the NES's five channels, the chip as a style.
+- [iMUSE on Wikipedia](https://en.wikipedia.org/wiki/IMUSE): LucasArts' music that changes at marked points.
+- [A Sound Effect, Paul Weir on No Man's Sky](https://www.asoundeffect.com/no-mans-sky-sound-procedural-audio/): procedural audio and generated music in a shipped game.
+- [Chris Wilson, a tale of two clocks](https://web.dev/articles/audio-scheduling): the look-ahead scheduler.
+- [MDN, AudioSession.type](https://developer.mozilla.org/en-US/docs/Web/API/AudioSession/type): Safari's switch between ambient and playback audio.
 
 ## Reaching a style
 

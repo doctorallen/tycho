@@ -77,6 +77,7 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Light](light.md) | Smooth, banded, dithered and reprinted light, tile flood fill, shadowcasting, and bounced light |
 | [Motion](motion.md) | Timing, gaits, code for the soft parts, baked rotation, and palette cycling |
 | [Effects and simulations](effects.md) | Water and weather, tiny integer automata, and falling sand as a material table |
+| [Sound and music](sound.md) | Sound effects from a dozen seeded numbers, places from noise, adaptive music from a seed, and a sound palette per world |
 | [Reaching a style](style.md) | Diablo II, Witchbrook, the levers of a style, and the style pack an agent can check |
 | [The five games](games.md) | What Tycho already has and what Neo, Lodestar, Merryfolk, the White Dragon and Elsewhere each solve on their own |
 | [The roadmap](roadmap.md) | Five waves, from the indexed foundation to specialties, with order, risks and first steps |

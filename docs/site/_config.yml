@@ -55,6 +55,7 @@ nav:
       - { title: Light, url: /docs/study/light.html }
       - { title: Motion, url: /docs/study/motion.html }
       - { title: Effects and simulations, url: /docs/study/effects.html }
+      - { title: Sound and music, url: /docs/study/sound.html }
       - { title: Reaching a style, url: /docs/study/style.html }
       - { title: The five games, url: /docs/study/games.html }
       - { title: The roadmap, url: /docs/study/roadmap.html }

@@ -42,6 +42,7 @@ What would move into Tycho from this study, in five waves: an indexed foundation
 | 4 | `sun` (solar path, phase table keyed on elevation, per-face relighting by sun step, affine shadow transforms, shadow atlas, rim bake, terrain shadow march) | core (path); pixels (shade and shadows) | Lodestar `spriteRim` | Elsewhere | M | [The sun](sun.md) |
 | 4 | `light.Ramp` (stepped ramp light: bands, per-ink ramp table, world-anchored Bayer, art-pixel snap; a shader and a `drawPixels` twin) | pixels | Lodestar `gllight` stepped shader | Elsewhere, Lodestar | M | [Light](light.md) |
 | 4 | `tilelight` (BFS, directional sweeps, octagonal spread, sky and block channels, shadowcasting, CPU polar shadows, optional static GI bake) | world | White Dragon `lightMap`, Lodestar `lightScene`, Merryfolk `Light.stamp` | Elsewhere (lighthouse), crafting game | M | [Light](light.md) |
+| 4 | `audio` additions (a seeded ZzFX-style effect synth, scales and modes, a beat clock, a seeded `Tune`, ambience, a sound palette) | shell | Elsewhere `snd.js` scores | Elsewhere | M | [Sound and music](sound.md) |
 | 5 | `mask` (seeded mirrored-mask and automaton sprites, glyphs) | pixels | White Dragon's invented 3×5 sign `GLYPHS` | Neo, Elsewhere | S–M | [Sprites](sprites.md) |
 | 5 | `cells` (the falling-sand sim, fulfilling the planned `liquid`: material table compiled to typed arrays, contact, temperature and burn reactions, sleeping chunks, seeded xorshift, ink shades through `drawPixels`; Doom fire as a preset) | world | none | an Elsewhere sand quest, crafting game | M–L | [Effects and simulations](effects.md) |
 | 5 | indexed `Painter` option, pseudo-3D floor and raycast helpers, pixel font | pixels | Neo `FONT3`, White Dragon `PIX3` | Elsewhere side quests | M each | [Zoom and chunks](zoom.md), [Perspectives](views.md) |
@@ -340,6 +341,8 @@ Tycho.tilelight.cast(grid, layer, x, y, r, { opaque, out })                     
 Tycho.tilelight.polar(grid, x, y, r, { angles = 256, taps = 9, out })               // CPU 1D shadow map
 Tycho.tilelight.bakeGI(scene, { w = 160, h = 90, cascades = 4 }) → Uint8Array       // static rooms only
 ```
+
+**`audio` additions** ([Sound and music](sound.md)). Tycho's sound engine, moved in from Lodestar, stays as it is; the new parts feed it. A ZzFX-style sample-loop synth turns a few seeded numbers into an effect buffer for `Bank`, and runs in Node so recipes can be tested. Scales and modes, a beat clock with a look-ahead scheduler, and a seeded `Tune` (chords and melody as scale degrees, layers by threshold) put generated music on the music bus. A quest declares a sound palette (modes for each time of day, a voice budget, drums, layer thresholds, an accent wave): the eight-ink rule for sound. Elsewhere's four `snd.js` scores are the first palettes.
 
 ## Wave 5: specialties when a game asks
 

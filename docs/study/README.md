@@ -71,7 +71,8 @@ Claims with a link come from the research notes' sources: web pages, or files in
 | [Real geography](geography.md) | How real landforms, water, climate and caves are made, with a world you can watch form and visit in 3/4 view |
 | [Settlements, paths and trees](settling.md) | Where villages go, how paths and trails form, where each plant grows, and how height is drawn in 3/4 view |
 | [Zoom and chunks](zoom.md) | An endless world zoomed from region map to single flower through a pyramid of indexed chunks |
-| [Palette and resolution](looks.md) | Hardware and modern styles as rules, OKLab ramps, world-anchored dither, detail tiers and integer scaling |
+| [Palette and resolution](looks.md) | Hardware and modern styles as rules, OKLab ramps, world-anchored dither, detail tiers, integer scaling and palettes colorblind players can read |
+| [Text and interface](text.md) | Pixel fonts and talk boxes at 320×180, integer scaling and touch targets on phones |
 | [Perspectives](views.md) | Top-down, 3/4, isometric, side, Mode 7, raycast, stacked and hex views, parallax, and sprite stacks against real 3D |
 | [The sun](sun.md) | A three-equation sun, shadows as one affine drawImage, and faces relit by palette remap at each sun step |
 | [Light](light.md) | Smooth, banded, dithered and reprinted light, tile flood fill, shadowcasting, and bounced light |

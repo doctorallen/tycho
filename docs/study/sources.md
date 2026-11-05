@@ -8,6 +8,7 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Real geography](#real-geography)
 - [Zoom and chunks](#zoom-and-chunks)
 - [Palette and resolution](#palette-and-resolution)
+- [Text and interface](#text-and-interface)
 - [Perspectives](#perspectives)
 - [The sun](#the-sun)
 - [Light](#light)
@@ -249,6 +250,18 @@ Every external source the study cites, about 300 in all, grouped by the page tha
 - [Nintendo Everything, Octopath Traveler's developers](https://nintendoeverything.com/octopath-traveler-devs-on-character-origins-visual-style-initial-hd-rumble-plans-much-more/): sprites on big screens looked "lonely and simple".
 - [Unity forum, smooth-looking pixel art in motion](https://discussions.unity.com/t/smooth-looking-pixel-art-in-motion/907566): snap to whole pixels, offset the final blit by the fraction.
 - [Fab, a pixel-perfect camera listing](https://www.fab.com/listings/816f34f2-1a2e-4910-b3dd-009b5da0873b): the same subpixel-offset camera as a product.
+
+## Text and interface
+
+[The page](text.md), and the colorblind section of [Palette and resolution](looks.md#palettes-everyone-can-read).
+
+- [DaltonLens, a review of open-source color vision deficiency simulations](https://daltonlens.org/opensource-cvd-simulation/): which simulation models hold up, and libDaltonLens's matrices.
+- [Xbox Accessibility Guidelines 101, text display](https://devdocs.xbox.com/build/game-principles/accessibility/xag-deep-dives/xag-101-text-display.md): minimum text sizes and contrast for games.
+- [AngelCode, the BMFont file format](https://www.angelcode.com/products/bmfont/doc/file_format.html): the common bitmap font format.
+- [Brysbaert 2019, reading rate](https://www.Gwern.net/doc/psychology/linguistics/2019-brysbaert.pdf): how fast adults read silently, for typewriter speeds.
+- [W3C, WCAG 2.5.8 target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html): the minimum size of a touch target.
+- [IGDA GASIG, don't implement colorblind filters](https://igda-gasig.org/how/platform-level-accessibility-recommendations/do-not-implement-colorblind-filters/): why to design palettes rather than filter them.
+- [TakWolf, Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font): an open pixel font with CJK at low sizes.
 
 ## Perspectives
 

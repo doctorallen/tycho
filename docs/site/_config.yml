@@ -50,6 +50,7 @@ nav:
       - { title: Settlements, paths and trees, url: /docs/study/settling.html }
       - { title: Zoom and chunks, url: /docs/study/zoom.html }
       - { title: Palette and resolution, url: /docs/study/looks.html }
+      - { title: Text and interface, url: /docs/study/text.html }
       - { title: Perspectives, url: /docs/study/views.html }
       - { title: The sun, url: /docs/study/sun.html }
       - { title: Light, url: /docs/study/light.html }

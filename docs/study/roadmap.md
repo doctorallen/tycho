@@ -32,6 +32,7 @@ What would move into Tycho from this study, in five waves: an indexed foundation
 | 2 | `figure` (one body description drawn by any painter) | pixels | Elsewhere `Ink.traveler`; prototypes in White Dragon, Merryfolk, Lodestar | Elsewhere | L | [Sprites](sprites.md), [Motion](motion.md) |
 | 2 | `bake` (silhouettes, lean frames, squash variants) | pixels | Merryfolk `blitSway` idea | Elsewhere | S | [Motion](motion.md) |
 | 2 | `style` (style packs: ramps with roles, scale, light, line, anchors, thresholds; contact sheets; a harness for build-step pre-renders) | pixels, with test-kit glue | Elsewhere `test/look.js` and `test/golden.json` habits | Elsewhere | M | [Reaching a style](style.md) |
+| 2 | `text` (bitmap fonts into index buffers, a pixel `Typer`, nine-slice frames, device-pixel scaling, touch targets in art pixels, a colorblind palette check) | pixels, shell | Neo `FONT3`, White Dragon `PIX3`, Elsewhere `talk.js` | Elsewhere | M | [Text and interface](text.md) |
 | 3 | `gen` (caves, blobs and tunnels, walks, rooms, BSP, regions, node graphs, templates, terrain, biomes) | world | Lodestar `generateFloor`, `generateRuin`, `layRegions`, `placeUndergrowth`; Neo `generateFloor` once on Tycho | Elsewhere (moor, dig) | L | [Worlds and levels](worlds.md), [Real geography](geography.md) |
 | 3 | `autotile` (edge, blob and dual-grid bits, layered terrains, pattern rules) | world | Neo's wall-face rule | Elsewhere | M | [Worlds and levels](worlds.md) |
 | 3 | `gen.wfc` (simple tiled model, fixed cells, seeded retry) | world | none | Elsewhere, White Dragon | M | [Worlds and levels](worlds.md) |
@@ -222,6 +223,8 @@ const pack = Tycho.style.pack({ palette: { ramps: { skin: [...], stone: [...] },
 Tycho.style.sheet(pack, sprites, { ground, zoom: [1, 4] }) → canvas    // the contact sheet
 tk.prerender(model, pack, { size: 4, dirs: 8, out: 'art/' })          // build step: render, quantize, clean, write
 ```
+
+**`text`** ([Text and interface](text.md)). Bitmap fonts as 1-bit glyphs (drawn in code or loaded from BMFont files) with accent marks, kerning and word wrap, drawn into index buffers so text reprints with the palette; a pixel version of `Typer`; nine-slice frames for talk boxes. Two shell changes come with it: scaling in device pixels rather than CSS pixels, so a phone with a fractional pixel ratio still gets even art pixels, and touch targets sized in art pixels from the 44 pt and 48 dp rules. A palette check for colorblind readers joins `check`. This takes the 3×5 pixel font out of wave 5.
 
 ## Wave 3: generated places
 

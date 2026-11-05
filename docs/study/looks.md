@@ -11,6 +11,7 @@ Text marked *(inference)* is reasoning from the sources, not a sourced fact.
 - [Dither anchored to the world](#dither-anchored-to-the-world)
 - [Resolution sets the detail budget](#resolution-sets-the-detail-budget)
 - [Phones force integer scaling](#phones-force-integer-scaling)
+- [Palettes everyone can read](#palettes-everyone-can-read)
 - [Sources](#sources)
 
 ## Hardware styles are rules; modern styles are habits
@@ -108,6 +109,79 @@ Two of the games already decouple art pixels from world pixels. Lodestar draws 1
 
 320×180 scales ×6 to 1080 rows. On a 20:9 screen, one choice is to fix the internal height and widen the internal canvas in whole pixels (for example 400×180) rather than letterbox *(inference, arithmetic)*. Smooth camera motion without broken pixels comes from snapping the world to whole internal pixels and offsetting the final upscaled blit by the leftover fraction ([Unity forum](https://discussions.unity.com/t/smooth-looking-pixel-art-in-motion/907566); [Fab listing](https://www.fab.com/listings/816f34f2-1a2e-4910-b3dd-009b5da0873b)).
 
+## Palettes everyone can read
+
+About 8% of men and 0.4% of women have a color vision deficiency ([DaltonLens](https://daltonlens.org/opensource-cvd-simulation/)). Nearly all of them see red and green differently:
+
+| Type | Men | Women |
+|---|---|---|
+| Protanopia | 1.3% | 0.02% |
+| Deuteranopia | 1.2% | 0.01% |
+| Tritanopia | 0.008% | 0.008% |
+| Protanomaly | 1.3% | 0.02% |
+| Deuteranomaly | 5.0% | 0.35% |
+
+That table is from [Wikipedia](https://en.wikipedia.org/wiki/Color_blindness). For a protanope "the brightness of red is much reduced", so a red scarf can read as near black.
+
+An eight-ink palette is small enough to check completely: 28 pairs, each simulated three ways.
+
+| Deficiency | Method | Why |
+|---|---|---|
+| Protanopia, deuteranopia | Viénot 1999, Brettel 1997 or Machado 2009 | All "solid choices", "with a slight advantage for Viénot" |
+| Tritanopia | Brettel 1997 | "The most solid and basically only valid choice"; Machado's authors chose not to model it |
+| Partial (anomalous) | Machado 2009, by severity | It models a shifted cone; others only blend toward the full simulation |
+
+The methods' ranking is DaltonLens's ([review](https://daltonlens.org/opensource-cvd-simulation/)). DaltonLens also warns that the widely copied Coblis V1 matrices "should never be used", and that many copies skip sRGB decoding and come out too dark.
+
+Brettel 1997 in practice is small. libDaltonLens precomputes it in linear RGB as two 3×3 matrices per deficiency and a plane normal that picks between them: `M = dot(rgb, n) >= 0 ? M1 : M2`. That's nine multiplies a color, public domain ([libDaltonLens](https://github.com/DaltonLens/libDaltonLens/blob/master/libDaltonLens.c)). The papers are Brettel, Viénot & Mollon 1997 ([JOSA A](https://doi.org/10.1364/JOSAA.14.002647)), Viénot, Brettel & Mollon 1999 ([Color Research & Application](https://doi.org/10.1002/(SICI)1520-6378(199908)24:4%3C243::AID-COL5%3E3.0.CO;2-3)), and Machado, Oliveira & Fernandes 2009 ([project page](https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html)).
+
+The demo measures every pair in OKLab, under each simulation, and flags pairs that come closer than a threshold.
+
+<figure class="demo"><div class="stage" data-demo="colorblind"></div>
+<figcaption><b>Eight inks under color vision deficiency.</b> A small scene in a palette's eight inks (roles by lightness: outline, roof, hills, trees, ground, walls, sky, sun), simulated for protanopia, deuteranopia and tritanopia with Brettel 1997 (libDaltonLens's matrices) and shown as lightness alone. The matrix puts every ink on every other, as ground and mark, under the worst of the three deficiencies or one chosen, and frames pairs whose OKLab distance falls under the threshold in black and white, so the flag reads under any deficiency. <i>Auto-fix lightness</i> pushes each flagged pair apart in OKLab lightness, keeping hue, until none is left. The palettes are four of Elsewhere's quests, Okabe and Ito's, and seeded random ones.</figcaption></figure>
+
+CSS Color 4 takes "one JND [just noticeable difference] is an OkLCh difference of 0.02" ([CSS Color 4](https://www.w3.org/TR/css-color-4/)). Inks that must read as different objects in small clusters of pixels need several, so the demo flags pairs under 0.08 by default *(inference: a working threshold, not a source's)*.
+
+Small marks make it worse for everyone. For small fields, about 20 arcminutes and under, normal observers lose blue-yellow discrimination: small-field tritanopia (Willmer & Wright 1945, [Nature](https://www.nature.com/articles/156119a0.pdf)). One art pixel at 320×180 on a phone held at 30 cm is about 4 arcminutes, so a 1-pixel glint of yellow on white, or of blue on grey, can vanish even for perfect color vision *(arithmetic, inference)*.
+
+Elsewhere's own palettes, measured by the demo at 0.08 *(arithmetic)*:
+
+| Palette | Flagged pairs | Worst pair (and where) |
+|---|---|---|
+| The frogs' day | 4 | Red `#d8483a` and tan `#b87a3c`: 0.026 under deuteranopia; green `#8cc84c` and orange `#f08a30`: 0.038 |
+| Mrs. Pell's sun | 2 | Brick `#b0442c` and ivy green `#3f7a52`: 0.060 under deuteranopia, and 0.003 apart in lightness |
+| The Road at dusk | 3 | Scarf pink `#a83c6a` and grass `#3d7a52`: 0.029 under deuteranopia, 0.007 apart in lightness |
+| The lighthouse lit | 1 | Rust `#b0602c` and flame `#e0642c`: 0.047 under protanopia |
+| Okabe–Ito | 1 | Bluish green `#009e73` and reddish purple `#cc79a7`: 0.077 under deuteranopia |
+
+<div class="finding"><p>In two of Elsewhere's four palettes, the ink the traveler's scarf is printed in sits at the same lightness as the green of the ground (OKLab L within 0.01), so to a deuteranope the red scarf on grass is one color. Lightness is the cue that survives every deficiency: inks that must stand apart, such as figure and ground, should differ in OKLab L by about 0.1 or more, whatever their hues.</p></div>
+
+The fix that keeps a palette's character pushes lightness, not hue. Lightness survives every deficiency and greyscale, so separating two inks in OKLab L separates them in every simulated view at once. The demo's auto-fix:
+
+1. Find every pair under the threshold in any of the three simulations.
+2. Move the darker ink of each down and the lighter up, 0.006 at a time, keeping hue and lowering chroma only to stay in gamut.
+3. Repeat until no pair is flagged.
+
+On the frogs' day palette it clears all four flags in a few milliseconds, but moves every ink, one by 0.17. A crude fix like that is a suggestion for a person to judge, not a gate *(inference)*. Not every pair matters either: two greens in one ramp may touch by design. What matters is the short list of pairs a quest relies on: figure on ground, a person's coat on grass, a pickup on the floor.
+
+Okabe and Ito's Color Universal Design palette shows what a palette built for this looks like: black, orange `#E69F00`, sky blue `#56B4E9`, bluish green `#009E73`, yellow `#F0E442`, blue `#0072B2`, vermillion `#D55E00` and reddish purple `#CC79A7`. Its hues are spread so that lightness and the blue-yellow axis carry the differences red-green can't ([jfly](https://jfly.uni-koeln.de/color/); [R `see` documentation](https://rdrr.io/cran/see/man/scale_color_okabeito.html)). It still has one pair under 0.08 here, which says more about the threshold than about the palette *(inference)*.
+
+What games do:
+
+- **The Last of Us Part II** has over 60 accessibility settings, among them a High Contrast Display that mutes the world and colors allies, enemies, items and interactables. Its colorblind modes change only the HUD's accents ([PlayStation Blog](https://blog.playstation.com/2020/06/09/the-last-of-us-part-ii-accessibility-features-detailed)).
+- **Fortnite** has protanope, deuteranope and tritanope modes with a strength slider ([Dot Esports](https://dotesports.com/fortnite/guides/the-best-colorblind-settings-for-fortnite)).
+- **The IGDA's accessibility group** argues against whole-screen filters. Filters "bunch hues up closer together" and repaint things that didn't need it (all greens to blue, so grass stops looking like grass). It recommends shape and symbol first, then hand-chosen colors for the few elements that must stand apart, as Destiny does ([IGDA GASIG](https://igda-gasig.org/how/platform-level-accessibility-recommendations/do-not-implement-colorblind-filters/)).
+- **Celeste's Assist Mode** changes rules, not colors: speed down to 50%, infinite stamina, invincibility ([Vice](https://www.vice.com/en/article/celeste-assist-mode-change-and-accessibility)). It is the model for options that never judge the player.
+
+For a game that prints each world in its own eight inks, the IGDA's advice maps onto the palette directly *(inference)*:
+
+- check each palette's important pairs when it's made;
+- keep figure and ground apart in lightness;
+- carry state with a shape, outline or mark as well as color;
+- if a world still fails, offer an alternate print of the same sheet, the way the frog stall already has a dusk palette.
+
+Tycho could carry the check as a palette lint: simulate, measure the 28 pairs, list the collisions and the text pair's WCAG contrast. It's milliseconds of plain JS, run at build time or in the dev panel, never per frame. The research is in [the notes on text, interface and legibility](notes/text_interface_legibility.md); the interface side is on [Text and interface](text.md).
+
 ## Sources
 
 - [NESdev, PPU palettes](https://www.nesdev.org/wiki/PPU_palettes) and [PPU attribute tables](https://www.nesdev.org/wiki/PPU_attribute_tables)
@@ -130,4 +204,6 @@ The full research is in [the notes on styles, resolution and perspective](notes/
 <script src="demos/dither.js"></script>
 <script src="demos/sprites-shared.js"></script>
 <script src="demos/resolution-tiers.js"></script>
+<script src="demos/text-shared.js"></script>
+<script src="demos/colorblind.js"></script>
 <script src="demos/start.js"></script>

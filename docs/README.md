@@ -25,3 +25,7 @@ A page for each part that's in. Tyrell's are in [../tyrell/docs](../tyrell/docs/
 Proposed, and not built yet:
 
 - [events.md](events.md): watching the simulation's events by impact (a death near 1, a chat near 0) above a threshold you set: impact in Tyrell's log, the view in the development tools.
+
+A study, and not built yet:
+
+- [study/](study/README.md): how games generate pixel characters, items, plants, worlds, light, motion and effects with code, which styles, resolutions and perspectives suit them, and what Tycho should add, in five waves led by an indexed picture: a page for each topic with live demos, the roadmap, the sources and the research notes.

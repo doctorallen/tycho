@@ -1,4 +1,4 @@
-// stack3d.js: the sprite stack from the perspectives demo set against the same slices rendered as real 3D.
+// stack-vs-3d.js: the sprite stack from the perspectives demo set against the same slices rendered as real 3D.
 // stack-vs-3d: left, the height slices drawn bottom up with one rotated, squashed drawImage each (Canvas 2D);
 // right, every slice pixel turned into a voxel, greedy-meshed once and drawn with WebGL 2 through an orthographic
 // camera into a 192x128 buffer with a depth test, a sun shadow map, light in palette steps and optional edge lines.
@@ -6,7 +6,7 @@
 (() => {
   const { RGB, Pix, PAL } = Kit;
 
-  // ---- the world, copied from views.js: 12x12 tiles, heights in steps, a house, a tree and a hero ----
+  // ---- the world, copied from views-shared.js: 12x12 tiles, heights in steps, a house, a tree and a hero ----
   const MAP = [
     'hhhGGGGGGGGG',
     'hHhGGGGGGGGG',
@@ -33,7 +33,7 @@
     if (k === 'h' || k === 'H') return r < 0.03 ? 19 : 18;
     return r < 0.022 ? 18 : r < 0.045 ? 16 : 17;
   }
-  // the ground seen from above, with dark lips where the land steps down (views.js topDown without objects)
+  // the ground seen from above, with dark lips where the land steps down (views-shared.js topDown without objects)
   function ground(t) {
     const p = new Pix(N * t, N * t);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
@@ -49,7 +49,7 @@
     cv.getContext('2d').putImageData(pix.toImage(), 0, 0); return cv;
   }
 
-  // ---- the slices: views.js stackAssets, kept as Pix so the same data feeds both views ----
+  // ---- the slices: views-shared.js stackAssets, kept as Pix so the same data feeds both views ----
   function stackLayers() {
     const t = MT, layers = [];
     const L = k => (layers[k] = layers[k] || new Pix(S, S));
@@ -93,14 +93,14 @@
   // Both views use one orthographic camera: turn by `ang` about the vertical, tilt by `pitch` above the horizon, scale s.
   // A map point (x, y, z) lands at sx = W/2 + s·rx, sy = y0 + s·(sin p·ry − cos p·z·HZ), where (rx, ry) = R(ang)(x, y).
   // The stack gets the same numbers: squash = sin p, and each slice lifted s·cos p·HZ pixels. HZ is set so that at the
-  // views.js pitch (squash 0.6) and 1x a slice lifts exactly one pixel, as it does there.
+  // The perspectives demo's pitch (squash 0.6) and 1x a slice lifts exactly one pixel, as it does there.
   const W = 192, H = 128, SC = 1.15, P0 = 37 * Math.PI / 180, HZ = 1 / (SC * Math.cos(P0));
   function camera(ang, pitch, zoom) {
     const p = pitch * Math.PI / 180, sp = Math.sin(p), cp = Math.cos(p), s = SC * zoom;
     return { ca: Math.cos(ang), sa: Math.sin(ang), sp, cp, s, lift: s * cp * HZ, y0: H / 2 + Math.round(14 * zoom * cp / Math.cos(P0)) };
   }
 
-  // ---- view 1: the sprite stack, one transformed drawImage per slice (as views.js drawStack) ----
+  // ---- view 1: the sprite stack, one transformed drawImage per slice (as views-shared.js drawStack) ----
   // With `fill`, a slice lifted more than a pixel above the one below is drawn again on every row between.
   function drawStack(g, cvs, c, fill) {
     g.setTransform(1, 0, 0, 1, 0, 0);

@@ -1,4 +1,4 @@
-// lighting.js: one dungeon corner in 3/4 view, lit seven ways, for the research page.
+// lights.js: one dungeon corner in 3/4 view, lit seven ways, for the research page.
 // A smooth light map, palette bands, ordered dither, ray-cast shadows, a tile flood fill, normal maps and a small 2D GI,
 // all over the same room so the models compare directly. Drag to carry the lantern. Every heavy field is cached per light
 // and recast only when that light moves; each frame only sums cached fields and prints the room through them.

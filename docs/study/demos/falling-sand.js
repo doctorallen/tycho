@@ -1,4 +1,4 @@
-// sand.js: falling sand, built out. 26 materials in five kinds (powders, liquids, gases, solids, energy), each with
+// falling-sand.js: falling sand, built out. 26 materials in five kinds (powders, liquids, gases, solids, energy), each with
 // a density, a viscosity, a flammability and a conductivity, over a per-cell heat field that drives phase changes:
 // water freezes and boils, steam rains back, lava cools to stone, sand fuses to glass, salt melts ice, acid eats
 // all but glass. Typed arrays, a bottom-up scan with alternating direction, a clock bit, and 16×16 chunks that sleep.

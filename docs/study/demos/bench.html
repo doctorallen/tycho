@@ -24,7 +24,6 @@
   // bench.html?files=a.js,b.js&demos=name1,name2 : loads the files, mounts the demos, one block each.
   const q = new URLSearchParams(location.search);
   const files = (q.get('files') || '').split(',').filter(Boolean);
-  let left = files.length;
   const go = () => {
     const names = (q.get('demos') || Object.keys(window.Demos).join(',')).split(',').filter(Boolean);
     for (const n of names) {
@@ -36,8 +35,9 @@
     Kit.mountAll();
     window.__ready = true;
   };
-  if (!left) go();
-  for (const f of files) { const s = document.createElement('script'); s.src = f; s.onload = s.onerror = () => { if (--left === 0) go(); }; document.body.append(s); }
+  // one after another, in the order given, as the script tags on a page run (a demo after its group's shared file)
+  const next = () => { if (!files.length) return go(); const s = document.createElement('script'); s.src = files.shift(); s.onload = s.onerror = next; document.body.append(s); };
+  next();
 </script>
 </body>
 </html>

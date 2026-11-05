@@ -1,4 +1,4 @@
-// lod.js: the `chunks` demo, an endless seeded world you can zoom from a region map down to single plants.
+// chunks.js: the `chunks` demo, an endless seeded world you can zoom from a region map down to single plants.
 // After Merryfolk's zoom: a few whole-number steps, each with its own cache of chunk pictures. A chunk shows a flat
 // sketch (or the coarser step's picture) until it is painted, nearest the middle first, a few milliseconds a frame,
 // and the chunks seen longest ago are let go. Each step draws less: biome colors far out, then trees as speckle,
@@ -10,7 +10,7 @@
   const PAL = Kit.PAL, hash2 = Kit.hash2;
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-  // Gradient noise on a hashed lattice with eight fixed gradients (the trick from worlds.js: no cos or sin, so fast).
+  // Gradient noise on a hashed lattice with eight fixed gradients (the trick from worlds-shared.js: no cos or sin, so fast).
   const GX = [1, -1, 0, 0, 0.7071, -0.7071, 0.7071, -0.7071], GY = [0, 0, 1, -1, 0.7071, 0.7071, -0.7071, -0.7071];
   const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
   function gnoise(x, y, seed) {

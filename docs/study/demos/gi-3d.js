@@ -1,4 +1,4 @@
-// gi3d.js: the dungeon corner from lighting.js rebuilt as a voxel room and lit with global illumination that stays smooth.
+// gi-3d.js: the dungeon corner from lights.js rebuilt as a voxel room and lit with global illumination that stays smooth.
 // gi-3d: direct light is evaluated exactly per pixel on the GPU every frame (falloff, N.L, soft shadows marched through a
 // distance field of the voxels), so a moving lamp is clean on its first frame. Bounced light comes from a coarse grid of
 // irradiance probes (after DDGI): each gathers a fixed set of rays through the voxel grid (DDA), stores an ambient cube
@@ -9,9 +9,9 @@
 (() => {
   const { RGB } = Kit;
   const W = 192, H = 112, clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-  const fall = t => t >= 1 ? 0 : (1 - t * t) * (1 - t * t) / (1 + 6 * t * t);   // lighting.js's windowed falloff
+  const fall = t => t >= 1 ? 0 : (1 - t * t) * (1 - t * t) / (1 + 6 * t * t);   // lights.js's windowed falloff
 
-  // ---- the floor of the 2D room, pixel for pixel (lighting.js): flagstones, the rug, the lava crack ----
+  // ---- the floor of the 2D room, pixel for pixel (lights.js): flagstones, the rug, the lava crack ----
   // One voxel is 4x4 of these pixels, so each voxel face carries a 4x4 tile of the 2D room's inks.
   const slab = (x, y) => {
     const tx = x >> 3, ty = y >> 3, wide = Kit.hash2(tx >> 1, ty, 11) < 0.5, s0 = wide ? tx >> 1 << 1 : tx;
@@ -39,7 +39,7 @@
     if (!end && Kit.hash2(x, 0, 5) < .55) fink(x, y - 1, 11, 1);
     if (!end && Kit.hash2(x, 1, 5) < .35) fink(x, y + 1, 11, 1);
   }
-  // brick courses, the crate and the window from lighting.js
+  // brick courses, the crate and the window from lights.js
   const brick = (u, r) => r <= 0 ? 1 : r % 4 === 0 ? 0 : (u + ((r >> 2) & 1) * 4) % 8 === 0 ? 0 : 1;
   const crateFace = (u, z, w, h) => {
     const side = u === 0 || u === w - 1, band = z === 1 || z === h - 2, brace = Math.abs(u - z * (w - 1) / (h - 1)) < .7;
@@ -78,7 +78,7 @@
   for (let i = 0; i < NV; i++) SOLID[i] = MAT[i] && MAT[i] !== M.FLAME && MAT[i] !== M.CRYS ? 1 : 0;
   const wallTop = (x, y) => { let z = Z - 1; while (z > 0 && MAT[vi(x, y, z)] !== M.WALL) z--; return z + 1; };
 
-  // ---- lights (lighting.js's, at voxel scale) ----
+  // ---- lights (lights.js's, at voxel scale) ----
   const TORCH = { x: 14.5, y: 6.6, z: 6.6, r: 22, s: 1.8, c: [1, .62, .32] };
   const CRYS = { x: 41, y: 15, z: 5.5, r: 14, s: .9, c: [.5, .84, .9] };
   const LAN = { x: 28.1, y: 23.6, z: 3.5, r: 26, s: 2.2, c: [1, .8, .56] };
@@ -322,7 +322,7 @@
     });
   });
 
-  // ---- the band printer from lighting.js: five light levels, each a reprint stepping every ink along its ramp ----
+  // ---- the band printer from lights.js: five light levels, each a reprint stepping every ink along its ramp ----
   const STEP = [-2, -1, 0, 1, 2];
   const RAMP = i => i <= 7 ? Kit.RAMPS.grey : i <= 13 ? Kit.RAMPS.red : i <= 19 ? Kit.RAMPS.green : i <= 25 ? Kit.RAMPS.blue : i <= 29 ? Kit.RAMPS.brown : Kit.RAMPS.violet;
   const WARM = [{}, {}, {}, { 5: 29, 6: 29 }, { 5: 29, 6: 13, 7: 13 }], COOL = [{}, {}, {}, { 6: 25 }, { 6: 25 }];

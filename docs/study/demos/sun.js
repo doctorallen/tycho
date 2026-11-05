@@ -2,7 +2,7 @@
 // The scene is built once as a voxel grid. Each view casts a ray per pixel to find which voxel face it sees (baked
 // once per view). Each face is lit once per sun step in world space: the angle to the sun picks a ramp step, a ray
 // marched toward the sun decides shadow, and the sky sets the ambient color. So a shadow lands on the same faces in
-// every projection. Replaces day-night (fx.js), which only remapped palettes.
+// every projection. It replaced an older day-night demo, which only remapped palettes.
 'use strict';
 (() => {
   const { RGB, Pix } = Kit;
